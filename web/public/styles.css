@@ -174,6 +174,13 @@ tbody tr.removed .svc-name { text-decoration: line-through; }
 .b-yellow { color: var(--yellow); background: rgba(249,226,175,.12); border-color: rgba(249,226,175,.3); }
 .b-gray   { color: var(--subtext0); background: rgba(108,112,134,.15); border-color: rgba(108,112,134,.35); }
 .b-blue   { color: var(--blue);   background: rgba(137,180,250,.12); border-color: rgba(137,180,250,.3); }
+.b-peach  { color: var(--peach);  background: rgba(250,179,135,.12); border-color: rgba(250,179,135,.35); }
+
+/* parent/child (e.g. K8s deployment -> pods) */
+tbody tr.child td { padding-top: 4px; padding-bottom: 4px; }
+tbody tr.child .svc-name { color: var(--subtext0); font-weight: 400; }
+.tree { color: var(--overlay0); }
+.kind { color: var(--overlay0); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin-left: 6px; }
 
 /* ---- events ---- */
 .events { border: 1px solid var(--surface0); border-radius: 8px; overflow: hidden; background: var(--mantle); }

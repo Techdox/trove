@@ -188,3 +188,83 @@ func TestMarkServicesStale(t *testing.T) {
 		t.Fatalf("re-mark should change 0 rows, got %d", n)
 	}
 }
+
+func TestApplyReportParentChild(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "k8s")
+
+	dep := model.ReportService{ExternalID: "deploy/default/web", Name: "web", Kind: model.KindDeployment, State: "3/3", Health: model.HealthHealthy}
+	pod := func(id string) model.ReportService {
+		return model.ReportService{ExternalID: id, ParentExternalID: "deploy/default/web", Name: id, Kind: model.KindPod, State: "running", Health: model.HealthHealthy}
+	}
+	if err := st.ApplyReport(ctx, agent.ID, report(dep, pod("pod/default/web-a"), pod("pod/default/web-b"))); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	rows, _ := st.ListServices(ctx)
+	byID := map[string]ServiceRow{}
+	for _, r := range rows {
+		byID[r.ExternalID] = r
+	}
+	if len(rows) != 3 {
+		t.Fatalf("want 3 services, got %d", len(rows))
+	}
+	// Parent has no parent; children point at the deployment's external_id.
+	if byID["deploy/default/web"].ParentExternalID.Valid {
+		t.Fatal("deployment should have no parent")
+	}
+	for _, child := range []string{"pod/default/web-a", "pod/default/web-b"} {
+		if got := byID[child].ParentExternalID.String; got != "deploy/default/web" {
+			t.Fatalf("%s parent = %q, want deploy/default/web", child, got)
+		}
+	}
+}
+
+func TestFreshnessJoinAndDue(t *testing.T) {
+	st, clock := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+
+	// Service running a known digest.
+	s := svc("c1", "running", model.HealthHealthy)
+	s.Image = "gitea/gitea:1.22"
+	s.ImageDigest = "sha256:aaa"
+	_ = st.ApplyReport(ctx, agent.ID, report(s))
+
+	// Image is due (never checked).
+	due, _ := st.ImagesDueForCheck(ctx, 10)
+	if len(due) != 1 || due[0] != "gitea/gitea:1.22" {
+		t.Fatalf("images due = %v, want [gitea/gitea:1.22]", due)
+	}
+
+	// Record latest digest matching what's running => current.
+	next := clock.Add(6 * time.Hour).Unix()
+	if err := st.RecordImageDigest(ctx, "gitea/gitea:1.22", "sha256:aaa", next); err != nil {
+		t.Fatalf("record digest: %v", err)
+	}
+	rows, _ := st.ListServices(ctx)
+	if !rows[0].LatestDigest.Valid || rows[0].LatestDigest.String != "sha256:aaa" {
+		t.Fatalf("latest digest not joined: %+v", rows[0].LatestDigest)
+	}
+	if rows[0].FreshnessStatus.String != "ok" {
+		t.Fatalf("freshness status = %q, want ok", rows[0].FreshnessStatus.String)
+	}
+
+	// Now no longer due (next_check_at in the future).
+	if due, _ := st.ImagesDueForCheck(ctx, 10); len(due) != 0 {
+		t.Fatalf("expected nothing due, got %v", due)
+	}
+
+	// An error must not blank the previously-good digest.
+	if err := st.RecordImageError(ctx, "gitea/gitea:1.22", "boom", clock.Add(time.Hour).Unix()); err != nil {
+		t.Fatalf("record error: %v", err)
+	}
+	rows, _ = st.ListServices(ctx)
+	if rows[0].LatestDigest.String != "sha256:aaa" {
+		t.Fatalf("error wiped digest: %q", rows[0].LatestDigest.String)
+	}
+	if rows[0].FreshnessStatus.String != "error" {
+		t.Fatalf("status after error = %q, want error", rows[0].FreshnessStatus.String)
+	}
+}

@@ -33,6 +33,17 @@ type ServiceRow struct {
 	AgentPlatform        string
 	AgentIntervalSeconds int
 	AgentLastSeenAt      sql.NullInt64
+
+	// ParentExternalID links a child instance (e.g. a K8s pod) to its parent
+	// workload's external_id within the same host. Empty for standalone
+	// services (containers, VMs).
+	ParentExternalID sql.NullString
+
+	// Freshness cache (Phase 2), left-joined from image_checks. Nullable when
+	// the image has not been checked yet.
+	LatestDigest       sql.NullString
+	FreshnessStatus    sql.NullString
+	FreshnessCheckedAt sql.NullInt64
 }
 
 // ListServices returns every service joined to its host and agent, ordered for
@@ -42,10 +53,14 @@ func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
 		SELECT s.id, s.external_id, s.name, s.kind, s.image, s.image_digest, s.state, s.health,
 		       s.ports_json, s.labels_json, s.first_seen_at, s.last_seen_at, s.updated_at,
 		       h.id, h.hostname, h.platform_meta_json,
-		       a.id, a.name, a.platform, a.report_interval_seconds, a.last_seen_at
+		       a.id, a.name, a.platform, a.report_interval_seconds, a.last_seen_at,
+		       p.external_id AS parent_external_id,
+		       c.latest_digest, c.status, c.checked_at
 		  FROM services s
 		  JOIN hosts h  ON h.id = s.host_id
 		  JOIN agents a ON a.id = h.agent_id
+		  LEFT JOIN services p     ON p.id = s.parent_id
+		  LEFT JOIN image_checks c ON c.image = s.image
 		 ORDER BY a.name, h.hostname, s.name`)
 	if err != nil {
 		return nil, fmt.Errorf("list services: %w", err)
@@ -60,6 +75,8 @@ func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
 			&r.PortsJSON, &r.LabelsJSON, &r.FirstSeenAt, &r.LastSeenAt, &r.UpdatedAt,
 			&r.HostID, &r.Hostname, &r.HostMetaJSON,
 			&r.AgentID, &r.AgentName, &r.AgentPlatform, &r.AgentIntervalSeconds, &r.AgentLastSeenAt,
+			&r.ParentExternalID,
+			&r.LatestDigest, &r.FreshnessStatus, &r.FreshnessCheckedAt,
 		); err != nil {
 			return nil, err
 		}

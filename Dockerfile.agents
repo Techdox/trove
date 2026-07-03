@@ -1,0 +1,22 @@
+# Generic image for the non-Docker agents (Kubernetes, Proxmox). Select which
+# with the CMD build-arg:
+#
+#   docker build -f Dockerfile.agents --build-arg CMD=trove-agent-k8s     -t trove-agent-k8s .
+#   docker build -f Dockerfile.agents --build-arg CMD=trove-agent-proxmox -t trove-agent-proxmox .
+#
+# Runs as nonroot; these agents only need outbound network + a token, no host
+# access. (The Docker agent uses Dockerfile.agent instead, as it must read the
+# Docker socket; the local/systemd agent runs as a host binary — see README.)
+ARG CMD=trove-agent-k8s
+
+FROM golang:1.26 AS build
+ARG CMD
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/agent ./cmd/${CMD}
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/agent /usr/local/bin/agent
+ENTRYPOINT ["/usr/local/bin/agent"]

@@ -13,18 +13,21 @@ import (
 // ---- response DTOs -------------------------------------------------------
 
 type serviceDTO struct {
-	ExternalID  string          `json:"external_id"`
-	Name        string          `json:"name"`
-	Kind        string          `json:"kind"`
-	Image       string          `json:"image"`
-	ImageDigest string          `json:"image_digest,omitempty"`
-	State       string          `json:"state"`
-	Health      string          `json:"health"`
-	Ports       json.RawMessage `json:"ports"`
-	Labels      json.RawMessage `json:"labels"`
-	FirstSeenAt string          `json:"first_seen_at"`
-	LastSeenAt  string          `json:"last_seen_at"`
-	UpdatedAt   string          `json:"updated_at"`
+	ExternalID       string          `json:"external_id"`
+	ParentExternalID string          `json:"parent_external_id,omitempty"`
+	Name             string          `json:"name"`
+	Kind             string          `json:"kind"`
+	Image            string          `json:"image"`
+	ImageDigest      string          `json:"image_digest,omitempty"`
+	State            string          `json:"state"`
+	Health           string          `json:"health"`
+	Freshness        string          `json:"freshness"` // current | outdated | unknown
+	LatestDigest     string          `json:"latest_digest,omitempty"`
+	Ports            json.RawMessage `json:"ports"`
+	Labels           json.RawMessage `json:"labels"`
+	FirstSeenAt      string          `json:"first_seen_at"`
+	LastSeenAt       string          `json:"last_seen_at"`
+	UpdatedAt        string          `json:"updated_at"`
 }
 
 type hostGroupDTO struct {
@@ -97,19 +100,40 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 			idx = len(hosts) - 1
 			byHost[row.HostID] = idx
 		}
+		// Derive per-service freshness by comparing the running image digest
+		// to the latest digest cached from the registry.
+		latestDigest := ""
+		if row.LatestDigest.Valid {
+			latestDigest = row.LatestDigest.String
+		}
+		freshness := "unknown"
+		switch {
+		case !row.FreshnessStatus.Valid || row.FreshnessStatus.String != "ok" || latestDigest == "":
+			freshness = "unknown"
+		case row.ImageDigest == "": // locally-built image, nothing to compare
+			freshness = "unknown"
+		case row.ImageDigest == latestDigest:
+			freshness = "current"
+		default:
+			freshness = "outdated"
+		}
+
 		hosts[idx].Services = append(hosts[idx].Services, serviceDTO{
-			ExternalID:  row.ExternalID,
-			Name:        row.Name,
-			Kind:        row.Kind,
-			Image:       row.Image,
-			ImageDigest: row.ImageDigest,
-			State:       row.State,
-			Health:      row.Health,
-			Ports:       rawJSON(row.PortsJSON, "[]"),
-			Labels:      rawJSON(row.LabelsJSON, "{}"),
-			FirstSeenAt: rfc3339(row.FirstSeenAt),
-			LastSeenAt:  rfc3339(row.LastSeenAt),
-			UpdatedAt:   rfc3339(row.UpdatedAt),
+			ExternalID:       row.ExternalID,
+			ParentExternalID: row.ParentExternalID.String,
+			Name:             row.Name,
+			Kind:             row.Kind,
+			Image:            row.Image,
+			ImageDigest:      row.ImageDigest,
+			State:            row.State,
+			Health:           row.Health,
+			Freshness:        freshness,
+			LatestDigest:     latestDigest,
+			Ports:            rawJSON(row.PortsJSON, "[]"),
+			Labels:           rawJSON(row.LabelsJSON, "{}"),
+			FirstSeenAt:      rfc3339(row.FirstSeenAt),
+			LastSeenAt:       rfc3339(row.LastSeenAt),
+			UpdatedAt:        rfc3339(row.UpdatedAt),
 		})
 	}
 

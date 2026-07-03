@@ -2,9 +2,10 @@
 # Pure Go (modernc.org/sqlite, no CGO), so cross-compilation is trivial and
 # every binary is static.
 
-SERVER := trove-server
-AGENT  := trove-agent-docker
-BIN    := bin
+BIN := bin
+
+# All commands (server + every agent) discovered from cmd/.
+CMDS := $(notdir $(wildcard cmd/*))
 
 # Static, reproducible-ish builds.
 GOFLAGS   := -trimpath
@@ -16,27 +17,28 @@ PLATFORMS := linux/amd64 linux/arm64
 
 .DEFAULT_GOAL := build
 
-## build: cross-compile both binaries for linux/amd64 and linux/arm64
+## build: cross-compile every binary for linux/amd64 and linux/arm64
 .PHONY: build
 build:
 	@mkdir -p $(BIN)
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; \
-		echo "  building $(SERVER) $$os/$$arch"; \
-		GOOS=$$os GOARCH=$$arch go build $(GOFLAGS) -ldflags "$(LDFLAGS)" \
-			-o $(BIN)/$(SERVER)-$$os-$$arch ./cmd/$(SERVER); \
-		echo "  building $(AGENT) $$os/$$arch"; \
-		GOOS=$$os GOARCH=$$arch go build $(GOFLAGS) -ldflags "$(LDFLAGS)" \
-			-o $(BIN)/$(AGENT)-$$os-$$arch ./cmd/$(AGENT); \
+		for cmd in $(CMDS); do \
+			echo "  building $$cmd $$os/$$arch"; \
+			GOOS=$$os GOARCH=$$arch go build $(GOFLAGS) -ldflags "$(LDFLAGS)" \
+				-o $(BIN)/$$cmd-$$os-$$arch ./cmd/$$cmd; \
+		done; \
 	done
 	@echo "built -> $(BIN)/"
 
-## native: build both binaries for the host platform
+## native: build every binary for the host platform
 .PHONY: native
 native:
 	@mkdir -p $(BIN)
-	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN)/$(SERVER) ./cmd/$(SERVER)
-	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN)/$(AGENT)  ./cmd/$(AGENT)
+	@for cmd in $(CMDS); do \
+		echo "  building $$cmd"; \
+		go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN)/$$cmd ./cmd/$$cmd; \
+	done
 
 ## run: run the server locally (TROVE_DB=./trove.db)
 .PHONY: run

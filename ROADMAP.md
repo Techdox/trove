@@ -1,12 +1,14 @@
 # Trove Roadmap
 
-Phase 1 (the current `main`) ships a read-only Docker service catalog: push-model
-agents, per-agent token auth, heartbeat/staleness, and an embedded dashboard.
-See the [README](README.md) for what exists today.
+**Status:** Phases 1–3 are shipped on `main` — Docker/Kubernetes/Proxmox/
+bare-metal agents, per-agent token auth, heartbeat/staleness, image freshness,
+and the parent/child model (decision D2, below, is implemented). See the
+[README](README.md) for what exists today. Phases 4–5 remain.
 
-This document sequences the deferred work and — more importantly — pins the two
-decisions that must be made *before* the phase that needs them, because getting
-them wrong means a migration or a rewrite later.
+This document sequences the remaining work and records the two decisions that
+must be made *before* the phase that needs them, because getting them wrong
+means a migration or a rewrite later. D2 (parent/child) shipped with Phase 3;
+D1 (retention) is still open and gates Phase 4.
 
 ## Principles carried forward
 
@@ -21,7 +23,7 @@ Every phase must preserve the Phase 1 invariants:
 
 ---
 
-## Phase 2 — Image freshness
+## Phase 2 — Image freshness ✅ delivered
 
 **Goal:** show whether each running image is current — "up to date", "N versions
 behind", or "update available".
@@ -53,7 +55,7 @@ reasoning beyond digest equality.
 
 ---
 
-## Phase 3 — Additional agents (K8s, Proxmox, bare metal)
+## Phase 3 — Additional agents (K8s, Proxmox, bare metal) ✅ delivered
 
 **Goal:** the same catalog across Kubernetes, Proxmox, and plain hosts. The data
 model was normalized for exactly this — `kind` already reserves `pod`, `vm`,

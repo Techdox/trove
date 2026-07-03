@@ -109,7 +109,10 @@ func runServe() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	srv.ConfigureFreshness(server.LoadFreshnessConfigFromEnv())
+
 	go srv.RunStalenessLoop(ctx)
+	go srv.RunFreshnessLoop(ctx)
 
 	httpSrv := &http.Server{
 		Addr:              addr,

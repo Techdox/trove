@@ -1,0 +1,34 @@
+# Trove local (bare-metal) agent — runs as a host systemd service.
+#
+# It reports the host's systemd service units, so it runs directly on the host
+# (not in a container) and only needs to run `systemctl list-units` (read-only).
+#
+# Install:
+#   sudo cp bin/trove-agent-local /usr/local/bin/
+#   sudo cp deploy/systemd/trove-agent-local.service /etc/systemd/system/
+#   sudo systemctl edit trove-agent-local   # set TROVE_SERVER_URL / TROVE_TOKEN
+#   sudo systemctl enable --now trove-agent-local
+#
+# Provide config via a drop-in (systemctl edit) or /etc/trove-agent-local.env.
+
+[Unit]
+Description=Trove local agent (systemd service catalog)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Read-only reporting; no elevated privileges needed to list units.
+DynamicUser=yes
+EnvironmentFile=-/etc/trove-agent-local.env
+Environment=TROVE_INTERVAL=30s
+ExecStart=/usr/local/bin/trove-agent-local
+Restart=always
+RestartSec=5
+# Hardening: this agent never writes anything.
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

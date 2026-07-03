@@ -85,15 +85,17 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		return err
 	}
 
-	// 4. Upsert each reported service.
-	seen := make(map[string]struct{}, len(r.Services))
+	// 4. Upsert each reported service, recording the resulting row id per
+	// external_id so the parent-resolution pass (step 5) and soft-removal
+	// (step 6) can use it.
+	idByExtID := make(map[string]int64, len(r.Services))
 	for i := range r.Services {
 		svc := &r.Services[i]
-		seen[svc.ExternalID] = struct{}{}
 		portsJSON := mustJSONArray(svc.Ports)
 		labelsJSON := mustJSONObject(svc.Labels)
 
 		if ex, ok := current[svc.ExternalID]; ok {
+			idByExtID[svc.ExternalID] = ex.id
 			if ex.state != svc.State {
 				if err := insertEvent(ctx, tx, ex.id, ex.state, svc.State, now); err != nil {
 					return err
@@ -125,15 +127,40 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 			return fmt.Errorf("insert service %q: %w", svc.ExternalID, err)
 		}
 		newID, _ := res.LastInsertId()
+		idByExtID[svc.ExternalID] = newID
 		// Record the appearance so it shows in the 24h event feed.
 		if err := insertEvent(ctx, tx, newID, "", svc.State, now); err != nil {
 			return err
 		}
 	}
 
-	// 5. Soft-remove services absent from this report (once).
+	// 5. Resolve parent/child links. Both parent and child are present in the
+	// same full-state report, so all ids are known by now regardless of order.
+	// Only touch services that report a parent (leaves standalone rows' NULL
+	// parent_id untouched, avoiding needless writes).
+	for i := range r.Services {
+		svc := &r.Services[i]
+		if svc.ParentExternalID == "" {
+			continue
+		}
+		childID, ok := idByExtID[svc.ExternalID]
+		if !ok {
+			continue
+		}
+		var parentID sql.NullInt64
+		if pid, ok := idByExtID[svc.ParentExternalID]; ok {
+			parentID = sql.NullInt64{Int64: pid, Valid: true}
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE services SET parent_id = ? WHERE id = ?`, parentID, childID,
+		); err != nil {
+			return fmt.Errorf("link service %q to parent: %w", svc.ExternalID, err)
+		}
+	}
+
+	// 6. Soft-remove services absent from this report (once).
 	for extID, ex := range current {
-		if _, present := seen[extID]; present {
+		if _, present := idByExtID[extID]; present {
 			continue
 		}
 		if ex.state == model.StateRemoved {
@@ -150,10 +177,19 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		}
 	}
 
-	// 6. Prune old events and long-removed services.
+	// 7. Prune old events and long-removed services.
 	cutoff := now - int64(retentionWindow.Seconds())
 	if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE at < ?`, cutoff); err != nil {
 		return fmt.Errorf("prune events: %w", err)
+	}
+	// Null out any child whose parent is about to be pruned, so we never leave
+	// a dangling parent_id (we manage this in code rather than via an FK).
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE services SET parent_id = NULL
+		  WHERE parent_id IN (SELECT id FROM services WHERE state = ? AND updated_at < ?)`,
+		model.StateRemoved, cutoff,
+	); err != nil {
+		return fmt.Errorf("null dangling parents: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM services WHERE state = ? AND updated_at < ?`, model.StateRemoved, cutoff,

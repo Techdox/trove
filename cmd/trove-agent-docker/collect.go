@@ -6,20 +6,19 @@ import (
 	"os"
 	"strings"
 
+	"trove/internal/agentkit"
 	"trove/pkg/model"
 )
 
-// collector turns the Docker daemon's view into a Trove report.
+// collector turns the Docker daemon's view into a Trove report. Docker is a
+// single-host platform, so Collect returns exactly one HostSnapshot.
 type collector struct {
-	cli             *dockerClient
-	log             *slog.Logger
-	agentName       string
-	agentVersion    string
-	intervalSeconds int
+	cli *dockerClient
+	log *slog.Logger
 }
 
-// Collect builds a full-state report of every container on the host.
-func (c *collector) Collect(ctx context.Context) (*model.Report, error) {
+// Collect builds a full-state snapshot of every container on the host.
+func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error) {
 	containers, err := c.cli.listContainers(ctx)
 	if err != nil {
 		return nil, err
@@ -53,19 +52,10 @@ func (c *collector) Collect(ctx context.Context) (*model.Report, error) {
 		})
 	}
 
-	return &model.Report{
-		Agent: model.ReportAgent{
-			Name:            c.agentName,
-			Platform:        model.PlatformDocker,
-			Version:         c.agentVersion,
-			IntervalSeconds: c.intervalSeconds,
-		},
-		Host: model.ReportHost{
-			Hostname: hostname,
-			Meta:     meta,
-		},
+	return []agentkit.HostSnapshot{{
+		Host:     model.ReportHost{Hostname: hostname, Meta: meta},
 		Services: services,
-	}, nil
+	}}, nil
 }
 
 // hostInfo returns the hostname and platform metadata, falling back to the OS

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"trove/internal/registry"
 	"trove/internal/staleness"
 	"trove/internal/store"
 	"trove/web"
@@ -24,6 +25,11 @@ type Server struct {
 	// stalenessInterval is how often the background ticker re-evaluates agent
 	// heartbeats and flags stale services.
 	stalenessInterval time.Duration
+
+	// freshness holds the image-freshness checker config; registry is nil
+	// until ConfigureFreshness is called.
+	freshness FreshnessConfig
+	registry  *registry.Client
 }
 
 // New constructs a Server and registers its routes.

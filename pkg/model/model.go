@@ -44,11 +44,16 @@ const (
 	KindVM        Kind = "vm"
 	KindLXC       Kind = "lxc"
 	KindProcess   Kind = "process"
+	// Kubernetes parent workloads (children are pods, linked via parent).
+	KindDeployment  Kind = "deployment"
+	KindStatefulSet Kind = "statefulset"
+	KindDaemonSet   Kind = "daemonset"
 )
 
 func (k Kind) Valid() bool {
 	switch k {
-	case KindContainer, KindPod, KindVM, KindLXC, KindProcess:
+	case KindContainer, KindPod, KindVM, KindLXC, KindProcess,
+		KindDeployment, KindStatefulSet, KindDaemonSet:
 		return true
 	default:
 		return false
@@ -100,15 +105,19 @@ type ReportService struct {
 	// ExternalID is the platform-native identifier (e.g. container ID). It is
 	// stable across reports and unique within a host, and is what the server
 	// uses to correlate a service across pushes.
-	ExternalID  string            `json:"external_id"`
-	Name        string            `json:"name"`
-	Kind        Kind              `json:"kind"`
-	Image       string            `json:"image"`
-	ImageDigest string            `json:"image_digest,omitempty"`
-	State       string            `json:"state"`
-	Health      Health            `json:"health"`
-	Ports       []Port            `json:"ports,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
+	ExternalID string `json:"external_id"`
+	// ParentExternalID, if set, is the ExternalID of this service's parent
+	// within the same report/host — e.g. a pod's owning Deployment. The server
+	// resolves it to an internal parent link. Empty for standalone services.
+	ParentExternalID string            `json:"parent_external_id,omitempty"`
+	Name             string            `json:"name"`
+	Kind             Kind              `json:"kind"`
+	Image            string            `json:"image"`
+	ImageDigest      string            `json:"image_digest,omitempty"`
+	State            string            `json:"state"`
+	Health           Health            `json:"health"`
+	Ports            []Port            `json:"ports,omitempty"`
+	Labels           map[string]string `json:"labels,omitempty"`
 }
 
 // Port is a published port mapping.

@@ -101,6 +101,33 @@ function renderAgents(data) {
   }).join("");
 }
 
+const FRESHNESS = {
+  current: '<span class="badge b-green">up to date</span>',
+  outdated: '<span class="badge b-peach">update</span>',
+};
+
+function freshnessCell(s) {
+  if (s.freshness === "outdated") {
+    return `<span class="badge b-peach" title="latest: ${esc(s.latest_digest || "")}">update</span>`;
+  }
+  return FRESHNESS[s.freshness] || '<span class="muted">—</span>';
+}
+
+function serviceRow(s, isChild) {
+  const removed = s.state === "removed";
+  const cls = [removed ? "removed" : "", isChild ? "child" : ""].filter(Boolean).join(" ");
+  const name = (isChild ? '<span class="tree">└─</span> ' : "") + esc(s.name || s.external_id);
+  return `<tr class="${cls}">
+    <td><span class="svc-name">${name}</span> <span class="kind">${esc(s.kind || "")}</span></td>
+    <td class="image">${imageHTML(s.image)}</td>
+    <td>${badge(stateClass(s.state), s.state || "?")}</td>
+    <td>${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
+    <td>${freshnessCell(s)}</td>
+    <td class="ports">${portsHTML(s.ports)}</td>
+    <td class="muted nowrap">${esc(relTime(s.last_seen_at))}</td>
+  </tr>`;
+}
+
 function renderHosts(data) {
   const el = $("hosts");
   const hosts = data.hosts || [];
@@ -109,16 +136,22 @@ function renderHosts(data) {
     return;
   }
   el.innerHTML = hosts.map((h) => {
-    const rows = (h.services || []).map((s) => {
-      const removed = s.state === "removed";
-      return `<tr class="${removed ? "removed" : ""}">
-        <td><span class="svc-name">${esc(s.name || s.external_id)}</span></td>
-        <td class="image">${imageHTML(s.image)}</td>
-        <td>${badge(stateClass(s.state), s.state || "?")}</td>
-        <td>${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
-        <td class="ports">${portsHTML(s.ports)}</td>
-        <td class="muted nowrap">${esc(relTime(s.last_seen_at))}</td>
-      </tr>`;
+    const svcs = h.services || [];
+    const ids = new Set(svcs.map((s) => s.external_id));
+    const childrenByParent = {};
+    for (const s of svcs) {
+      if (s.parent_external_id && ids.has(s.parent_external_id)) {
+        (childrenByParent[s.parent_external_id] ||= []).push(s);
+      }
+    }
+    // Top level = services with no (resolvable) parent. Orphans whose parent
+    // isn't present still surface here rather than vanishing.
+    const topLevel = svcs.filter((s) => !s.parent_external_id || !ids.has(s.parent_external_id));
+    const rows = topLevel.map((s) => {
+      let out = serviceRow(s, false);
+      const kids = childrenByParent[s.external_id];
+      if (kids) out += kids.map((k) => serviceRow(k, true)).join("");
+      return out;
     }).join("");
 
     const st = h.agent_status || "unknown";
@@ -127,11 +160,11 @@ function renderHosts(data) {
         <span class="hostname">${esc(h.hostname)}</span>
         <span class="sub">${esc(h.agent)} · ${esc(h.platform || "—")}</span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
-        <span class="count">${(h.services || []).length} service(s)</span>
+        <span class="count">${svcs.length} service(s)</span>
       </div>
       <table>
         <thead><tr>
-          <th>Service</th><th>Image</th><th>State</th><th>Health</th><th>Ports</th><th>Last seen</th>
+          <th>Service</th><th>Image</th><th>State</th><th>Health</th><th>Freshness</th><th>Ports</th><th>Last seen</th>
         </tr></thead>
         <tbody>${rows || ""}</tbody>
       </table>

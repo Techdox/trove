@@ -1,0 +1,51 @@
+# Local dev stack: Trove server + one Docker agent watching this host.
+#
+# `docker compose up --build` and open http://localhost:8080.
+#
+# The shared TROVE_TOKEN below is a dev convenience only: the server bootstraps
+# an agent with it on first start (TROVE_BOOTSTRAP_*). For real deployments,
+# leave the bootstrap vars unset and mint a token with:
+#   docker compose exec server trove-server agent create <name>
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      TROVE_ADDR: ":8080"
+      TROVE_DB: "/data/trove.db"
+      # --- dev bootstrap (remove for production) ---
+      TROVE_BOOTSTRAP_AGENT: "docker-local"
+      TROVE_BOOTSTRAP_TOKEN: "trove_dev_token_change_me"
+    ports:
+      - "8080:8080"
+    volumes:
+      - trove-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/trove-server", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      TROVE_SERVER_URL: "http://server:8080"
+      TROVE_TOKEN: "trove_dev_token_change_me"
+      TROVE_INTERVAL: "30s"
+      TROVE_AGENT_NAME: "docker-local"
+    volumes:
+      # Read-only mount of the Docker socket; the agent only issues GETs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  trove-data:

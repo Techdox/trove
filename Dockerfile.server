@@ -1,0 +1,20 @@
+# Trove server — static binary on distroless, runs as nonroot.
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+    -o /out/trove-server ./cmd/trove-server
+# Pre-create the data dir owned by the distroless nonroot uid (65532) so a
+# fresh named volume inherits writable ownership.
+RUN mkdir -p /data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/trove-server /usr/local/bin/trove-server
+COPY --from=build --chown=65532:65532 /data /data
+ENV TROVE_ADDR=:8080 \
+    TROVE_DB=/data/trove.db
+EXPOSE 8080
+VOLUME ["/data"]
+ENTRYPOINT ["/usr/local/bin/trove-server"]

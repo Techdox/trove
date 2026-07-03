@@ -1,0 +1,10 @@
+bin/
+*.db
+*.db-shm
+*.db-wal
+.git/
+.gitignore
+README.md
+docker-compose.yml
+Dockerfile.*
+Makefile

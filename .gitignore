@@ -1,0 +1,10 @@
+# Build artifacts
+/bin/
+
+# Local SQLite database (+ WAL sidecars)
+*.db
+*.db-shm
+*.db-wal
+
+# OS cruft
+.DS_Store

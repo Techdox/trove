@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"trove/internal/agentkit"
-	"trove/pkg/model"
+	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // proxmoxConfig is the Proxmox-specific configuration.

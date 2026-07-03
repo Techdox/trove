@@ -24,12 +24,13 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"trove/internal/server"
-	"trove/internal/staleness"
-	"trove/internal/store"
+	"github.com/techdox/trove/internal/server"
+	"github.com/techdox/trove/internal/staleness"
+	"github.com/techdox/trove/internal/store"
 )
 
-const version = "0.1.0"
+// version is stamped at build time via -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	args := os.Args[1:]

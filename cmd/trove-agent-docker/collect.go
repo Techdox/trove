@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"trove/internal/agentkit"
-	"trove/pkg/model"
+	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // collector turns the Docker daemon's view into a Trove report. Docker is a

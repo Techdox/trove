@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"trove/pkg/model"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // MarkServicesStaleForAgents sets health="stale" on all live (non-removed)

@@ -1,246 +1,222 @@
 # Trove
 
-A read-only service catalog and health monitor. Agents run next to your
-workloads, discover what's running, and push periodic reports to a central
-server. The server gives you one pane of glass: what's running, where, what
-version, whether it's healthy, and whether it's still reporting.
+[![CI](https://github.com/techdox/trove/actions/workflows/ci.yml/badge.svg)](https://github.com/techdox/trove/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/techdox/trove?sort=semver)](https://github.com/techdox/trove/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**One pane of glass for everything running in your homelab.** Small agents sit
+next to your workloads — Docker hosts, Kubernetes clusters, Proxmox nodes,
+plain Linux boxes — and push what they see to one server: what's running,
+where, what version, whether it's healthy, whether its image is outdated, and
+whether it's still reporting at all.
+
+![Trove dashboard](docs/screenshot.png)
 
 **Read-only by design.** Trove can never deploy, restart, exec into, or edit
-anything. There is no code path that mutates a workload — every agent only ever
-issues read/list calls to its platform. This is an architectural constraint, not
-a feature toggle.
+anything. There is no code path that mutates a workload — agents only ever
+issue read/list calls to their platforms. This is an architectural constraint,
+not a feature toggle, and it's the project's one hard rule.
 
-**Agents:** Docker, Kubernetes, Proxmox, and bare-metal (systemd) hosts.
-**Also:** per-image freshness (is the running image behind its registry tag?).
-Alerting, email reports, and OIDC are planned for later phases (see
-[ROADMAP.md](ROADMAP.md)).
+## Features
 
----
+- **Service catalog across platforms** — containers, K8s workloads (with pods
+  nested under their Deployments), Proxmox VMs/LXCs, and systemd units, all in
+  one normalized view grouped by host.
+- **Health + heartbeats** — platform health where it exists (Docker
+  healthchecks, K8s readiness), plus server-side staleness: an agent that goes
+  quiet flags itself and all its services within ~90 seconds.
+- **Image freshness** — the server checks registries (batched, cached,
+  rate-limit-aware) and badges services whose running image is behind its tag.
+- **State-change events** — a rolling 24h feed of started/stopped/appeared/removed.
+- **Fast, dense dashboard** — no framework, keyboard-driven (`/` filter,
+  `j`/`k` navigate, `enter` for details), auto-refreshing.
+- **Trivial to operate** — one static binary (or container) per role, SQLite
+  storage, automatic schema migrations, push-model agents that work from
+  behind NAT.
+
+## Quickstart (5 minutes)
+
+Requires Docker with Compose on the machine that will host the dashboard.
+
+```sh
+mkdir trove && cd trove
+curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker-compose.yml
+
+export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+docker compose up -d
+```
+
+Open <http://localhost:8080>. This host's containers appear within ~30
+seconds. That's the whole install: a server plus a Docker agent watching the
+same machine.
+
+> ⚠️ The dashboard has **no authentication yet** — keep it on a trusted
+> network (LAN/VPN/tailnet) or behind an authenticating reverse proxy. See
+> [Security model](#security-model).
+
+## Adding more hosts and platforms
+
+Every agent needs its own token, minted on the server:
+
+```sh
+docker compose exec server trove-server agent create <name>
+# e.g.: agent create docker-nas, agent create k8s-homelab, agent create proxmox
+```
+
+Then follow the guide for the platform:
+
+| Platform                | Agent                 | Guide                                             |
+| ----------------------- | --------------------- | ------------------------------------------------- |
+| Docker host             | `trove-agent-docker`  | [docs/agents/docker.md](docs/agents/docker.md)    |
+| Kubernetes cluster      | `trove-agent-k8s`     | [docs/agents/kubernetes.md](docs/agents/kubernetes.md) |
+| Proxmox VE cluster      | `trove-agent-proxmox` | [docs/agents/proxmox.md](docs/agents/proxmox.md)  |
+| Bare-metal Linux (systemd) | `trove-agent-local` | [docs/agents/local.md](docs/agents/local.md)      |
+
+Container images (multi-arch amd64/arm64) live on GHCR:
+`ghcr.io/techdox/trove-server`, `ghcr.io/techdox/trove-agent-docker`,
+`ghcr.io/techdox/trove-agent-k8s`, `ghcr.io/techdox/trove-agent-proxmox`.
+Static binaries for everything (including the bare-metal agent) are on the
+[releases page](https://github.com/techdox/trove/releases).
 
 ## How it works
 
 ```
-   ┌─────────────┐   POST /api/v1/report    ┌──────────────────────┐
-   │ docker agent │ ───────────────────────▶ │  trove-server        │
-   │  (per host)  │      (Bearer token)      │  ├─ SQLite           │
-   └─────────────┘                           │  ├─ REST API         │
-   ┌─────────────┐                           │  └─ embedded SPA     │
-   │ docker agent │ ───────────────────────▶ │                      │
-   └─────────────┘                           └──────────┬───────────┘
-                                                         │ GET /  (dashboard)
-                                                         ▼
-                                                    your browser
+  docker host          k8s cluster         proxmox            nas (systemd)
+ ┌────────────┐      ┌────────────┐      ┌────────────┐      ┌────────────┐
+ │ agent      │      │ agent      │      │ agent      │      │ agent      │
+ └─────┬──────┘      └─────┬──────┘      └─────┬──────┘      └─────┬──────┘
+       │    POST /api/v1/report (Bearer token, every 30s)          │
+       └───────────────┬───┴──────────────┬────────────────────────┘
+                       ▼                  ▼
+                  ┌─────────────────────────────┐
+                  │ trove-server                │
+                  │  SQLite · REST · dashboard  │
+                  └─────────────────────────────┘
 ```
 
-- **Push model.** Agents POST to the server on an interval (default 30s). This
-  is NAT/homelab friendly — the server never needs to reach back to an agent.
-- **Heartbeats.** The server tracks each agent's last report. An agent that
-  goes quiet for 3 intervals is **stale**; for 10 intervals it's **offline**.
-  Its services are flagged stale automatically.
-- **Full-state reports.** Each report is a complete snapshot, not a delta —
-  idempotent and tolerant of lost pushes. Services that disappear from a report
-  are soft-removed and pruned after 24h.
-- **One model for everything.** A Docker container, a Proxmox VM, a Kubernetes
-  Deployment, a systemd unit — all normalize to a *service*. Kubernetes
-  Deployments/StatefulSets/DaemonSets are parents; their Pods are child
-  instances nested beneath them in the dashboard.
-- **Image freshness.** The server periodically resolves the latest manifest
-  digest for each image's tag from its registry (batched + cached, backoff-aware)
-  and flags whether the running image is `current` or `outdated`.
+- **Push model**: agents POST full-state snapshots on an interval. The server
+  never reaches into your infrastructure — homelab/NAT friendly.
+- **Heartbeats**: miss 3 intervals → agent (and its services) marked *stale*;
+  miss 10 → *offline*. Thresholds scale with each agent's own interval.
+- **Full-state reports** are idempotent and tolerate lost pushes. Services
+  that disappear are soft-removed and pruned after 24h.
 
-## Quick start (local dev)
+## Server install options
 
-Requires Docker with Compose.
+**Docker Compose** — the quickstart above; data lives in the `trove-data` volume.
+
+**Bare metal** — grab `trove-server` from a release archive and use
+[deploy/systemd/trove-server.service](deploy/systemd/trove-server.service):
 
 ```sh
-docker compose up --build
+sudo install -m 0755 trove-server /usr/local/bin/
+sudo cp deploy/systemd/trove-server.service /etc/systemd/system/
+sudo systemctl enable --now trove-server
 ```
 
-Then open <http://localhost:8080>. Within a minute the dashboard shows the
-containers running on your machine, grouped by host, with state and health.
-
-The dev stack auto-creates an agent using a shared token baked into
-`docker-compose.yml` (via `TROVE_BOOTSTRAP_*`). **This is for local dev only** —
-see [Production](#production) for real deployments.
-
-Tear down (including the database volume):
+**Go install** (needs Go 1.26+):
 
 ```sh
-docker compose down -v
+go install github.com/techdox/trove/cmd/trove-server@latest
 ```
 
-## Building
-
-Pure Go — no CGO — so binaries are static and cross-compile cleanly.
-
-```sh
-make build     # cross-compile both binaries for linux/amd64 + linux/arm64 → bin/
-make native    # build for the host platform → bin/
-make test      # run tests
-make help      # list all targets
-```
-
-## Production
-
-### 1. Run the server
-
-Run `trove-server` behind whatever you use for TLS/ingress. It listens on
-`TROVE_ADDR` (default `:8080`) and stores everything in the SQLite file at
-`TROVE_DB` (default `trove.db`).
-
-> ⚠️ **The dashboard and read APIs have no authentication in Phase 1.** Only the
-> agent ingest endpoint is authenticated (bearer token). **Bind the server to
-> localhost or a trusted network, or put it behind an authenticating reverse
-> proxy.** Do not expose it directly to the internet. OIDC is planned for a
-> later phase.
-
-Leave `TROVE_BOOTSTRAP_*` unset in production.
-
-### 2. Mint an agent token
-
-Tokens are generated server-side and stored only as a SHA-256 hash. The
-plaintext is shown once:
-
-```sh
-trove-server agent create docker-nuc01
-# or, against the compose stack:
-docker compose exec server trove-server agent create docker-nuc01
-```
-
-Other agent management:
-
-```sh
-trove-server agent list             # names, platform, status, last seen
-trove-server agent delete <name>    # removes the agent and all its data
-```
-
-### 3. Run agents
-
-Mint one token per agent (`trove-server agent create <name>`), then run the
-agent for the platform. All agents share `TROVE_SERVER_URL`, `TROVE_TOKEN`,
-`TROVE_INTERVAL`, and `TROVE_AGENT_NAME`; each adds its own.
-
-**Docker** — one per host, reads the socket read-only:
-
-```sh
-docker run -d --restart unless-stopped \
-  -e TROVE_SERVER_URL=https://trove.example.internal \
-  -e TROVE_TOKEN=trove_xxxxxxxx \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  trove-agent-docker
-```
-
-**Kubernetes** — one per cluster, in-cluster with a read-only ClusterRole. Build
-the image and apply the manifest:
-
-```sh
-docker build -f Dockerfile.agents --build-arg CMD=trove-agent-k8s -t <registry>/trove-agent-k8s:0.2.0 .
-# edit image + TROVE_SERVER_URL + TROVE_CLUSTER_NAME, create the token secret, then:
-kubectl apply -f deploy/kubernetes/trove-agent.yaml
-```
-
-**Proxmox** — one per cluster, uses a read-only API token:
-
-```sh
-docker build -f Dockerfile.agents --build-arg CMD=trove-agent-proxmox -t trove-agent-proxmox .
-docker run -d --restart unless-stopped \
-  -e TROVE_SERVER_URL=https://trove.example.internal \
-  -e TROVE_TOKEN=trove_xxxxxxxx \
-  -e TROVE_PROXMOX_URL=https://pve.example:8006 \
-  -e TROVE_PROXMOX_TOKEN='user@pam!trove=xxxxxxxx-xxxx-...' \
-  -e TROVE_PROXMOX_INSECURE=true \
-  trove-agent-proxmox
-```
-
-**Bare-metal (systemd)** — runs as a host binary (it reads the host's systemd);
-see [`deploy/systemd/trove-agent-local.service`](deploy/systemd/trove-agent-local.service).
-
-## Configuration
+## Configuration reference
 
 ### `trove-server`
 
-| Variable                | Default      | Purpose                                              |
-| ----------------------- | ------------ | ---------------------------------------------------- |
-| `TROVE_ADDR`               | `:8080`      | Listen address.                                              |
-| `TROVE_DB`                 | `trove.db`   | SQLite file path.                                            |
-| `TROVE_FRESHNESS_ENABLED`  | `true`       | Set `false` to disable image-freshness checking.            |
-| `TROVE_FRESHNESS_INTERVAL` | `5m`         | How often to scan for images due a check.                   |
-| `TROVE_FRESHNESS_TTL`      | `6h`         | How long a resolved digest is treated as current.           |
-| `TROVE_REGISTRY_AUTHS`     | _(unset)_    | JSON `{"host":{"username":..,"password":..}}` for private registries. |
-| `TROVE_BOOTSTRAP_AGENT`    | _(unset)_    | Dev only: seed an agent of this name at startup.            |
-| `TROVE_BOOTSTRAP_TOKEN`    | _(unset)_    | Dev only: token for the bootstrapped agent.                 |
+| Variable                   | Default    | Purpose                                                                |
+| -------------------------- | ---------- | ---------------------------------------------------------------------- |
+| `TROVE_ADDR`               | `:8080`    | Listen address.                                                         |
+| `TROVE_DB`                 | `trove.db` | SQLite file path (containers default to `/data/trove.db`).             |
+| `TROVE_FRESHNESS_ENABLED`  | `true`     | `false` disables image-freshness checking.                             |
+| `TROVE_FRESHNESS_INTERVAL` | `5m`       | How often to scan for images due a check.                              |
+| `TROVE_FRESHNESS_TTL`      | `6h`       | How long a resolved digest counts as fresh before rechecking.          |
+| `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
+| `TROVE_BOOTSTRAP_AGENT` / `TROVE_BOOTSTRAP_TOKEN` | _(unset)_ | Seed one agent at startup (used by the quickstart compose). |
 
-### Agents — common
+Private registry / Docker Hub credentials for freshness checks:
 
-| Variable            | Default        | Purpose                                            |
-| ------------------- | -------------- | -------------------------------------------------- |
-| `TROVE_SERVER_URL`  | _(required)_   | Base URL of the server.                            |
-| `TROVE_TOKEN`       | _(required)_   | Bearer token from `agent create`.                  |
-| `TROVE_INTERVAL`    | `30s`          | Push interval (`30s`, `1m`, or bare seconds `30`). |
-| `TROVE_AGENT_NAME`  | hostname       | Name reported to the server.                       |
+```sh
+TROVE_REGISTRY_AUTHS='{"docker.io":{"username":"me","password":"dckr_pat_..."},"gitea.example.com":{"username":"me","password":"..."}}'
+```
 
-### Per-agent
+Docker Hub's anonymous rate limits are generous for Trove's batched, cached
+checks at homelab scale, but if you run many distinct Hub images, adding a
+(free) Hub account raises the ceiling.
 
-| Agent      | Variable                 | Purpose                                                        |
-| ---------- | ------------------------ | -------------------------------------------------------------- |
-| docker     | `DOCKER_HOST`            | Docker endpoint (default `unix:///var/run/docker.sock`).       |
-| kubernetes | `TROVE_CLUSTER_NAME`     | Trove host name for the cluster (default `kubernetes`).        |
-| kubernetes | `TROVE_KUBE_NAMESPACE`   | Scope to one namespace (default: all).                         |
-| kubernetes | `TROVE_KUBE_APISERVER` / `TROVE_KUBE_TOKEN` / `TROVE_KUBE_CA` / `TROVE_KUBE_INSECURE` | Out-of-cluster overrides (in-cluster auto-detected). |
-| proxmox    | `TROVE_PROXMOX_URL`      | Proxmox API base, e.g. `https://pve:8006` (required).          |
-| proxmox    | `TROVE_PROXMOX_TOKEN`    | API token `USER@REALM!TOKENID=SECRET` (required).              |
-| proxmox    | `TROVE_PROXMOX_INSECURE` | `true` to skip TLS verification (self-signed certs).           |
-| local      | `TROVE_LOCAL_UNIT_FILTER`| Glob to select units (e.g. `docker*`); default all.            |
-| local      | `TROVE_LOCAL_ALL`        | `true` to include inactive units (default: active/failed only).|
+### Agents — common to all
+
+| Variable           | Default      | Purpose                                            |
+| ------------------ | ------------ | -------------------------------------------------- |
+| `TROVE_SERVER_URL` | _(required)_ | Base URL of the server.                            |
+| `TROVE_TOKEN`      | _(required)_ | Bearer token from `trove-server agent create`.     |
+| `TROVE_INTERVAL`   | `30s`        | Push interval (`30s`, `1m`, or bare seconds `30`). |
+
+The name an agent appears under is the one you chose in
+`trove-server agent create <name>`. Platform-specific settings are covered in
+each [agent guide](docs/agents/).
+
+### Managing agents
+
+```sh
+trove-server agent create <name>    # mint a token (shown once, stored hashed)
+trove-server agent list             # names, platform, status, last seen
+trove-server agent delete <name>    # remove an agent and all its data
+```
 
 ## API
 
-| Method & path            | Auth   | Purpose                                    |
-| ------------------------ | ------ | ------------------------------------------ |
-| `POST /api/v1/report`    | Bearer | Agent pushes a full-state report.          |
-| `GET  /api/v1/services`  | none   | Services grouped by host (dashboard data). |
-| `GET  /api/v1/agents`    | none   | Agents with derived heartbeat status.      |
-| `GET  /api/v1/events`    | none   | Recent state-change events (`?limit=`).    |
-| `GET  /healthz`          | none   | Liveness + database reachability.          |
+| Method & path           | Auth   | Purpose                                     |
+| ----------------------- | ------ | ------------------------------------------- |
+| `POST /api/v1/report`   | Bearer | Agent pushes a full-state report.           |
+| `GET /api/v1/services`  | none   | Services grouped by host (dashboard data).  |
+| `GET /api/v1/agents`    | none   | Agents with derived heartbeat status.       |
+| `GET /api/v1/events`    | none   | Recent state-change events (`?limit=`).     |
+| `GET /healthz`          | none   | Liveness + database reachability.           |
 
-`GET /api/v1/services` returns services grouped by host; each carries
-`freshness` (`current`/`outdated`/`unknown`) and, for child instances,
-`parent_external_id`. The report payload contract lives in
-[`pkg/model`](pkg/model/model.go) — the one package agents import.
+The wire contract lives in [`pkg/model`](pkg/model/model.go) — the one package
+agents import. Building an agent for a new platform means implementing one
+interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Project layout
+## Security model
 
+- Agent ingest is authenticated with per-agent bearer tokens (256-bit random,
+  stored only as SHA-256 hashes). Revoke by deleting the agent.
+- **The dashboard and read APIs have no authentication in this phase.** Treat
+  the server like any internal tool: trusted network only, or front it with an
+  authenticating reverse proxy. Native OIDC is on the roadmap.
+- Agents cannot change anything on the platforms they watch — read-only is
+  enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).
+
+## Upgrades & backup
+
+- **Upgrade**: pull the new image (or binary) and restart. Schema migrations
+  run automatically on startup; agents and server tolerate version skew within
+  a minor version.
+- **Backup**: everything is one SQLite file (`trove.db` / the `trove-data`
+  volume). Copy it while the server is stopped, or use `sqlite3 ... ".backup"`
+  live. Trove state is rebuildable anyway — agents repopulate the catalog
+  within one interval; you'd lose only event history.
+
+## Building from source
+
+```sh
+git clone https://github.com/techdox/trove.git && cd trove
+make native   # all binaries for your host platform → bin/
+make build    # cross-compile linux amd64+arm64
+make test     # go test ./...
+docker compose up --build   # contributor dev stack
 ```
-cmd/
-  trove-server/          # server + agent-token CLI
-  trove-agent-docker/    # Docker agent (read-only Engine API client)
-  trove-agent-k8s/       # Kubernetes agent (read-only API client)
-  trove-agent-proxmox/   # Proxmox VE agent (read-only API token)
-  trove-agent-local/     # bare-metal agent (systemd units, read-only)
-internal/
-  agentkit/              # shared agent config, push client, run loop
-  server/                # HTTP handlers, auth, staleness + freshness tickers
-  store/                 # SQLite: schema, migrations, ingest, queries
-  staleness/             # pure heartbeat evaluation
-  registry/              # image-freshness registry client (Docker Registry v2)
-pkg/
-  model/                 # shared wire types (agents import this)
-web/                     # dashboard SPA, embedded into the server binary
-deploy/                  # k8s manifest + systemd unit for the agents
-```
 
-## Data & retention
+Pure Go, no CGO, no frontend build step — the dashboard is vanilla JS embedded
+into the server binary.
 
-State lives in one SQLite file. Trove keeps the latest state per service plus a
-rolling 24h of state-change events; anything older is pruned on write. There is
-no unbounded history in Phase 1.
+## Roadmap & contributing
 
-## Roadmap
+Planned next: alerts/webhooks, email digests, configurable retention, OIDC,
+Helm chart — see [ROADMAP.md](ROADMAP.md) for the reasoning and sequencing.
+Contributions welcome: start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Delivered: Docker/Kubernetes/Proxmox/bare-metal agents and image freshness.
-Still deferred (see [ROADMAP.md](ROADMAP.md)):
+## License
 
-- Alerts / webhooks / email reports (needs the retention decision — D1).
-- OIDC / dashboard authentication.
-- Helm chart.
-```
+[MIT](LICENSE) © Techdox

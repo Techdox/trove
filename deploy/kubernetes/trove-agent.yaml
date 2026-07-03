@@ -4,15 +4,14 @@
 # the agent reads; it can never mutate anything. Trove is read-only by design.
 #
 # Before applying:
-#   1. Build & push the image:
-#        docker build -f Dockerfile.agents --build-arg CMD=trove-agent-k8s \
-#          -t <your-registry>/trove-agent-k8s:0.2.0 .
-#        docker push <your-registry>/trove-agent-k8s:0.2.0
-#   2. Create the token secret (get the token from `trove-server agent create`):
+#   1. Create the token secret (get the token from `trove-server agent create`):
+#        kubectl create namespace trove
 #        kubectl -n trove create secret generic trove-agent \
 #          --from-literal=token='trove_xxxxx'
-#   3. Set image, TROVE_SERVER_URL, and TROVE_CLUSTER_NAME below, then:
+#   2. Set TROVE_SERVER_URL and TROVE_CLUSTER_NAME below, then:
 #        kubectl apply -f trove-agent.yaml
+#
+# The image is published at ghcr.io/techdox/trove-agent-k8s (amd64 + arm64).
 ---
 apiVersion: v1
 kind: Namespace
@@ -66,7 +65,7 @@ spec:
       serviceAccountName: trove-agent
       containers:
         - name: agent
-          image: REPLACE_ME/trove-agent-k8s:0.2.0
+          image: ghcr.io/techdox/trove-agent-k8s:latest
           env:
             - name: TROVE_SERVER_URL
               value: "http://trove-server.example.internal:8080"

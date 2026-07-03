@@ -1,0 +1,193 @@
+# goreleaser v2 config. Tag vX.Y.Z + push -> binaries, archives, checksums,
+# and multi-arch images on GHCR. Validate locally with:
+#   go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+version: 2
+
+project_name: trove
+
+builds:
+  - id: trove-server
+    main: ./cmd/trove-server
+    binary: trove-server
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+  - id: trove-agent-docker
+    main: ./cmd/trove-agent-docker
+    binary: trove-agent-docker
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+  - id: trove-agent-k8s
+    main: ./cmd/trove-agent-k8s
+    binary: trove-agent-k8s
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+  - id: trove-agent-proxmox
+    main: ./cmd/trove-agent-proxmox
+    binary: trove-agent-proxmox
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+  - id: trove-agent-local
+    main: ./cmd/trove-agent-local
+    binary: trove-agent-local
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{.Version}}"]
+
+archives:
+  - id: trove-server
+    ids: [trove-server]
+    name_template: "trove-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files: [LICENSE, README.md]
+  - id: trove-agent-docker
+    ids: [trove-agent-docker]
+    name_template: "trove-agent-docker_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files: [LICENSE]
+  - id: trove-agent-k8s
+    ids: [trove-agent-k8s]
+    name_template: "trove-agent-k8s_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files: [LICENSE]
+  - id: trove-agent-proxmox
+    ids: [trove-agent-proxmox]
+    name_template: "trove-agent-proxmox_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files: [LICENSE]
+  - id: trove-agent-local
+    ids: [trove-agent-local]
+    name_template: "trove-agent-local_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files: [LICENSE, deploy/systemd/trove-agent-local.service]
+
+checksum:
+  name_template: "checksums.txt"
+
+dockers:
+  # ---- trove-server ----
+  - ids: [trove-server]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.server
+    image_templates: ["ghcr.io/techdox/trove-server:{{ .Version }}-amd64"]
+    build_flag_templates: ["--platform=linux/amd64"]
+  - ids: [trove-server]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.server
+    image_templates: ["ghcr.io/techdox/trove-server:{{ .Version }}-arm64"]
+    build_flag_templates: ["--platform=linux/arm64"]
+  # ---- trove-agent-docker ----
+  - ids: [trove-agent-docker]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.agent-docker
+    image_templates: ["ghcr.io/techdox/trove-agent-docker:{{ .Version }}-amd64"]
+    build_flag_templates: ["--platform=linux/amd64"]
+  - ids: [trove-agent-docker]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.agent-docker
+    image_templates: ["ghcr.io/techdox/trove-agent-docker:{{ .Version }}-arm64"]
+    build_flag_templates: ["--platform=linux/arm64"]
+  # ---- trove-agent-k8s ----
+  - ids: [trove-agent-k8s]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.agent-k8s
+    image_templates: ["ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-amd64"]
+    build_flag_templates: ["--platform=linux/amd64"]
+  - ids: [trove-agent-k8s]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.agent-k8s
+    image_templates: ["ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-arm64"]
+    build_flag_templates: ["--platform=linux/arm64"]
+  # ---- trove-agent-proxmox ----
+  - ids: [trove-agent-proxmox]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.agent-proxmox
+    image_templates: ["ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-amd64"]
+    build_flag_templates: ["--platform=linux/amd64"]
+  - ids: [trove-agent-proxmox]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: build/docker/Dockerfile.agent-proxmox
+    image_templates: ["ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-arm64"]
+    build_flag_templates: ["--platform=linux/arm64"]
+
+docker_manifests:
+  - name_template: "ghcr.io/techdox/trove-server:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/techdox/trove-server:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-server:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-server:latest"
+    image_templates:
+      - "ghcr.io/techdox/trove-server:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-server:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-agent-docker:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-agent-docker:latest"
+    image_templates:
+      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-agent-k8s:latest"
+    image_templates:
+      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/techdox/trove-agent-proxmox:latest"
+    image_templates:
+      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-amd64"
+      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-arm64"
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^chore:", "^ci:"]
+
+release:
+  footer: |
+    **Container images** (multi-arch, amd64 + arm64):
+    - `ghcr.io/techdox/trove-server:{{ .Version }}`
+    - `ghcr.io/techdox/trove-agent-docker:{{ .Version }}`
+    - `ghcr.io/techdox/trove-agent-k8s:{{ .Version }}`
+    - `ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}`
+
+    The bare-metal agent (`trove-agent-local`) ships as a binary archive above —
+    it reads the host's systemd, so it isn't containerized.
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"

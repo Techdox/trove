@@ -20,10 +20,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"trove/internal/agentkit"
+	"github.com/techdox/trove/internal/agentkit"
 )
 
-const version = "0.2.0"
+// version is stamped at build time via -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))

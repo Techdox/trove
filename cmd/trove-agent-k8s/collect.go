@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"trove/internal/agentkit"
-	"trove/pkg/model"
+	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // collector maps a Kubernetes cluster into a single Trove host snapshot:

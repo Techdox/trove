@@ -1,0 +1,44 @@
+# Trove quickstart — server + a Docker agent watching this host, using the
+# published images. No cloning or building required.
+#
+#   1. Generate a token for this host's agent:
+#        export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+#   2. Start the stack:
+#        docker compose up -d
+#   3. Open http://localhost:8080 — your containers appear within ~30s.
+#
+# The TROVE_BOOTSTRAP_* pair below seeds the agent on first start so there is
+# no manual token step. To add agents on OTHER hosts later, mint each one its
+# own token with:
+#        docker compose exec server trove-server agent create <name>
+#
+# ⚠ The dashboard has no authentication yet — keep port 8080 on a trusted
+#   network (LAN/VPN) or behind an authenticating reverse proxy.
+
+services:
+  server:
+    image: ghcr.io/techdox/trove-server:latest
+    environment:
+      TROVE_BOOTSTRAP_AGENT: "docker-local"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  export TROVE_TOKEN=trove_$(openssl rand -hex 24)}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - trove-data:/data
+    restart: unless-stopped
+
+  agent:
+    image: ghcr.io/techdox/trove-agent-docker:latest
+    environment:
+      TROVE_SERVER_URL: "http://server:8080"
+      TROVE_TOKEN: "${TROVE_TOKEN}"
+    volumes:
+      # Read-only socket mount; the agent only ever issues GETs to Docker.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  trove-data:

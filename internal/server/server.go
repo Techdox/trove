@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"time"
 
-	"trove/internal/registry"
-	"trove/internal/staleness"
-	"trove/internal/store"
-	"trove/web"
+	"github.com/techdox/trove/internal/registry"
+	"github.com/techdox/trove/internal/staleness"
+	"github.com/techdox/trove/internal/store"
+	"github.com/techdox/trove/web"
 )
 
 // Server holds the dependencies shared by all handlers.

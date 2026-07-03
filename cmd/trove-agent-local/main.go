@@ -22,11 +22,12 @@ import (
 	"strings"
 	"syscall"
 
-	"trove/internal/agentkit"
-	"trove/pkg/model"
+	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/pkg/model"
 )
 
-const version = "0.2.0"
+// version is stamped at build time via -ldflags "-X main.version=...".
+var version = "dev"
 
 // systemdUnit mirrors an entry from `systemctl list-units --output=json`.
 type systemdUnit struct {

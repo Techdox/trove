@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"trove/pkg/model"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // Config is the configuration common to all agents.

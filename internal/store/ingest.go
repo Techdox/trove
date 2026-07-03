@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"trove/pkg/model"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // retentionWindow bounds the event log and how long soft-removed services

@@ -7,9 +7,11 @@ BIN := bin
 # All commands (server + every agent) discovered from cmd/.
 CMDS := $(notdir $(wildcard cmd/*))
 
-# Static, reproducible-ish builds.
+# Static, reproducible-ish builds. Version is stamped from git; releases get
+# the tag via goreleaser instead.
+VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GOFLAGS   := -trimpath
-LDFLAGS   := -s -w
+LDFLAGS   := -s -w -X main.version=$(VERSION)
 export CGO_ENABLED := 0
 
 # Cross-compile matrix required by the Definition of Done.

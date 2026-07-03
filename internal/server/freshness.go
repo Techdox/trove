@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"trove/internal/registry"
+	"github.com/techdox/trove/internal/registry"
 )
 
 // FreshnessConfig controls the image-freshness checker.

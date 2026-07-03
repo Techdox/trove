@@ -1,4 +1,4 @@
-module trove
+module github.com/techdox/trove
 
 go 1.26.4
 

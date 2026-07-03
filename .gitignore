@@ -1,5 +1,6 @@
 # Build artifacts
 /bin/
+/dist/
 
 # Local SQLite database (+ WAL sidecars)
 *.db

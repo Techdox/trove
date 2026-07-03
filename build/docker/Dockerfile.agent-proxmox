@@ -1,0 +1,5 @@
+# Release image for trove-agent-proxmox. Talks only to the Proxmox API over
+# HTTPS with a read-only token; runs as nonroot.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY trove-agent-proxmox /usr/local/bin/trove-agent-proxmox
+ENTRYPOINT ["/usr/local/bin/trove-agent-proxmox"]

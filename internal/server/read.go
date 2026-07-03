@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"trove/internal/staleness"
+	"github.com/techdox/trove/internal/staleness"
 )
 
 // ---- response DTOs -------------------------------------------------------

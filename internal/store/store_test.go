@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"trove/pkg/model"
+	"github.com/techdox/trove/pkg/model"
 )
 
 func newTestStore(t *testing.T) (*Store, *time.Time) {

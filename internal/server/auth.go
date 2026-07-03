@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"trove/internal/store"
+	"github.com/techdox/trove/internal/store"
 )
 
 // agentHandler is a handler that has been given the authenticated agent.

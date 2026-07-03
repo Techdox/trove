@@ -1,0 +1,16 @@
+# Release image for trove-server. Built by goreleaser, which places the
+# prebuilt static binary in the build context — no Go toolchain in here.
+FROM alpine:3.20 AS data
+RUN mkdir /data && chown 65532:65532 /data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY trove-server /usr/local/bin/trove-server
+# Pre-owned data dir so a fresh named volume is writable by nonroot (65532).
+COPY --from=data --chown=65532:65532 /data /data
+ENV TROVE_ADDR=:8080 \
+    TROVE_DB=/data/trove.db
+EXPOSE 8080
+VOLUME ["/data"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
+  CMD ["/usr/local/bin/trove-server", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/trove-server"]

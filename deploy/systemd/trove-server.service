@@ -1,0 +1,35 @@
+# Trove server as a bare-metal systemd service.
+#
+# Install:
+#   sudo cp trove-server /usr/local/bin/            # from the release archive
+#   sudo mkdir -p /var/lib/trove
+#   sudo cp deploy/systemd/trove-server.service /etc/systemd/system/
+#   sudo systemctl enable --now trove-server
+#
+# Override settings via a drop-in (systemctl edit trove-server) or
+# /etc/trove-server.env. The dashboard has no auth — bind to a trusted
+# interface or front with an authenticating reverse proxy.
+
+[Unit]
+Description=Trove server (read-only service catalog)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=trove
+EnvironmentFile=-/etc/trove-server.env
+Environment=TROVE_ADDR=:8080
+Environment=TROVE_DB=/var/lib/trove/trove.db
+ExecStart=/usr/local/bin/trove-server serve
+Restart=always
+RestartSec=5
+# Hardening: only the state directory is writable.
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/trove
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,7 @@
-# Local dev stack: Trove server + one Docker agent watching this host.
+# CONTRIBUTOR dev stack: builds server + agent from this checkout.
+#
+# Just want to RUN Trove? Use examples/docker-compose.yml instead — it pulls
+# the published images and needs no clone or toolchain.
 #
 # `docker compose up --build` and open http://localhost:8080.
 #

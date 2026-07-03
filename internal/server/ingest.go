@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"trove/internal/store"
-	"trove/pkg/model"
+	"github.com/techdox/trove/internal/store"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // maxReportBytes caps an inbound report body. Generous for hundreds of

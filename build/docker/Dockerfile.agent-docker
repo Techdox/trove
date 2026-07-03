@@ -1,0 +1,6 @@
+# Release image for trove-agent-docker. Runs as root so it can read the
+# bind-mounted /var/run/docker.sock (root-owned on most hosts); the agent
+# itself only ever issues read-only GETs to the daemon.
+FROM gcr.io/distroless/static-debian12
+COPY trove-agent-docker /usr/local/bin/trove-agent-docker
+ENTRYPOINT ["/usr/local/bin/trove-agent-docker"]

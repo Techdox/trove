@@ -2,7 +2,8 @@
 
 **Status:** Phases 1–3 are shipped on `main` — Docker/Kubernetes/Proxmox/
 bare-metal agents, per-agent token auth, heartbeat/staleness, image freshness,
-and the parent/child model (decision D2, below, is implemented). See the
+and the parent/child model (decision D2, below, is implemented). Trove is now
+open source (MIT) with released binaries and GHCR images. See the
 [README](README.md) for what exists today. Phases 4–5 remain.
 
 This document sequences the remaining work and records the two decisions that

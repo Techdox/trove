@@ -7,7 +7,7 @@ package staleness
 import (
 	"time"
 
-	"trove/pkg/model"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // Status is an agent's heartbeat verdict.

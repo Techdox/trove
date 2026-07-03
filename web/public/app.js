@@ -1,9 +1,40 @@
 "use strict";
 
 // Trove dashboard — polls the read-only APIs and renders. No dependencies.
+//
+// Data flows one way: refresh() fetches into state.data, render() projects
+// state (filters, collapse, drawer, cursor) onto the DOM. UI interactions
+// mutate state and call render(); the 10s poll only replaces state.data, so
+// filter/drawer/collapse state survives refreshes.
+
 const POLL_MS = 10000;
 
 const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------- state ----
+
+const state = {
+  q: "",                 // filter text
+  chips: new Set(),      // active quick filters (keys of CHIP_DEFS)
+  showRemoved: false,    // include soft-removed services
+  collapsed: new Set(),  // collapsed host keys
+  drawerKey: null,       // key of the service open in the drawer
+  cursorKey: null,       // key of the keyboard-cursor row
+  data: { services: null, agents: null, events: null },
+};
+
+const CHIP_DEFS = [
+  { key: "running",   cls: "c-green",  test: (s) => s.state === "running" },
+  { key: "unhealthy", cls: "c-red",    test: (s) => s.health === "unhealthy" },
+  { key: "outdated",  cls: "c-peach",  test: (s) => s.freshness === "outdated" },
+  { key: "stale",     cls: "c-yellow", test: (s) => s.health === "stale" },
+];
+
+// A service is identified by agent + hostname + external_id (hostnames are
+// only unique per agent).
+const keyOf = (h, s) => `${h.agent}\u001f${h.hostname}\u001f${s.external_id}`;
+
+// -------------------------------------------------------------- helpers ----
 
 async function fetchJSON(url) {
   const res = await fetch(url, { headers: { Accept: "application/json" } });
@@ -17,7 +48,6 @@ function esc(s) {
   }[c]));
 }
 
-// Relative time from an RFC3339 string.
 function relTime(iso) {
   if (!iso) return "never";
   const then = new Date(iso).getTime();
@@ -33,7 +63,13 @@ function relTime(iso) {
   return `${d}d ${h % 24}h ago`;
 }
 
-// ---- badge mapping -------------------------------------------------------
+function absTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+}
+
+// ---------------------------------------------------------- badge maps ----
 
 const HEALTH_CLASS = {
   healthy: "b-green",
@@ -45,10 +81,14 @@ const HEALTH_CLASS = {
 const AGENT_CLASS = { ok: "b-green", stale: "b-yellow", offline: "b-red", unknown: "b-gray" };
 
 function stateClass(state) {
+  // K8s parents report "ready/desired" (e.g. "2/2").
+  const m = /^(\d+)\/(\d+)$/.exec(state || "");
+  if (m) return Number(m[1]) >= Number(m[2]) && Number(m[2]) > 0 ? "b-green" : "b-yellow";
   switch (state) {
     case "running": return "b-green";
     case "exited":
     case "dead":
+    case "failed":
     case "removed": return "b-red";
     case "created":
     case "paused":
@@ -57,33 +97,149 @@ function stateClass(state) {
   }
 }
 
-function badge(cls, label) {
-  return `<span class="badge ${cls}">${esc(label)}</span>`;
+function stateTextClass(state) {
+  const b = stateClass(state);
+  return { "b-green": "st-green", "b-red": "st-red", "b-yellow": "st-yellow" }[b] || "st-gray";
+}
+
+function badge(cls, label, extra) {
+  return `<span class="badge ${cls}${extra ? " " + extra : ""}">${esc(label)}</span>`;
+}
+
+// ------------------------------------------------------- cell rendering ----
+
+// splitImage separates "registry/namespace/name:tag" so the prefix can
+// ellipsize while name:tag stays pinned and readable.
+function splitImage(ref) {
+  const slash = ref.lastIndexOf("/");
+  const prefix = slash >= 0 ? ref.slice(0, slash + 1) : "";
+  let rest = slash >= 0 ? ref.slice(slash + 1) : ref;
+  let tag = "";
+  const colon = rest.lastIndexOf(":");
+  if (colon >= 0) {
+    tag = rest.slice(colon);
+    rest = rest.slice(0, colon);
+  }
+  return { prefix, name: rest, tag };
 }
 
 function imageHTML(image) {
   if (!image) return '<span class="muted">—</span>';
-  const i = image.lastIndexOf(":");
-  // Treat as tag only if the colon is after the last "/" (not a registry port).
-  const slash = image.lastIndexOf("/");
-  if (i > slash && i !== -1) {
-    return `${esc(image.slice(0, i))}<span class="tag">:${esc(image.slice(i + 1))}</span>`;
-  }
-  return esc(image);
+  const { prefix, name, tag } = splitImage(image);
+  return `<div class="img-wrap" title="${esc(image)}">` +
+    (prefix ? `<span class="img-prefix">${esc(prefix)}</span>` : "") +
+    `<span class="img-name">${esc(name)}${tag ? `<span class="tag">${esc(tag)}</span>` : ""}</span>` +
+    `</div>`;
 }
+
+function fmtPort(p) {
+  return (p.host ? `${p.host}→${p.container}` : `${p.container}`) + `/${p.proto || "tcp"}`;
+}
+
+const PORTS_SHOWN = 3;
 
 function portsHTML(ports) {
   if (!Array.isArray(ports) || ports.length === 0) return '<span class="muted">—</span>';
-  return ports
-    .map((p) => (p.host ? `${p.host}→${p.container}` : `${p.container}`) + `/${esc(p.proto || "tcp")}`)
-    .join(" ");
+  const sorted = [...ports].sort((a, b) => (a.host || a.container) - (b.host || b.container));
+  const all = sorted.map(fmtPort);
+  const shown = all.slice(0, PORTS_SHOWN).map(esc).join(" ");
+  const extra = all.length - PORTS_SHOWN;
+  const title = esc(all.join("  "));
+  return `<span title="${title}">${shown}${extra > 0 ? ` <span class="more">+${extra}</span>` : ""}</span>`;
 }
 
-// ---- rendering -----------------------------------------------------------
+function freshnessCell(s) {
+  switch (s.freshness) {
+    case "outdated":
+      return `<span class="badge b-peach" title="running: ${esc(s.image_digest || "?")}\nlatest:  ${esc(s.latest_digest || "?")}">update</span>`;
+    case "current":
+      return '<span class="badge b-green">up to date</span>';
+    default:
+      return '<span class="muted">—</span>';
+  }
+}
 
-function renderAgents(data) {
+// ------------------------------------------------------------ filtering ----
+
+function matchesFilters(s, host) {
+  if (!state.showRemoved && s.state === "removed") return false;
+  for (const key of state.chips) {
+    const def = CHIP_DEFS.find((c) => c.key === key);
+    if (def && !def.test(s)) return false;
+  }
+  const q = state.q.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [s.name, s.external_id, s.image, s.kind, s.state, s.health, s.freshness,
+    host.hostname, host.agent];
+  if (s.labels && typeof s.labels === "object") {
+    for (const [k, v] of Object.entries(s.labels)) hay.push(k, v);
+  }
+  return hay.some((x) => String(x ?? "").toLowerCase().includes(q));
+}
+
+function filterActive() {
+  return state.q.trim() !== "" || state.chips.size > 0;
+}
+
+// counts over the full dataset (independent of the active filter)
+function computeCounts() {
+  const c = { hosts: 0, services: 0, running: 0, unhealthy: 0, outdated: 0, stale: 0, removed: 0 };
+  for (const h of state.data.services?.hosts || []) {
+    c.hosts++;
+    for (const s of h.services || []) {
+      if (s.state === "removed") { c.removed++; continue; }
+      c.services++;
+      if (s.state === "running") c.running++;
+      if (s.health === "unhealthy") c.unhealthy++;
+      if (s.health === "stale") c.stale++;
+      if (s.freshness === "outdated") c.outdated++;
+    }
+  }
+  return c;
+}
+
+// ------------------------------------------------------------- summary ----
+
+function renderSummary() {
+  const c = computeCounts();
+  const agents = state.data.agents?.agents?.length ?? 0;
+  const stat = (n, label, cls, chip) => {
+    const active = chip && state.chips.has(chip) ? " active" : "";
+    return `<button class="stat ${cls}${active}" data-chip="${chip}"
+      aria-pressed="${!!active}" title="filter: ${label}"><b>${n}</b> ${label}</button>`;
+  };
+  $("summary").innerHTML = [
+    `<span class="stat"><b>${agents}</b> agent${agents === 1 ? "" : "s"}</span>`,
+    `<span class="stat"><b>${c.hosts}</b> host${c.hosts === 1 ? "" : "s"}</span>`,
+    `<span class="stat"><b>${c.services}</b> service${c.services === 1 ? "" : "s"}</span>`,
+    `<span class="sep">—</span>`,
+    stat(c.running, "running", "c-green", "running"),
+    stat(c.unhealthy, "unhealthy", "c-red", "unhealthy"),
+    stat(c.outdated, "outdated", "c-peach", "outdated"),
+    stat(c.stale, "stale", "c-yellow", "stale"),
+  ].join("");
+}
+
+function renderChips() {
+  const c = computeCounts();
+  const counts = { running: c.running, unhealthy: c.unhealthy, outdated: c.outdated, stale: c.stale };
+  const chips = CHIP_DEFS.map((d) => {
+    const active = state.chips.has(d.key) ? " active" : "";
+    return `<button class="chip ${d.cls}${active}" data-chip="${d.key}" aria-pressed="${!!active}">
+      ${d.key} <span class="n">${counts[d.key]}</span></button>`;
+  });
+  const remActive = state.showRemoved ? " active" : "";
+  chips.push(`<button class="chip c-gray${remActive}" data-chip="removed"
+    aria-pressed="${state.showRemoved}" title="show services no longer reported (kept 24h)">
+    removed <span class="n">${c.removed}</span></button>`);
+  $("chips").innerHTML = chips.join("");
+}
+
+// -------------------------------------------------------------- agents ----
+
+function renderAgents() {
   const el = $("agents");
-  const agents = data.agents || [];
+  const agents = state.data.agents?.agents || [];
   if (agents.length === 0) {
     el.innerHTML = '<div class="empty">No agents registered. Create one with <code>trove-server agent create &lt;name&gt;</code>.</div>';
     return;
@@ -101,95 +257,263 @@ function renderAgents(data) {
   }).join("");
 }
 
-const FRESHNESS = {
-  current: '<span class="badge b-green">up to date</span>',
-  outdated: '<span class="badge b-peach">update</span>',
-};
+// --------------------------------------------------------------- hosts ----
 
-function freshnessCell(s) {
-  if (s.freshness === "outdated") {
-    return `<span class="badge b-peach" title="latest: ${esc(s.latest_digest || "")}">update</span>`;
-  }
-  return FRESHNESS[s.freshness] || '<span class="muted">—</span>';
-}
-
-function serviceRow(s, isChild) {
+function serviceRow(host, s, isChild) {
+  const key = keyOf(host, s);
   const removed = s.state === "removed";
-  const cls = [removed ? "removed" : "", isChild ? "child" : ""].filter(Boolean).join(" ");
+  const cls = [
+    removed ? "removed" : "",
+    isChild ? "child" : "",
+    key === state.drawerKey ? "open" : "",
+  ].filter(Boolean).join(" ");
   const name = (isChild ? '<span class="tree">└─</span> ' : "") + esc(s.name || s.external_id);
-  return `<tr class="${cls}">
-    <td><span class="svc-name">${name}</span> <span class="kind">${esc(s.kind || "")}</span></td>
+  const kind = s.kind && s.kind !== "container" ? `<span class="kind">${esc(s.kind)}</span>` : "";
+  return `<tr class="${cls}" tabindex="0" data-agent="${esc(host.agent)}"
+      data-host="${esc(host.hostname)}" data-ext="${esc(s.external_id)}">
+    <td class="svc" title="${esc(s.name || s.external_id)}"><span class="svc-name">${name}</span>${kind}</td>
     <td class="image">${imageHTML(s.image)}</td>
     <td>${badge(stateClass(s.state), s.state || "?")}</td>
     <td>${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
     <td>${freshnessCell(s)}</td>
     <td class="ports">${portsHTML(s.ports)}</td>
-    <td class="muted nowrap">${esc(relTime(s.last_seen_at))}</td>
+    <td class="muted nowrap seen">${esc(relTime(s.last_seen_at))}</td>
   </tr>`;
 }
 
-function renderHosts(data) {
+function hostKey(h) {
+  return `${h.agent}\u001f${h.hostname}`;
+}
+
+function renderHosts() {
   const el = $("hosts");
-  const hosts = data.hosts || [];
+  const hosts = state.data.services?.hosts || [];
   if (hosts.length === 0) {
     el.innerHTML = '<div class="host"><div class="empty">No services reported yet.</div></div>';
     return;
   }
-  el.innerHTML = hosts.map((h) => {
-    const svcs = h.services || [];
-    const ids = new Set(svcs.map((s) => s.external_id));
+
+  const sections = [];
+  for (const h of hosts) {
+    const all = h.services || [];
+    const total = all.filter((s) => state.showRemoved || s.state !== "removed").length;
+    const visible = all.filter((s) => matchesFilters(s, h));
+    if (filterActive() && visible.length === 0) continue; // host collapses out while filtering
+
+    // Nest children under parents within the visible subset; orphans surface
+    // at top level rather than vanishing.
+    const ids = new Set(visible.map((s) => s.external_id));
     const childrenByParent = {};
-    for (const s of svcs) {
+    for (const s of visible) {
       if (s.parent_external_id && ids.has(s.parent_external_id)) {
         (childrenByParent[s.parent_external_id] ||= []).push(s);
       }
     }
-    // Top level = services with no (resolvable) parent. Orphans whose parent
-    // isn't present still surface here rather than vanishing.
-    const topLevel = svcs.filter((s) => !s.parent_external_id || !ids.has(s.parent_external_id));
+    const topLevel = visible.filter((s) => !s.parent_external_id || !ids.has(s.parent_external_id));
     const rows = topLevel.map((s) => {
-      let out = serviceRow(s, false);
-      const kids = childrenByParent[s.external_id];
-      if (kids) out += kids.map((k) => serviceRow(k, true)).join("");
+      let out = serviceRow(h, s, false);
+      for (const k of childrenByParent[s.external_id] || []) out += serviceRow(h, k, true);
       return out;
     }).join("");
 
+    // Per-host rollups reflect the host's real state, not the filter.
+    const live = all.filter((s) => s.state !== "removed");
+    const nUnhealthy = live.filter((s) => s.health === "unhealthy").length;
+    const nOutdated = live.filter((s) => s.freshness === "outdated").length;
+    const rollup =
+      (nUnhealthy ? badge("b-red", `${nUnhealthy} unhealthy`, "mini") : "") +
+      (nOutdated ? badge("b-peach", `${nOutdated} outdated`, "mini") : "");
+
     const st = h.agent_status || "unknown";
-    return `<div class="host">
-      <div class="host-head">
+    const collapsed = state.collapsed.has(hostKey(h));
+    const countLabel = filterActive() && visible.length !== total
+      ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
+
+    sections.push(`<div class="host${collapsed ? " collapsed" : ""}" data-hostkey="${esc(hostKey(h))}">
+      <div class="host-head" role="button" aria-expanded="${!collapsed}">
+        <span class="chev">${collapsed ? "▸" : "▾"}</span>
         <span class="hostname">${esc(h.hostname)}</span>
         <span class="sub">${esc(h.agent)} · ${esc(h.platform || "—")}</span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
-        <span class="count">${svcs.length} service(s)</span>
+        <span class="rollup">${rollup}</span>
+        <span class="count">${countLabel}</span>
       </div>
-      <table>
-        <thead><tr>
-          <th>Service</th><th>Image</th><th>State</th><th>Health</th><th>Freshness</th><th>Ports</th><th>Last seen</th>
-        </tr></thead>
-        <tbody>${rows || ""}</tbody>
-      </table>
-    </div>`;
-  }).join("");
+      <div class="host-body">
+        <table>
+          <thead><tr>
+            <th class="w-service">Service</th><th>Image</th><th class="w-state">State</th>
+            <th class="w-health">Health</th><th class="w-fresh">Freshness</th>
+            <th class="w-ports">Ports</th><th class="w-seen">Last seen</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="7" class="empty">nothing to show</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`);
+  }
+
+  el.innerHTML = sections.length > 0
+    ? sections.join("")
+    : '<div class="host"><div class="empty">No services match the current filter.</div></div>';
 }
 
-function renderEvents(data) {
+// -------------------------------------------------------------- events ----
+
+function renderEvents() {
   const el = $("events");
-  const events = data.events || [];
+  const events = state.data.events?.events || [];
   if (events.length === 0) {
     el.innerHTML = '<div class="empty">No recent state changes.</div>';
     return;
   }
-  el.innerHTML = events.slice(0, 40).map((e) => {
-    const from = e.from_state || "∅";
-    return `<div class="event-row">
-      <span class="when nowrap">${esc(relTime(e.at))}</span>
-      <span class="what"><strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
-        &nbsp;${esc(from)} <span class="arrow">→</span> ${esc(e.to_state)}</span>
-    </div>`;
-  }).join("");
+  el.innerHTML = events.slice(0, 40).map(eventRowHTML).join("");
 }
 
-// ---- poll loop -----------------------------------------------------------
+function eventRowHTML(e) {
+  const from = e.from_state || "∅";
+  return `<div class="event-row">
+    <span class="when nowrap">${esc(relTime(e.at))}</span>
+    <span class="what"><strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
+      &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+      <span class="${stateTextClass(e.to_state)}">${esc(e.to_state)}</span></span>
+  </div>`;
+}
+
+// -------------------------------------------------------------- drawer ----
+
+// findService looks the drawer target up in the *unfiltered* data so an open
+// drawer survives the row being filtered out or soft-removed.
+function findService(key) {
+  for (const h of state.data.services?.hosts || []) {
+    for (const s of h.services || []) {
+      if (keyOf(h, s) === key) return { host: h, svc: s };
+    }
+  }
+  return null;
+}
+
+function renderDrawer() {
+  const el = $("drawer");
+  if (!state.drawerKey) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  const found = findService(state.drawerKey);
+  if (!found) { // service pruned entirely; nothing left to show
+    state.drawerKey = null;
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  const { host, svc: s } = found;
+
+  const siblings = host.services || [];
+  const children = siblings.filter((x) => x.parent_external_id === s.external_id);
+  const parent = s.parent_external_id
+    ? siblings.find((x) => x.external_id === s.parent_external_id) : null;
+
+  const events = (state.data.events?.events || [])
+    .filter((e) => e.service === s.name && e.hostname === host.hostname)
+    .slice(0, 12);
+
+  const labels = Object.entries(s.labels && typeof s.labels === "object" ? s.labels : {})
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  const ports = Array.isArray(s.ports)
+    ? [...s.ports].sort((a, b) => (a.host || a.container) - (b.host || b.container)) : [];
+
+  const sec = (title, body) => body ? `<div class="d-sec">${title}</div>${body}` : "";
+
+  el.innerHTML = `
+    <div class="d-head">
+      <span class="d-name">${esc(s.name || s.external_id)}</span>
+      <span class="kind">${esc(s.kind || "")}</span>
+      <button class="d-close" aria-label="Close details" title="close (esc)">✕</button>
+    </div>
+    <div class="d-badges">
+      ${badge(stateClass(s.state), s.state || "?")}
+      ${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}
+      ${s.freshness === "outdated" ? badge("b-peach", "update available")
+        : s.freshness === "current" ? badge("b-green", "up to date") : ""}
+    </div>
+    <div class="d-mono">
+      <span class="lbl">host</span> ${esc(host.hostname)} · <span class="lbl">agent</span> ${esc(host.agent)} (${esc(host.platform || "—")})
+    </div>
+    ${parent ? `<div class="d-mono"><span class="lbl">part of</span> ${esc(parent.name)} <span class="kind">${esc(parent.kind)}</span></div>` : ""}
+
+    ${sec("Image", s.image ? `
+      <div class="d-mono">${esc(s.image)}</div>
+      ${s.image_digest ? `<div class="d-mono"><span class="lbl">running</span> ${esc(s.image_digest)}</div>` : ""}
+      ${s.latest_digest ? `<div class="d-mono"><span class="lbl">latest&nbsp;</span> ${esc(s.latest_digest)}</div>` : ""}` : "")}
+
+    ${sec("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
+
+    ${sec(`Instances (${children.length})`, children.length ? `<div class="d-kids">${children.map((k) => `
+      <div class="krow">${badge(HEALTH_CLASS[k.health] || "b-gray", k.health, "mini")} ${esc(k.name)}
+        <span class="muted">${esc(k.state)}</span></div>`).join("")}</div>` : "")}
+
+    ${sec("Labels", labels.length ? `<div class="kv">${labels.map(([k, v]) =>
+      `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
+
+    <div class="d-sec">Seen</div>
+    <div class="kv">
+      <span class="k">first seen</span><span class="v">${esc(absTime(s.first_seen_at))} (${esc(relTime(s.first_seen_at))})</span>
+      <span class="k">last seen</span><span class="v">${esc(absTime(s.last_seen_at))} (${esc(relTime(s.last_seen_at))})</span>
+      <span class="k">external id</span><span class="v">${esc(s.external_id)}</span>
+    </div>
+
+    ${sec("Recent events", events.length ? `<div class="d-events">${events.map(eventRowHTML).join("")}</div>` : "")}
+  `;
+  el.hidden = false;
+}
+
+// ------------------------------------------------------ keyboard cursor ----
+
+function visibleRows() {
+  return Array.from(document.querySelectorAll("#hosts tr[data-ext]"));
+}
+
+function rowKey(tr) {
+  return `${tr.dataset.agent}\u001f${tr.dataset.host}\u001f${tr.dataset.ext}`;
+}
+
+function applyCursor() {
+  for (const tr of visibleRows()) {
+    tr.classList.toggle("cursor", rowKey(tr) === state.cursorKey);
+  }
+}
+
+function moveCursor(delta) {
+  const rows = visibleRows();
+  if (rows.length === 0) return;
+  let idx = rows.findIndex((tr) => rowKey(tr) === state.cursorKey);
+  idx = idx === -1 ? (delta > 0 ? 0 : rows.length - 1)
+    : Math.min(rows.length - 1, Math.max(0, idx + delta));
+  state.cursorKey = rowKey(rows[idx]);
+  applyCursor();
+  rows[idx].scrollIntoView({ block: "nearest" });
+}
+
+function openDrawer(key) {
+  state.drawerKey = key;
+  state.cursorKey = key;
+  render();
+}
+
+// -------------------------------------------------------------- render ----
+
+function render() {
+  if (!state.data.services || !state.data.agents) return;
+  renderSummary();
+  renderChips();
+  renderAgents();
+  renderHosts();
+  renderEvents();
+  renderDrawer();
+  applyCursor();
+}
+
+// ---------------------------------------------------------- poll loop ----
 
 function setStatus(ok, msg) {
   const pulse = $("pulse");
@@ -210,16 +534,87 @@ async function refresh() {
     const [services, agents, events] = await Promise.all([
       fetchJSON("api/v1/services"),
       fetchJSON("api/v1/agents"),
-      fetchJSON("api/v1/events?limit=40"),
+      fetchJSON("api/v1/events?limit=200"),
     ]);
-    renderAgents(agents);
-    renderHosts(services);
-    renderEvents(events);
+    state.data = { services, agents, events };
+    render();
     setStatus(true);
   } catch (e) {
     setStatus(false, e.message || "connection lost");
   }
 }
+
+// ------------------------------------------------------------- wiring ----
+
+function toggleChip(key) {
+  if (key === "removed") {
+    state.showRemoved = !state.showRemoved;
+  } else if (state.chips.has(key)) {
+    state.chips.delete(key);
+  } else {
+    state.chips.add(key);
+  }
+  render();
+}
+
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-chip]");
+  if (chip) { toggleChip(chip.dataset.chip); return; }
+
+  if (e.target.closest(".d-close")) { state.drawerKey = null; render(); return; }
+  if (e.target.closest("#drawer")) return; // clicks inside the drawer stay put
+
+  const head = e.target.closest(".host-head");
+  if (head) {
+    const key = head.parentElement.dataset.hostkey;
+    if (state.collapsed.has(key)) state.collapsed.delete(key);
+    else state.collapsed.add(key);
+    render();
+    return;
+  }
+
+  const tr = e.target.closest("#hosts tr[data-ext]");
+  if (tr) { openDrawer(rowKey(tr)); return; }
+});
+
+document.addEventListener("keydown", (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+
+  if (e.key === "/" && !typing) {
+    e.preventDefault();
+    $("q").focus();
+    return;
+  }
+  if (e.key === "Escape") {
+    if (typing) { e.target.blur(); return; }
+    if (state.drawerKey) { state.drawerKey = null; render(); return; }
+    if (state.q || state.chips.size > 0) {
+      state.q = "";
+      $("q").value = "";
+      state.chips.clear();
+      render();
+    }
+    return;
+  }
+  if (typing) return;
+
+  if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); moveCursor(1); return; }
+  if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1); return; }
+  if (e.key === "Enter") {
+    const focused = document.activeElement?.closest?.("#hosts tr[data-ext]");
+    if (focused) { openDrawer(rowKey(focused)); return; }
+    if (state.cursorKey) openDrawer(state.cursorKey);
+  }
+});
+
+let qTimer;
+$("q").addEventListener("input", (e) => {
+  clearTimeout(qTimer);
+  qTimer = setTimeout(() => {
+    state.q = e.target.value;
+    render();
+  }, 120);
+});
 
 refresh();
 setInterval(refresh, POLL_MS);

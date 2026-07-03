@@ -21,6 +21,14 @@
 
     <div class="error-banner" id="error"></div>
 
+    <div class="summary" id="summary"></div>
+
+    <div class="filterbar">
+      <input id="q" type="search" placeholder="filter by name, image, host, label…  ( / )"
+             autocomplete="off" spellcheck="false" aria-label="Filter services" />
+      <div class="chips" id="chips"></div>
+    </div>
+
     <div class="section-title">Agents</div>
     <div class="agents" id="agents"></div>
 
@@ -30,8 +38,14 @@
     <div class="section-title">Recent activity</div>
     <div class="events" id="events"></div>
 
-    <footer>Trove &middot; read-only by design &middot; auto-refresh every 10s</footer>
+    <footer>
+      Trove &middot; read-only by design &middot; auto-refresh 10s &middot;
+      <kbd>/</kbd> filter &middot; <kbd>j</kbd>/<kbd>k</kbd> move &middot;
+      <kbd>enter</kbd> details &middot; <kbd>esc</kbd> close
+    </footer>
   </div>
+
+  <aside id="drawer" class="drawer" hidden aria-label="Service details"></aside>
 
   <script src="app.js"></script>
 </body>

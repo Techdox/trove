@@ -1,0 +1,426 @@
+package alert
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/techdox/trove/internal/store"
+)
+
+const cursorKey = "alert_cursor"
+
+// Engine consumes the event stream and the freshness state, deciding what to
+// notify and delivering through the configured dispatchers.
+type Engine struct {
+	store       *store.Store
+	log         *slog.Logger
+	cfg         Config
+	dispatchers []Dispatcher
+	now         func() time.Time
+}
+
+// NewEngine builds an engine; dispatchers derive from cfg.
+func NewEngine(st *store.Store, log *slog.Logger, cfg Config) *Engine {
+	return &Engine{
+		store:       st,
+		log:         log,
+		cfg:         cfg,
+		dispatchers: Dispatchers(cfg),
+		now:         func() time.Time { return time.Now().UTC() },
+	}
+}
+
+// Run sweeps until ctx is cancelled. No-op (returns immediately) when no
+// instant channel is configured.
+func (e *Engine) Run(ctx context.Context) {
+	if !e.cfg.Enabled() {
+		e.log.Info("alerting disabled (no channel configured)")
+		return
+	}
+	names := make([]string, 0, len(e.dispatchers))
+	for _, d := range e.dispatchers {
+		names = append(names, d.Name())
+	}
+	e.log.Info("alerting enabled", "channels", strings.Join(names, ","),
+		"kinds", kindList(e.cfg.Kinds), "cooldown", e.cfg.Cooldown)
+
+	t := time.NewTicker(e.cfg.Interval)
+	defer t.Stop()
+	e.Sweep(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			e.Sweep(ctx)
+		}
+	}
+}
+
+// Sweep runs one evaluation pass: consume new events, then check freshness
+// transitions. Exported for tests and for a deterministic first pass.
+func (e *Engine) Sweep(ctx context.Context) {
+	e.sweepEvents(ctx)
+	if e.cfg.Kinds["freshness"] {
+		e.sweepFreshness(ctx)
+	}
+}
+
+// ---- event stream ----------------------------------------------------------
+
+func (e *Engine) sweepEvents(ctx context.Context) {
+	raw, ok, err := e.store.GetMeta(ctx, cursorKey)
+	if err != nil {
+		e.log.Error("alert: read cursor", "err", err)
+		return
+	}
+	if !ok {
+		// First run: seed at the stream head so history is never replayed.
+		maxID, err := e.store.MaxEventID(ctx)
+		if err != nil {
+			e.log.Error("alert: seed cursor", "err", err)
+			return
+		}
+		if err := e.store.SetMeta(ctx, cursorKey, strconv.FormatInt(maxID, 10)); err != nil {
+			e.log.Error("alert: store cursor", "err", err)
+		}
+		return
+	}
+	cursor, _ := strconv.ParseInt(raw, 10, 64)
+
+	events, err := e.store.EventsAfter(ctx, cursor, 500)
+	if err != nil {
+		e.log.Error("alert: read events", "err", err)
+		return
+	}
+	if len(events) == 0 {
+		return
+	}
+	for _, ev := range events {
+		if e.cfg.Kinds[ev.Kind] {
+			if key, n, verdict, ok := classify(ev); ok {
+				e.deliver(ctx, key, verdict, n)
+			}
+		}
+		cursor = ev.ID
+	}
+	if err := e.store.SetMeta(ctx, cursorKey, strconv.FormatInt(cursor, 10)); err != nil {
+		e.log.Error("alert: advance cursor", "err", err)
+	}
+}
+
+// verdict classifies a transition target for alert-state tracking: "" means
+// good/recovered, non-empty is the bad value being alerted, and skip means no
+// notification is warranted.
+type verdictT struct {
+	bad   string // "" = good
+	level string
+}
+
+// classify turns an event into (state key, notification, verdict). ok=false
+// means the event is feed-only (e.g. appearances, mass stale flips).
+func classify(ev store.EventRow) (string, Notification, verdictT, bool) {
+	n := Notification{
+		Kind:    ev.Kind,
+		Host:    ev.Hostname,
+		Service: ev.Service,
+		Agent:   ev.Agent,
+		From:    ev.FromState,
+		To:      ev.ToState,
+		At:      time.Unix(ev.At, 0).UTC(),
+	}
+	where := ev.Hostname
+	if where == "" {
+		where = ev.Agent
+	}
+
+	switch ev.Kind {
+	case store.EventKindAgent:
+		key := "agent:" + strconv.FormatInt(ev.AgentID.Int64, 10)
+		switch ev.ToState {
+		case "offline":
+			n.Level = LevelCritical
+			n.Title = fmt.Sprintf("agent %s offline", ev.Agent)
+			n.Body = fmt.Sprintf("agent %s stopped reporting (%s → offline)", ev.Agent, ev.FromState)
+			return key, n, verdictT{bad: "offline", level: n.Level}, true
+		case "stale":
+			n.Level = LevelWarning
+			n.Title = fmt.Sprintf("agent %s stale", ev.Agent)
+			n.Body = fmt.Sprintf("agent %s has missed several reports (%s → stale)", ev.Agent, ev.FromState)
+			return key, n, verdictT{bad: "stale", level: n.Level}, true
+		case "ok":
+			n.Level = LevelResolved
+			n.Title = fmt.Sprintf("agent %s recovered", ev.Agent)
+			n.Body = fmt.Sprintf("agent %s is reporting again (%s → ok)", ev.Agent, ev.FromState)
+			return key, n, verdictT{bad: "", level: n.Level}, true
+		}
+		return "", n, verdictT{}, false
+
+	case store.EventKindHealth:
+		key := "svc:" + strconv.FormatInt(ev.ServiceID.Int64, 10) + ":health"
+		switch ev.ToState {
+		case "unhealthy":
+			n.Level = LevelCritical
+			n.Title = fmt.Sprintf("%s unhealthy", ev.Service)
+			n.Body = fmt.Sprintf("%s @ %s: health %s → unhealthy", ev.Service, where, orNone(ev.FromState))
+			return key, n, verdictT{bad: "unhealthy", level: n.Level}, true
+		case "healthy":
+			n.Level = LevelResolved
+			n.Title = fmt.Sprintf("%s healthy again", ev.Service)
+			n.Body = fmt.Sprintf("%s @ %s: health %s → healthy", ev.Service, where, orNone(ev.FromState))
+			return key, n, verdictT{bad: "", level: n.Level}, true
+		}
+		// unknown/stale transitions (e.g. the mass flip when an agent goes
+		// stale) are feed-only; the agent alert covers the root cause.
+		return "", n, verdictT{}, false
+
+	case store.EventKindState:
+		if ev.FromState == "" {
+			// Appearances are feed-only: alerting every new container/pod
+			// would turn each deploy into a notification storm.
+			return "", n, verdictT{}, false
+		}
+		key := "svc:" + strconv.FormatInt(ev.ServiceID.Int64, 10) + ":state"
+		switch stateGoodness(ev.ToState) {
+		case goodnessBad:
+			n.Level = LevelWarning
+			n.Title = fmt.Sprintf("%s %s", ev.Service, stateVerb(ev.ToState))
+			n.Body = fmt.Sprintf("%s @ %s: %s → %s", ev.Service, where, ev.FromState, ev.ToState)
+			return key, n, verdictT{bad: ev.ToState, level: n.Level}, true
+		case goodnessGood:
+			n.Level = LevelResolved
+			n.Title = fmt.Sprintf("%s %s", ev.Service, stateVerb(ev.ToState))
+			n.Body = fmt.Sprintf("%s @ %s: %s → %s", ev.Service, where, ev.FromState, ev.ToState)
+			return key, n, verdictT{bad: "", level: n.Level}, true
+		}
+		return "", n, verdictT{}, false
+	}
+	return "", n, verdictT{}, false
+}
+
+type goodness int
+
+const (
+	goodnessNeutral goodness = iota
+	goodnessGood
+	goodnessBad
+)
+
+// stateGoodness classifies a platform state. K8s parents report
+// "ready/desired"; everything else is a platform word.
+func stateGoodness(state string) goodness {
+	if ready, desired, ok := parseReplicas(state); ok {
+		if desired > 0 && ready >= desired {
+			return goodnessGood
+		}
+		return goodnessBad
+	}
+	switch state {
+	case "running":
+		return goodnessGood
+	case "exited", "dead", "failed", "stopped", "removed":
+		return goodnessBad
+	default: // created, paused, restarting, pending, succeeded, ...
+		return goodnessNeutral
+	}
+}
+
+func stateVerb(state string) string {
+	if ready, desired, ok := parseReplicas(state); ok {
+		if desired > 0 && ready >= desired {
+			return "fully ready (" + state + ")"
+		}
+		return "degraded (" + state + ")"
+	}
+	switch state {
+	case "running":
+		return "running again"
+	case "exited", "dead", "stopped":
+		return "stopped"
+	case "failed":
+		return "failed"
+	case "removed":
+		return "removed"
+	default:
+		return state
+	}
+}
+
+func parseReplicas(s string) (ready, desired int, ok bool) {
+	i := strings.IndexByte(s, '/')
+	if i <= 0 || i == len(s)-1 {
+		return 0, 0, false
+	}
+	r, err1 := strconv.Atoi(s[:i])
+	d, err2 := strconv.Atoi(s[i+1:])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return r, d, true
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "∅"
+	}
+	return s
+}
+
+// ---- freshness sweep -------------------------------------------------------
+
+func (e *Engine) sweepFreshness(ctx context.Context) {
+	rows, err := e.store.ListServices(ctx)
+	if err != nil {
+		e.log.Error("alert: freshness sweep", "err", err)
+		return
+	}
+	for i := range rows {
+		row := &rows[i]
+		if row.State == "removed" || row.Image == "" {
+			continue
+		}
+		verdict := row.FreshnessVerdict()
+		key := "fresh:" + row.AgentName + "/" + row.Hostname + "/" + row.ExternalID
+
+		st, seen, err := e.store.GetAlertState(ctx, key)
+		if err != nil {
+			e.log.Error("alert: freshness state", "err", err)
+			return
+		}
+		if !seen {
+			// First sight seeds silently — a fresh engine must not announce
+			// fifteen already-outdated images at boot. Bad values are seeded
+			// with the suppressed marker so no phantom "resolved" fires later.
+			seed := verdict
+			if verdict == "outdated" {
+				seed = suppressed(verdict)
+			}
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: seed})
+			continue
+		}
+		cur := strings.TrimPrefix(st.Value, suppressedPrefix)
+		if cur == verdict {
+			continue
+		}
+		n := Notification{
+			Kind:    "freshness",
+			Host:    row.Hostname,
+			Service: row.Name,
+			From:    cur,
+			To:      verdict,
+			At:      e.now(),
+		}
+		switch {
+		case verdict == "outdated":
+			n.Level = LevelWarning
+			n.Title = fmt.Sprintf("update available: %s", row.Name)
+			n.Body = fmt.Sprintf("%s @ %s: %s has a newer image on its registry", row.Name, row.Hostname, row.Image)
+			e.deliver(ctx, key, verdictT{bad: "outdated", level: n.Level}, n)
+		case verdict == "current" && cur == "outdated":
+			n.Level = LevelResolved
+			n.Title = fmt.Sprintf("%s up to date", row.Name)
+			n.Body = fmt.Sprintf("%s @ %s is now running the latest %s", row.Name, row.Hostname, row.Image)
+			e.deliver(ctx, key, verdictT{bad: "", level: n.Level}, n)
+		default:
+			// e.g. flips to/from unknown — record silently.
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: verdict, SentAt: st.SentAt})
+		}
+	}
+}
+
+// ---- delivery --------------------------------------------------------------
+
+// Stored alert-state values use a marker convention: a value prefixed with
+// "~" is known-bad but was NEVER notified (suppressed by cooldown, or seeded
+// at first sight). Recovery only announces "resolved" for values that were
+// actually sent, so a flapping service cannot storm through resolve messages.
+const suppressedPrefix = "~"
+
+func suppressed(v string) string { return suppressedPrefix + v }
+
+// deliver applies recovery/cooldown semantics for key, then fans out.
+//
+//   - good (verdict.bad == ""): send a resolved notice only if the last bad
+//     value for this key was actually notified; always clear the stored value.
+//   - bad: within the cooldown window sends are suppressed (state is still
+//     recorded, marked suppressed). One exception: an escalation — a *worse*
+//     value at critical level after a notified bad — bypasses cooldown once
+//     (e.g. agent stale → offline).
+func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notification) {
+	now := e.now().Unix()
+	st, seen, err := e.store.GetAlertState(ctx, key)
+	if err != nil {
+		e.log.Error("alert: state read", "key", key, "err", err)
+		return
+	}
+	cur := strings.TrimPrefix(st.Value, suppressedPrefix)
+	notified := st.Value != "" && !strings.HasPrefix(st.Value, suppressedPrefix)
+
+	if v.bad == "" { // recovery
+		if !seen || cur == "" {
+			return // nothing was bad; stay quiet
+		}
+		if notified {
+			e.send(ctx, n)
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", SentAt: now})
+		} else {
+			// The bad state was never announced — clear silently and keep the
+			// cooldown window so a flap can't reset it.
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", SentAt: st.SentAt})
+		}
+		return
+	}
+
+	// bad path
+	inCooldown := seen && now-st.SentAt < int64(e.cfg.Cooldown.Seconds())
+	escalation := notified && cur != "" && cur != v.bad && v.level == LevelCritical
+	if inCooldown && !escalation {
+		if st.Value != suppressed(v.bad) {
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: suppressed(v.bad), SentAt: st.SentAt})
+		}
+		return
+	}
+	e.send(ctx, n)
+	_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, SentAt: now})
+}
+
+func (e *Engine) send(ctx context.Context, n Notification) {
+	for _, d := range e.dispatchers {
+		if err := d.Send(ctx, n); err != nil {
+			e.log.Error("alert: send failed", "channel", d.Name(), "title", n.Title, "err", err)
+		} else {
+			e.log.Info("alert sent", "channel", d.Name(), "level", n.Level, "title", n.Title)
+		}
+	}
+}
+
+// SendTest pushes a test notification through every configured channel and
+// returns one error per failing channel (nil entries omitted).
+func (e *Engine) SendTest(ctx context.Context) map[string]error {
+	n := Notification{
+		Kind:  "test",
+		Level: LevelInfo,
+		Title: "Trove test notification",
+		Body:  "If you can read this, this channel is wired up correctly.",
+		At:    e.now(),
+	}
+	results := map[string]error{}
+	for _, d := range e.dispatchers {
+		results[d.Name()] = d.Send(ctx, n)
+	}
+	return results
+}
+
+func kindList(m map[string]bool) string {
+	var out []string
+	for k, on := range m {
+		if on {
+			out = append(out, k)
+		}
+	}
+	return strings.Join(out, ",")
+}

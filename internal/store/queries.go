@@ -46,6 +46,27 @@ type ServiceRow struct {
 	FreshnessCheckedAt sql.NullInt64
 }
 
+// FreshnessVerdict derives the image-freshness verdict for a service row by
+// comparing the running image digest to the latest digest cached from the
+// registry: "current", "outdated", or "unknown" (no data / locally built).
+// The services API and the alert engine share this definition.
+func (r *ServiceRow) FreshnessVerdict() string {
+	latest := ""
+	if r.LatestDigest.Valid {
+		latest = r.LatestDigest.String
+	}
+	switch {
+	case !r.FreshnessStatus.Valid || r.FreshnessStatus.String != "ok" || latest == "":
+		return "unknown"
+	case r.ImageDigest == "": // locally-built image, nothing to compare
+		return "unknown"
+	case r.ImageDigest == latest:
+		return "current"
+	default:
+		return "outdated"
+	}
+}
+
 // ListServices returns every service joined to its host and agent, ordered for
 // stable grouping (agent, host, name).
 func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
@@ -85,28 +106,31 @@ func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
 	return out, rows.Err()
 }
 
-// EventRow is a state-change event joined to its service and host, for the
-// recent-events feed.
+// EventRow is one event from the unified feed. Display fields are
+// denormalized onto the row at write time, so no joins are needed and events
+// outlive their subjects.
 type EventRow struct {
 	ID        int64
+	Kind      string // state | health | agent
+	ServiceID sql.NullInt64
+	AgentID   sql.NullInt64
+	Service   string
+	Hostname  string
+	Agent     string
 	FromState string
 	ToState   string
 	At        int64
-	Service   string
-	Hostname  string
 }
 
-// RecentEvents returns the most recent state-change events, newest first.
+// RecentEvents returns the most recent events, newest first.
 func (s *Store) RecentEvents(ctx context.Context, limit int) ([]EventRow, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT e.id, e.from_state, e.to_state, e.at, s.name, h.hostname
-		  FROM events e
-		  JOIN services s ON s.id = e.service_id
-		  JOIN hosts h    ON h.id = s.host_id
-		 ORDER BY e.at DESC, e.id DESC
+		SELECT id, kind, service_id, agent_id, service, hostname, agent, from_state, to_state, at
+		  FROM events
+		 ORDER BY at DESC, id DESC
 		 LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("recent events: %w", err)
@@ -116,7 +140,37 @@ func (s *Store) RecentEvents(ctx context.Context, limit int) ([]EventRow, error)
 	var out []EventRow
 	for rows.Next() {
 		var e EventRow
-		if err := rows.Scan(&e.ID, &e.FromState, &e.ToState, &e.At, &e.Service, &e.Hostname); err != nil {
+		if err := rows.Scan(&e.ID, &e.Kind, &e.ServiceID, &e.AgentID,
+			&e.Service, &e.Hostname, &e.Agent, &e.FromState, &e.ToState, &e.At); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// EventsAfter returns up to limit events with id greater than cursor, oldest
+// first — the alert engine's consumption order.
+func (s *Store) EventsAfter(ctx context.Context, cursor int64, limit int) ([]EventRow, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, kind, service_id, agent_id, service, hostname, agent, from_state, to_state, at
+		  FROM events
+		 WHERE id > ?
+		 ORDER BY id ASC
+		 LIMIT ?`, cursor, limit)
+	if err != nil {
+		return nil, fmt.Errorf("events after: %w", err)
+	}
+	defer rows.Close()
+
+	var out []EventRow
+	for rows.Next() {
+		var e EventRow
+		if err := rows.Scan(&e.ID, &e.Kind, &e.ServiceID, &e.AgentID,
+			&e.Service, &e.Hostname, &e.Agent, &e.FromState, &e.ToState, &e.At); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

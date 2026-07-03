@@ -5,14 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/techdox/trove/pkg/model"
 )
-
-// retentionWindow bounds the event log and how long soft-removed services
-// linger before being pruned. Phase 1 keeps no unbounded history.
-const retentionWindow = 24 * time.Hour
 
 // ApplyReport ingests a full-state report from the given agent inside a single
 // transaction. It is idempotent: applying the same report twice yields the
@@ -23,8 +18,9 @@ const retentionWindow = 24 * time.Hour
 //   - each reported service is upserted (correlated by host + external_id);
 //   - a service whose state changed since last report records an event;
 //   - services previously seen but absent from this report are soft-removed
-//     (state="removed") and record a transition event once;
-//   - events older than 24h and services removed for over 24h are pruned.
+//     (state="removed") and record a transition event once.
+//
+// Retention pruning is NOT done here — see Prune (maintenance.go).
 func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report) error {
 	now := s.now().Unix()
 
@@ -34,7 +30,8 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op after Commit
 
-	// 1. Refresh agent heartbeat + metadata.
+	// 1. Refresh agent heartbeat + metadata, and resolve the agent's display
+	// name (the token name, not the reported one) for event denormalization.
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE agents
 		    SET last_seen_at = ?, platform = ?, version = ?, report_interval_seconds = ?
@@ -42,6 +39,16 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		now, r.Agent.Platform, r.Agent.Version, r.Agent.IntervalSeconds, agentID,
 	); err != nil {
 		return fmt.Errorf("update agent heartbeat: %w", err)
+	}
+	var agentName string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT name FROM agents WHERE id = ?`, agentID).Scan(&agentName); err != nil {
+		return fmt.Errorf("resolve agent name: %w", err)
+	}
+	// evt captures the denormalized context shared by every event this report
+	// can produce.
+	evt := func(kind string, serviceID int64, svcName, from, to string) error {
+		return insertEvent(ctx, tx, kind, serviceID, svcName, r.Host.Hostname, agentName, from, to, now)
 	}
 
 	// 2. Upsert host, resolve host_id.
@@ -62,23 +69,25 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 
 	// 3. Load current services for this host (id + state), keyed by external_id.
 	type existing struct {
-		id    int64
-		state string
+		id     int64
+		name   string
+		state  string
+		health string
 	}
 	current := map[string]existing{}
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, external_id, state FROM services WHERE host_id = ?`, hostID)
+		`SELECT id, external_id, name, state, health FROM services WHERE host_id = ?`, hostID)
 	if err != nil {
 		return fmt.Errorf("load services: %w", err)
 	}
 	for rows.Next() {
 		var id int64
-		var extID, state string
-		if err := rows.Scan(&id, &extID, &state); err != nil {
+		var extID, name, state, health string
+		if err := rows.Scan(&id, &extID, &name, &state, &health); err != nil {
 			rows.Close()
 			return err
 		}
-		current[extID] = existing{id: id, state: state}
+		current[extID] = existing{id: id, name: name, state: state, health: health}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -97,7 +106,12 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		if ex, ok := current[svc.ExternalID]; ok {
 			idByExtID[svc.ExternalID] = ex.id
 			if ex.state != svc.State {
-				if err := insertEvent(ctx, tx, ex.id, ex.state, svc.State, now); err != nil {
+				if err := evt(EventKindState, ex.id, svc.Name, ex.state, svc.State); err != nil {
+					return err
+				}
+			}
+			if ex.health != string(svc.Health) {
+				if err := evt(EventKindHealth, ex.id, svc.Name, ex.health, string(svc.Health)); err != nil {
 					return err
 				}
 			}
@@ -128,8 +142,8 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		}
 		newID, _ := res.LastInsertId()
 		idByExtID[svc.ExternalID] = newID
-		// Record the appearance so it shows in the 24h event feed.
-		if err := insertEvent(ctx, tx, newID, "", svc.State, now); err != nil {
+		// Record the appearance so it shows in the event feed.
+		if err := evt(EventKindState, newID, svc.Name, "", svc.State); err != nil {
 			return err
 		}
 	}
@@ -166,7 +180,9 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		if ex.state == model.StateRemoved {
 			continue // already removed; leave updated_at so it can age out
 		}
-		if err := insertEvent(ctx, tx, ex.id, ex.state, model.StateRemoved, now); err != nil {
+		// A removal is a state event only; the accompanying health reset to
+		// "unknown" would just be noise.
+		if err := evt(EventKindState, ex.id, ex.name, ex.state, model.StateRemoved); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
@@ -177,33 +193,26 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		}
 	}
 
-	// 7. Prune old events and long-removed services.
-	cutoff := now - int64(retentionWindow.Seconds())
-	if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE at < ?`, cutoff); err != nil {
-		return fmt.Errorf("prune events: %w", err)
-	}
-	// Null out any child whose parent is about to be pruned, so we never leave
-	// a dangling parent_id (we manage this in code rather than via an FK).
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE services SET parent_id = NULL
-		  WHERE parent_id IN (SELECT id FROM services WHERE state = ? AND updated_at < ?)`,
-		model.StateRemoved, cutoff,
-	); err != nil {
-		return fmt.Errorf("null dangling parents: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM services WHERE state = ? AND updated_at < ?`, model.StateRemoved, cutoff,
-	); err != nil {
-		return fmt.Errorf("prune removed services: %w", err)
-	}
-
+	// Pruning of old events and long-removed services happens on the server's
+	// maintenance ticker (store.Prune), not on the ingest write path.
 	return tx.Commit()
 }
 
-func insertEvent(ctx context.Context, tx *sql.Tx, serviceID int64, from, to string, at int64) error {
+// Event kinds. The events table carries three streams that the dashboard feed
+// and the alert engine both consume.
+const (
+	EventKindState  = "state"  // service platform-state transition
+	EventKindHealth = "health" // service health transition
+	EventKindAgent  = "agent"  // agent heartbeat-status transition
+)
+
+// insertEvent records a service-scoped event with its display context
+// denormalized, so the event stays renderable after the service is pruned.
+func insertEvent(ctx context.Context, tx *sql.Tx, kind string, serviceID int64, svcName, hostname, agentName, from, to string, at int64) error {
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO events(service_id, from_state, to_state, at) VALUES (?, ?, ?, ?)`,
-		serviceID, from, to, at,
+		`INSERT INTO events(kind, service_id, service, hostname, agent, from_state, to_state, at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		kind, serviceID, svcName, hostname, agentName, from, to, at,
 	); err != nil {
 		return fmt.Errorf("insert event: %w", err)
 	}

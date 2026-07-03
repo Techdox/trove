@@ -368,13 +368,32 @@ function renderEvents() {
   el.innerHTML = events.slice(0, 40).map(eventRowHTML).join("");
 }
 
+const HEALTH_TEXT_CLASS = { healthy: "st-green", unhealthy: "st-red", stale: "st-yellow" };
+const AGENT_TEXT_CLASS = { ok: "st-green", stale: "st-yellow", offline: "st-red" };
+
 function eventRowHTML(e) {
   const from = e.from_state || "∅";
+  let what;
+  switch (e.kind) {
+    case "agent":
+      what = `<span class="kind">agent</span> <strong>${esc(e.agent)}</strong>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${AGENT_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
+      break;
+    case "health":
+      what = `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
+        <span class="kind">health</span>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${HEALTH_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
+      break;
+    default: // state
+      what = `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${stateTextClass(e.to_state)}">${esc(e.to_state)}</span>`;
+  }
   return `<div class="event-row">
     <span class="when nowrap">${esc(relTime(e.at))}</span>
-    <span class="what"><strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
-      &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
-      <span class="${stateTextClass(e.to_state)}">${esc(e.to_state)}</span></span>
+    <span class="what">${what}</span>
   </div>`;
 }
 

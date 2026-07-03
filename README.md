@@ -27,7 +27,12 @@ not a feature toggle, and it's the project's one hard rule.
   quiet flags itself and all its services within ~90 seconds.
 - **Image freshness** — the server checks registries (batched, cached,
   rate-limit-aware) and badges services whose running image is behind its tag.
-- **State-change events** — a rolling 24h feed of started/stopped/appeared/removed.
+- **Alerts & digest** — instant notifications via webhook / Discord / ntfy when
+  a host stops reporting, a service goes unhealthy or dies, or an image falls
+  behind — with recovery notices, flap suppression, and a scheduled email
+  digest. See [docs/alerts.md](docs/alerts.md).
+- **State-change events** — a feed of started/stopped/unhealthy/appeared/removed
+  (30-day retention, configurable).
 - **Fast, dense dashboard** — no framework, keyboard-driven (`/` filter,
   `j`/`k` navigate, `enter` for details), auto-refreshing.
 - **Trivial to operate** — one static binary (or container) per role, SQLite
@@ -132,6 +137,9 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 | `TROVE_FRESHNESS_INTERVAL` | `5m`       | How often to scan for images due a check.                              |
 | `TROVE_FRESHNESS_TTL`      | `6h`       | How long a resolved digest counts as fresh before rechecking.          |
 | `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
+| `TROVE_EVENT_RETENTION`    | `720h`     | How long events (activity feed / alert stream) are kept.               |
+| `TROVE_REMOVED_RETENTION`  | `24h`      | How long removed services linger before being purged.                  |
+| `TROVE_ALERT_*` / `TROVE_SMTP_*` / `TROVE_DIGEST` | _(unset)_ | Notifications & email digest — see [docs/alerts.md](docs/alerts.md). |
 | `TROVE_BOOTSTRAP_AGENT` / `TROVE_BOOTSTRAP_TOKEN` | _(unset)_ | Seed one agent at startup (used by the quickstart compose). |
 
 Private registry / Docker Hub credentials for freshness checks:
@@ -162,6 +170,7 @@ each [agent guide](docs/agents/).
 trove-server agent create <name>    # mint a token (shown once, stored hashed)
 trove-server agent list             # names, platform, status, last seen
 trove-server agent delete <name>    # remove an agent and all its data
+trove-server alert test             # push a test notification through configured channels
 ```
 
 ## API
@@ -213,9 +222,9 @@ into the server binary.
 
 ## Roadmap & contributing
 
-Planned next: alerts/webhooks, email digests, configurable retention, OIDC,
-Helm chart — see [ROADMAP.md](ROADMAP.md) for the reasoning and sequencing.
-Contributions welcome: start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Planned next: OIDC / dashboard auth, Helm chart, cert-expiry monitoring — see
+[ROADMAP.md](ROADMAP.md) for the reasoning and sequencing. Contributions
+welcome: start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

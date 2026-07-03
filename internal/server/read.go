@@ -60,8 +60,10 @@ type agentsResponse struct {
 }
 
 type eventDTO struct {
-	Service   string `json:"service"`
-	Hostname  string `json:"hostname"`
+	Kind      string `json:"kind"` // state | health | agent
+	Service   string `json:"service,omitempty"`
+	Hostname  string `json:"hostname,omitempty"`
+	Agent     string `json:"agent,omitempty"`
 	FromState string `json:"from_state"`
 	ToState   string `json:"to_state"`
 	At        string `json:"at"`
@@ -100,23 +102,11 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 			idx = len(hosts) - 1
 			byHost[row.HostID] = idx
 		}
-		// Derive per-service freshness by comparing the running image digest
-		// to the latest digest cached from the registry.
 		latestDigest := ""
 		if row.LatestDigest.Valid {
 			latestDigest = row.LatestDigest.String
 		}
-		freshness := "unknown"
-		switch {
-		case !row.FreshnessStatus.Valid || row.FreshnessStatus.String != "ok" || latestDigest == "":
-			freshness = "unknown"
-		case row.ImageDigest == "": // locally-built image, nothing to compare
-			freshness = "unknown"
-		case row.ImageDigest == latestDigest:
-			freshness = "current"
-		default:
-			freshness = "outdated"
-		}
+		freshness := row.FreshnessVerdict()
 
 		hosts[idx].Services = append(hosts[idx].Services, serviceDTO{
 			ExternalID:       row.ExternalID,
@@ -185,8 +175,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	out := make([]eventDTO, 0, len(events))
 	for _, e := range events {
 		out = append(out, eventDTO{
+			Kind:      e.Kind,
 			Service:   e.Service,
 			Hostname:  e.Hostname,
+			Agent:     e.Agent,
 			FromState: e.FromState,
 			ToState:   e.ToState,
 			At:        rfc3339(e.At),

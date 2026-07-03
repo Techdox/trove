@@ -1,15 +1,13 @@
 # Trove Roadmap
 
-**Status:** Phases 1–3 are shipped on `main` — Docker/Kubernetes/Proxmox/
+**Status:** Phases 1–4 are shipped on `main` — Docker/Kubernetes/Proxmox/
 bare-metal agents, per-agent token auth, heartbeat/staleness, image freshness,
-and the parent/child model (decision D2, below, is implemented). Trove is now
-open source (MIT) with released binaries and GHCR images. See the
-[README](README.md) for what exists today. Phases 4–5 remain.
-
-This document sequences the remaining work and records the two decisions that
-must be made *before* the phase that needs them, because getting them wrong
-means a migration or a rewrite later. D2 (parent/child) shipped with Phase 3;
-D1 (retention) is still open and gates Phase 4.
+the parent/child model, configurable retention, and alerting (webhook/Discord/
+ntfy + email digest — see [docs/alerts.md](docs/alerts.md)). Both pinned
+decisions are resolved: D2 (parent/child) shipped with Phase 3, D1 (retention)
+with Phase 4. Licensed MIT and prepared for public release. See the
+[README](README.md) for what exists today. Phase 5 remains, plus cert
+monitoring (deferred out of Phase 4).
 
 ## Principles carried forward
 
@@ -74,18 +72,26 @@ platform onto `model.Report`.
 
 ---
 
-## Phase 4 — Notifications & reporting
+## Phase 4 — Notifications & reporting ✅ delivered
 
 **Goal:** stop needing to watch the dashboard.
 
-- **Alerts / webhooks** fired on state transitions. The `events` table already
-  records transitions — but see **[Decision D1](#d1--retention--history)**:
-  today they're pruned at 24h, which is too aggressive for reliable alerting and
-  digests.
-- **Email reports:** scheduled digests (daily/weekly summary, what changed).
-- **Cert monitoring:** track TLS expiry for services that expose it.
+**Delivered** (see [docs/alerts.md](docs/alerts.md)):
 
-Depends on the retention decision landing first.
+- Unified event stream: state, health, and agent-heartbeat transitions all
+  land in `events` (denormalized so history outlives its subjects), shown in
+  the dashboard feed and consumed by the alert engine via a persistent cursor.
+- Instant channels: generic webhook, Discord, ntfy — with severity levels,
+  recovery notices, per-key cooldown/flap suppression, escalation bypass, and
+  silent seeding (no alarm floods at boot).
+- Scheduled email digest (SMTP, `daily@HH:MM` / `weekly@day:HH:MM`).
+- `trove-server alert test` to verify channel config.
+- **Decision D1 resolved**: retention configurable (`TROVE_EVENT_RETENTION`
+  default 30d, `TROVE_REMOVED_RETENTION` default 24h), pruning moved off the
+  ingest write path onto an hourly maintenance loop.
+
+**Deferred out of this phase:** cert-expiry monitoring — needs its own probing
+design (targets, SNI, self-signed policy); slated alongside Phase 5.
 
 ---
 
@@ -107,14 +113,15 @@ Depends on the retention decision landing first.
 These two ripple across later phases. Deciding them once, early, is far cheaper
 than migrating twice.
 
-### D1 — Retention & history
+### D1 — Retention & history ✅ resolved (Phase 4)
 
 **Problem:** Phase 1 keeps only the latest state per service plus a 24h rolling
 event log, pruned on the write path. That is deliberately minimal and is fine
 for a live dashboard, but Phase 4 breaks against it: alerting can't miss events,
 and weekly digests need more than 24h of history.
 
-**Proposed direction:**
+**Implemented as proposed** (migration 0004 + `store.Prune` + the server's
+hourly maintenance loop):
 - Make retention **configurable** (e.g. `TROVE_EVENT_RETENTION`, default 24h),
   and raise it (30–90d) once reporting exists.
 - **Move pruning off the write path** to a periodic maintenance job once volume

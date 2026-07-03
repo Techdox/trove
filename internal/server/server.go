@@ -30,6 +30,9 @@ type Server struct {
 	// until ConfigureFreshness is called.
 	freshness FreshnessConfig
 	registry  *registry.Client
+
+	// retention drives the maintenance loop (event/removed-service pruning).
+	retention RetentionConfig
 }
 
 // New constructs a Server and registers its routes.
@@ -99,7 +102,18 @@ func (s *Server) evaluateStaleness(ctx context.Context) {
 			t := time.Unix(a.LastSeenAt.Int64, 0).UTC()
 			lastSeen = &t
 		}
-		if staleness.StaleOrWorse(staleness.Evaluate(lastSeen, a.IntervalSeconds, now)) {
+		status := staleness.Evaluate(lastSeen, a.IntervalSeconds, now)
+		// Record heartbeat transitions (ok<->stale<->offline) as agent events
+		// for the feed and the alert engine. Never-seen agents are skipped so
+		// a freshly minted token doesn't sit in the feed as "unknown".
+		if status != staleness.StatusUnknown {
+			if changed, err := s.store.UpdateAgentStatus(ctx, a.ID, a.Name, string(status)); err != nil {
+				s.log.Error("staleness: record agent status", "agent", a.Name, "err", err)
+			} else if changed {
+				s.log.Info("agent status changed", "agent", a.Name, "status", status)
+			}
+		}
+		if staleness.StaleOrWorse(status) {
 			staleIDs = append(staleIDs, a.ID)
 		}
 	}

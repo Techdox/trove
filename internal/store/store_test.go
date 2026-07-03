@@ -98,7 +98,7 @@ func TestApplyReportUpsertAndEvents(t *testing.T) {
 		t.Fatalf("re-apply should add no events, got %d", len(evs))
 	}
 
-	// State change on c1 => one new event.
+	// State + health change on c1 => one state event and one health event.
 	*clock = clock.Add(30 * time.Second)
 	if err := st.ApplyReport(ctx, agent.ID, report(
 		svc("c1", "exited", model.HealthUnhealthy),
@@ -107,11 +107,47 @@ func TestApplyReportUpsertAndEvents(t *testing.T) {
 		t.Fatalf("apply 3: %v", err)
 	}
 	evs, _ := st.RecentEvents(ctx, 100)
-	if len(evs) != 3 {
-		t.Fatalf("state change should add one event, got %d total", len(evs))
+	if len(evs) != 4 {
+		t.Fatalf("state+health change should add two events, got %d total", len(evs))
 	}
-	if evs[0].FromState != "running" || evs[0].ToState != "exited" {
-		t.Fatalf("newest event = %s->%s, want running->exited", evs[0].FromState, evs[0].ToState)
+	// Newest first: the health event is inserted after the state event.
+	if evs[0].Kind != EventKindHealth || evs[0].FromState != "healthy" || evs[0].ToState != "unhealthy" {
+		t.Fatalf("newest event = %s %s->%s, want health healthy->unhealthy", evs[0].Kind, evs[0].FromState, evs[0].ToState)
+	}
+	if evs[1].Kind != EventKindState || evs[1].FromState != "running" || evs[1].ToState != "exited" {
+		t.Fatalf("second event = %s %s->%s, want state running->exited", evs[1].Kind, evs[1].FromState, evs[1].ToState)
+	}
+	// Denormalized display context survives without joins.
+	if evs[0].Service != "c1" || evs[0].Hostname != "host-a" || evs[0].Agent != "docker-a" {
+		t.Fatalf("event context = %q@%q by %q, want c1@host-a by docker-a", evs[0].Service, evs[0].Hostname, evs[0].Agent)
+	}
+}
+
+func TestUpdateAgentStatusEvents(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+
+	// First evaluation seeds silently.
+	changed, err := st.UpdateAgentStatus(ctx, agent.ID, agent.Name, "ok")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if changed {
+		t.Fatal("first status must seed silently, not emit an event")
+	}
+	// Same status: no event.
+	if changed, _ = st.UpdateAgentStatus(ctx, agent.ID, agent.Name, "ok"); changed {
+		t.Fatal("unchanged status must not emit an event")
+	}
+	// Transition: event recorded.
+	if changed, _ = st.UpdateAgentStatus(ctx, agent.ID, agent.Name, "stale"); !changed {
+		t.Fatal("ok->stale must emit an event")
+	}
+	evs, _ := st.RecentEvents(ctx, 10)
+	if len(evs) != 1 || evs[0].Kind != EventKindAgent ||
+		evs[0].FromState != "ok" || evs[0].ToState != "stale" || evs[0].Agent != "docker-a" {
+		t.Fatalf("unexpected agent event: %+v", evs)
 	}
 }
 
@@ -142,21 +178,50 @@ func TestApplyReportSoftRemove(t *testing.T) {
 	}
 }
 
-func TestApplyReportPrunesOldRemoved(t *testing.T) {
+func TestPruneRetentionWindows(t *testing.T) {
 	st, clock := newTestStore(t)
 	ctx := context.Background()
 	_, agent, _ := st.CreateAgent(ctx, "docker-a")
 
 	_ = st.ApplyReport(ctx, agent.ID, report(svc("c1", "running", model.HealthHealthy)))
 	*clock = clock.Add(30 * time.Second)
-	_ = st.ApplyReport(ctx, agent.ID, report()) // c1 removed
+	_ = st.ApplyReport(ctx, agent.ID, report()) // c1 soft-removed
 
-	// Jump past the 24h retention window and push again; the removed row prunes.
+	// Ingest no longer prunes: even far in the future, rows persist until a
+	// maintenance pass runs.
 	*clock = clock.Add(25 * time.Hour)
 	_ = st.ApplyReport(ctx, agent.ID, report())
-	rows, _ := st.ListServices(ctx)
-	if len(rows) != 0 {
-		t.Fatalf("expected removed service to be pruned, got %d rows", len(rows))
+	if rows, _ := st.ListServices(ctx); len(rows) != 1 {
+		t.Fatalf("ingest must not prune; got %d rows", len(rows))
+	}
+
+	// Removed-retention (24h) has elapsed but event-retention (30d) has not:
+	// the removed service goes, the events stay.
+	stats, err := st.Prune(ctx, int64((30 * 24 * time.Hour).Seconds()), int64((24 * time.Hour).Seconds()))
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if stats.RemovedServices != 1 {
+		t.Fatalf("want 1 removed service pruned, got %d", stats.RemovedServices)
+	}
+	if rows, _ := st.ListServices(ctx); len(rows) != 0 {
+		t.Fatalf("removed service should be pruned, got %d rows", len(rows))
+	}
+	if evs, _ := st.RecentEvents(ctx, 100); len(evs) == 0 {
+		t.Fatal("events within retention must survive the prune")
+	}
+
+	// Now advance past event retention: events prune too.
+	*clock = clock.Add(31 * 24 * time.Hour)
+	stats, err = st.Prune(ctx, int64((30 * 24 * time.Hour).Seconds()), int64((24 * time.Hour).Seconds()))
+	if err != nil {
+		t.Fatalf("prune 2: %v", err)
+	}
+	if stats.Events == 0 {
+		t.Fatal("expected old events to be pruned")
+	}
+	if evs, _ := st.RecentEvents(ctx, 100); len(evs) != 0 {
+		t.Fatalf("events past retention should be gone, got %d", len(evs))
 	}
 }
 

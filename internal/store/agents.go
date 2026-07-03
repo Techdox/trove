@@ -30,6 +30,9 @@ type Agent struct {
 	IntervalSeconds int
 	CreatedAt       int64
 	LastSeenAt      sql.NullInt64
+	// LastStatus is the most recent heartbeat verdict recorded by the
+	// staleness loop ("ok"/"stale"/"offline"; empty until first evaluated).
+	LastStatus string
 }
 
 // HashToken returns the hex SHA-256 of a bearer token. Tokens are
@@ -131,7 +134,7 @@ func (s *Store) AuthenticateByToken(ctx context.Context, token string) (Agent, e
 // ListAgents returns all agents ordered by name, for the /agents API.
 func (s *Store) ListAgents(ctx context.Context) ([]Agent, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, platform, version, report_interval_seconds, created_at, last_seen_at
+		`SELECT id, name, platform, version, report_interval_seconds, created_at, last_seen_at, last_status
 		   FROM agents ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
@@ -141,12 +144,51 @@ func (s *Store) ListAgents(ctx context.Context) ([]Agent, error) {
 	var out []Agent
 	for rows.Next() {
 		var a Agent
-		if err := rows.Scan(&a.ID, &a.Name, &a.Platform, &a.Version, &a.IntervalSeconds, &a.CreatedAt, &a.LastSeenAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Platform, &a.Version, &a.IntervalSeconds, &a.CreatedAt, &a.LastSeenAt, &a.LastStatus); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// UpdateAgentStatus records an agent's heartbeat verdict (ok/stale/offline),
+// emitting a kind='agent' event when it changes. The first-ever evaluation
+// (empty last_status) seeds silently so a fresh install or a migrated database
+// doesn't fire a wave of spurious "agent is ok" events. Returns whether a
+// transition event was recorded.
+func (s *Store) UpdateAgentStatus(ctx context.Context, agentID int64, agentName, status string) (bool, error) {
+	now := s.now().Unix()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after Commit
+
+	var last string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT last_status FROM agents WHERE id = ?`, agentID).Scan(&last); err != nil {
+		return false, fmt.Errorf("read agent status: %w", err)
+	}
+	if last == status {
+		return false, tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE agents SET last_status = ? WHERE id = ?`, status, agentID); err != nil {
+		return false, fmt.Errorf("update agent status: %w", err)
+	}
+	if last == "" {
+		return false, tx.Commit() // silent seed
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO events(kind, agent_id, agent, from_state, to_state, at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		EventKindAgent, agentID, agentName, last, status, now,
+	); err != nil {
+		return false, fmt.Errorf("insert agent event: %w", err)
+	}
+	return true, tx.Commit()
 }
 
 // DeleteAgent removes an agent and (via cascade) its hosts, services, and

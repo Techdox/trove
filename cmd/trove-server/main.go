@@ -24,6 +24,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/techdox/trove/internal/alert"
 	"github.com/techdox/trove/internal/server"
 	"github.com/techdox/trove/internal/staleness"
 	"github.com/techdox/trove/internal/store"
@@ -45,6 +46,8 @@ func main() {
 		err = runServe()
 	case "agent":
 		err = runAgent(args[1:])
+	case "alert":
+		err = runAlertCmd(args[1:])
 	case "healthcheck":
 		err = runHealthcheck()
 	case "version", "-v", "--version":
@@ -69,6 +72,7 @@ Commands:
   agent create <name>       mint a bearer token for a new agent
   agent list                list agents with last-seen status
   agent delete <name>       remove an agent and all its data
+  alert test                send a test notification through configured channels
   healthcheck               probe /healthz on the local server (exit 0/1)
 
 Environment:
@@ -111,9 +115,13 @@ func runServe() error {
 	defer stop()
 
 	srv.ConfigureFreshness(server.LoadFreshnessConfigFromEnv())
+	srv.ConfigureRetention(server.LoadRetentionConfigFromEnv())
 
 	go srv.RunStalenessLoop(ctx)
 	go srv.RunFreshnessLoop(ctx)
+	go srv.RunMaintenanceLoop(ctx)
+	go alert.NewEngine(st, logger, alert.LoadConfigFromEnv()).Run(ctx)
+	go alert.NewDigester(st, logger, alert.LoadDigestConfigFromEnv()).Run(ctx)
 
 	httpSrv := &http.Server{
 		Addr:              addr,
@@ -161,6 +169,50 @@ func bootstrapAgent(ctx context.Context, st *store.Store, logger *slog.Logger) e
 	if created {
 		logger.Warn("bootstrapped dev agent from env (do not use in production)", "agent", name)
 	}
+	return nil
+}
+
+// runAlertCmd handles `trove-server alert test`: it pushes a test
+// notification through every configured instant channel and, if SMTP is set
+// up, sends a sample digest. This is how operators verify their alerting env
+// vars before trusting them.
+func runAlertCmd(args []string) error {
+	if len(args) == 0 || args[0] != "test" {
+		return errors.New("usage: trove-server alert test")
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	st, err := openStore()
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	cfg := alert.LoadConfigFromEnv()
+	if !cfg.Enabled() {
+		fmt.Println("no instant channels configured (TROVE_ALERT_WEBHOOK_URL / _DISCORD_URL / _NTFY_URL)")
+	} else {
+		results := alert.NewEngine(st, logger, cfg).SendTest(ctx)
+		for name, rerr := range results {
+			if rerr != nil {
+				fmt.Printf("  %-8s FAILED: %v\n", name, rerr)
+			} else {
+				fmt.Printf("  %-8s ok\n", name)
+			}
+		}
+	}
+
+	dcfg := alert.LoadDigestConfigFromEnv()
+	if !dcfg.Enabled() {
+		fmt.Println("email digest not configured (TROVE_SMTP_* / TROVE_DIGEST)")
+		return nil
+	}
+	fmt.Println("sending sample digest (covering the last 24h)…")
+	if err := alert.NewDigester(st, logger, dcfg).SendNow(ctx, time.Now().Add(-24*time.Hour)); err != nil {
+		fmt.Printf("  digest   FAILED: %v\n", err)
+		return err
+	}
+	fmt.Println("  digest   ok")
 	return nil
 }
 

@@ -173,7 +173,8 @@ no unbounded history in Phase 1.
 
 ## Roadmap
 
-Deferred to later phases, deliberately not built yet:
+See [ROADMAP.md](ROADMAP.md) for the phased plan and the two schema/retention
+decisions pinned for early resolution. In brief, deferred to later phases:
 
 - Kubernetes / Proxmox / bare-metal agents (the `services` schema already
   reserves `pod`, `vm`, `lxc`, `process` kinds).

@@ -7,6 +7,8 @@
 # Runs as nonroot; these agents only need outbound network + a token, no host
 # access. (The Docker agent uses Dockerfile.agent instead, as it must read the
 # Docker socket; the local/systemd agent runs as a host binary — see README.)
+# Dev/compose image; the release counterparts are build/docker/Dockerfile.agent-k8s
+# and build/docker/Dockerfile.agent-proxmox — keep base image/user in sync.
 ARG CMD=trove-agent-k8s
 
 FROM golang:1.26 AS build

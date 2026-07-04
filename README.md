@@ -139,7 +139,8 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 | `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
 | `TROVE_EVENT_RETENTION`    | `720h`     | How long events (activity feed / alert stream) are kept.               |
 | `TROVE_REMOVED_RETENTION`  | `24h`      | How long removed services linger before being purged.                  |
-| `TROVE_ALERT_*` / `TROVE_SMTP_*` / `TROVE_DIGEST` | _(unset)_ | Notifications & email digest — see [docs/alerts.md](docs/alerts.md). |
+| `TROVE_ALERT_*` / `TROVE_SMTP_*` | _(unset)_ | Notification channels & SMTP — see [docs/alerts.md](docs/alerts.md). |
+| `TROVE_DIGEST`             | `daily@08:00`* | Digest schedule; *only takes effect once `TROVE_SMTP_*` is set — see [docs/alerts.md](docs/alerts.md). |
 | `TROVE_BOOTSTRAP_AGENT` / `TROVE_BOOTSTRAP_TOKEN` | _(unset)_ | Seed one agent at startup (used by the quickstart compose). |
 
 Private registry / Docker Hub credentials for freshness checks:
@@ -159,9 +160,10 @@ checks at homelab scale, but if you run many distinct Hub images, adding a
 | `TROVE_SERVER_URL` | _(required)_ | Base URL of the server.                            |
 | `TROVE_TOKEN`      | _(required)_ | Bearer token from `trove-server agent create`.     |
 | `TROVE_INTERVAL`   | `30s`        | Push interval (`30s`, `1m`, or bare seconds `30`). |
+| `TROVE_AGENT_NAME` | hostname     | Informational; not used for the dashboard display name (see below). For the bare-metal agent specifically, it (or the OS hostname) becomes the reported host name. |
 
-The name an agent appears under is the one you chose in
-`trove-server agent create <name>`. Platform-specific settings are covered in
+The name an agent appears under on the dashboard is the one you chose in
+`trove-server agent create <name>` — not `TROVE_AGENT_NAME`. Platform-specific settings are covered in
 each [agent guide](docs/agents/).
 
 ### Managing agents

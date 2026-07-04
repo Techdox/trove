@@ -131,7 +131,7 @@ hourly maintenance loop):
 - Each new cache (the Phase 2 `image_checks` table) gets its *own* retention;
   don't couple them.
 
-### D2 — Parent/child schema
+### D2 — Parent/child schema ✅ resolved (Phase 3)
 
 **Problem:** in Phase 1 a Docker container is simultaneously the logical unit and
 its only instance, so `services` is flat. Kubernetes breaks that: one Deployment

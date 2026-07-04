@@ -1,7 +1,9 @@
 package alert
 
 import (
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"mime"
 	"net"
@@ -73,7 +75,7 @@ func sendSMTP(cfg DigestConfig, subject, text, htmlBody string) error {
 }
 
 func buildMIME(cfg DigestConfig, subject, text, htmlBody string) []byte {
-	boundary := "trove-digest-boundary"
+	boundary := "trove-digest-" + randomBoundarySuffix()
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", cfg.From)
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(cfg.To, ", "))
@@ -84,7 +86,8 @@ func buildMIME(cfg DigestConfig, subject, text, htmlBody string) []byte {
 
 	part := func(contentType, body string) {
 		fmt.Fprintf(&b, "--%s\r\n", boundary)
-		fmt.Fprintf(&b, "Content-Type: %s; charset=utf-8\r\n\r\n", contentType)
+		fmt.Fprintf(&b, "Content-Type: %s; charset=utf-8\r\n", contentType)
+		b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
 		// Normalize to CRLF line endings for SMTP.
 		b.WriteString(strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\n", "\r\n"))
 		b.WriteString("\r\n")
@@ -93,4 +96,17 @@ func buildMIME(cfg DigestConfig, subject, text, htmlBody string) []byte {
 	part("text/html", htmlBody)
 	fmt.Fprintf(&b, "--%s--\r\n", boundary)
 	return []byte(b.String())
+}
+
+// randomBoundarySuffix returns a random hex string so the MIME boundary can
+// never collide with literal text inside the digest body (e.g. if a service
+// or image name happened to contain the fixed boundary string).
+func randomBoundarySuffix() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		// crypto/rand failing is effectively unreachable on any real OS; fall
+		// back to a fixed-but-unlikely suffix rather than panicking a digest send.
+		return "fallback"
+	}
+	return hex.EncodeToString(buf)
 }

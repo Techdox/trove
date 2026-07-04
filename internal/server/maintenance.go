@@ -46,8 +46,13 @@ func (s *Server) ConfigureRetention(cfg RetentionConfig) {
 // ticker (plus once at startup). Pruning is deliberately off the report-ingest
 // write path so heavy fleets don't pay for it on every push.
 func (s *Server) RunMaintenanceLoop(ctx context.Context) {
+	// Each window is guarded independently: a zero/unset Removed must not
+	// mean "prune removed services immediately on every pass."
 	if s.retention.Events <= 0 {
-		s.retention = RetentionConfig{Events: defaultEventRetention, Removed: defaultRemovedRetention}
+		s.retention.Events = defaultEventRetention
+	}
+	if s.retention.Removed <= 0 {
+		s.retention.Removed = defaultRemovedRetention
 	}
 	t := time.NewTicker(maintenanceInterval)
 	defer t.Stop()

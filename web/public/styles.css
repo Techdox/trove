@@ -226,9 +226,9 @@ thead th {
   border-bottom: 1px solid var(--surface0);
 }
 th.w-service { width: 21%; }
-th.w-state   { width: 86px; }
-th.w-health  { width: 86px; }
-th.w-fresh   { width: 96px; }
+th.w-state   { width: 110px; }
+th.w-health  { width: 104px; }
+th.w-fresh   { width: 116px; }
 th.w-ports   { width: 15%; }
 th.w-seen    { width: 84px; }
 /* image column takes the remainder */
@@ -249,6 +249,10 @@ tbody tr.removed { opacity: 0.5; }
 tbody tr.removed .svc-name { text-decoration: line-through; }
 
 td.svc { text-overflow: ellipsis; }
+/* Badge-only cells (state/health/freshness): tighter padding so the column
+   width goes to the badge, not wasted margin — a badge like "up to date" or
+   "restarting" needs most of the ~90-110px column to avoid clipping. */
+tbody td.badgecell { padding-left: 8px; padding-right: 8px; }
 .svc-name { color: var(--text); font-weight: 600; }
 .tree { color: var(--overlay0); }
 .kind {

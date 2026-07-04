@@ -41,6 +41,7 @@ sudo systemctl enable --now trove-agent-local
 | `TROVE_SERVER_URL`        | _(required)_ | Base URL of the Trove server.                                |
 | `TROVE_TOKEN`             | _(required)_ | Token from `agent create`.                                   |
 | `TROVE_INTERVAL`          | `30s`        | Push interval.                                               |
+| `TROVE_AGENT_NAME`        | OS hostname  | Becomes the reported **host name** shown on the dashboard for this box (unlike other agents, where this variable is informational only). |
 | `TROVE_LOCAL_UNIT_FILTER` | _(all)_      | Glob to select units, e.g. `docker*` or `nginx.service`.     |
 | `TROVE_LOCAL_ALL`         | `false`      | `true` to include inactive units (default: active + failed). |
 

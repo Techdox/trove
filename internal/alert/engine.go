@@ -90,7 +90,22 @@ func (e *Engine) sweepEvents(ctx context.Context) {
 		}
 		return
 	}
-	cursor, _ := strconv.ParseInt(raw, 10, 64)
+	cursor, perr := strconv.ParseInt(raw, 10, 64)
+	if perr != nil {
+		// A corrupted cursor must never silently become 0 — that would replay
+		// the entire event history and re-fire every historical transition.
+		// Re-seed at the stream head instead, same as a fresh install.
+		e.log.Error("alert: corrupt cursor, reseeding at stream head", "raw", raw, "err", perr)
+		maxID, merr := e.store.MaxEventID(ctx)
+		if merr != nil {
+			e.log.Error("alert: reseed cursor", "err", merr)
+			return
+		}
+		if err := e.store.SetMeta(ctx, cursorKey, strconv.FormatInt(maxID, 10)); err != nil {
+			e.log.Error("alert: store cursor", "err", err)
+		}
+		return
+	}
 
 	events, err := e.store.EventsAfter(ctx, cursor, 500)
 	if err != nil {
@@ -284,7 +299,10 @@ func (e *Engine) sweepFreshness(ctx context.Context) {
 			continue
 		}
 		verdict := row.FreshnessVerdict()
-		key := "fresh:" + row.AgentName + "/" + row.Hostname + "/" + row.ExternalID
+		// \x1f (unit separator) can't appear in agent/host/external_id values
+		// an operator would type, unlike "/" — avoids two distinct services
+		// colliding on the same key if a name happens to contain a slash.
+		key := "fresh:" + row.AgentName + "\x1f" + row.Hostname + "\x1f" + row.ExternalID
 
 		st, seen, err := e.store.GetAlertState(ctx, key)
 		if err != nil {
@@ -292,25 +310,23 @@ func (e *Engine) sweepFreshness(ctx context.Context) {
 			return
 		}
 		if !seen {
-			// First sight seeds silently — a fresh engine must not announce
-			// fifteen already-outdated images at boot. Bad values are seeded
-			// with the suppressed marker so no phantom "resolved" fires later.
-			seed := verdict
+			// First sight seeds silently, unnotified — a fresh engine must not
+			// announce fifteen already-outdated images at boot.
+			seed := ""
 			if verdict == "outdated" {
-				seed = suppressed(verdict)
+				seed = "outdated"
 			}
 			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: seed})
 			continue
 		}
-		cur := strings.TrimPrefix(st.Value, suppressedPrefix)
-		if cur == verdict {
-			continue
+		if st.Value == verdict {
+			continue // no change
 		}
 		n := Notification{
 			Kind:    "freshness",
 			Host:    row.Hostname,
 			Service: row.Name,
-			From:    cur,
+			From:    st.Value,
 			To:      verdict,
 			At:      e.now(),
 		}
@@ -320,36 +336,42 @@ func (e *Engine) sweepFreshness(ctx context.Context) {
 			n.Title = fmt.Sprintf("update available: %s", row.Name)
 			n.Body = fmt.Sprintf("%s @ %s: %s has a newer image on its registry", row.Name, row.Hostname, row.Image)
 			e.deliver(ctx, key, verdictT{bad: "outdated", level: n.Level}, n)
-		case verdict == "current" && cur == "outdated":
+		case verdict == "current" && st.Value == "outdated":
 			n.Level = LevelResolved
 			n.Title = fmt.Sprintf("%s up to date", row.Name)
 			n.Body = fmt.Sprintf("%s @ %s is now running the latest %s", row.Name, row.Hostname, row.Image)
 			e.deliver(ctx, key, verdictT{bad: "", level: n.Level}, n)
 		default:
-			// e.g. flips to/from unknown — record silently.
-			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: verdict, SentAt: st.SentAt})
+			// verdict is "unknown" (a registry blip in either direction), or
+			// "current" arriving straight from "" (never outdated). Neither
+			// carries new information worth recording: leave the stored
+			// value/notified bit untouched so a real "outdated" streak that's
+			// bouncing through "unknown" still resolves correctly once the
+			// registry answers again, instead of losing its history.
 		}
 	}
 }
 
 // ---- delivery --------------------------------------------------------------
 
-// Stored alert-state values use a marker convention: a value prefixed with
-// "~" is known-bad but was NEVER notified (suppressed by cooldown, or seeded
-// at first sight). Recovery only announces "resolved" for values that were
-// actually sent, so a flapping service cannot storm through resolve messages.
-const suppressedPrefix = "~"
-
-func suppressed(v string) string { return suppressedPrefix + v }
-
 // deliver applies recovery/cooldown semantics for key, then fans out.
 //
-//   - good (verdict.bad == ""): send a resolved notice only if the last bad
-//     value for this key was actually notified; always clear the stored value.
-//   - bad: within the cooldown window sends are suppressed (state is still
-//     recorded, marked suppressed). One exception: an escalation — a *worse*
-//     value at critical level after a notified bad — bypasses cooldown once
-//     (e.g. agent stale → offline).
+// AlertState.Notified is tracked as its own field (see store.AlertState) so
+// that recording an observed value never by itself erases the memory that an
+// incident was actually announced — that memory must only change on an
+// explicit send-or-not decision made here.
+//
+//   - good (verdict.bad == ""): send a resolved notice only if the current
+//     bad streak was actually notified; always clear the stored value.
+//   - bad, same value as already recorded AND already notified: this is the
+//     same ongoing incident being re-observed (e.g. a health event replayed
+//     after an unrelated agent reconnect) — do nothing, so nothing gets
+//     reset or re-suppressed.
+//   - bad, otherwise: within the cooldown window, record the new value as
+//     not-yet-notified without sending (flap suppression), keeping the
+//     original cooldown anchor. One exception: an escalation — a *worse*
+//     value at critical level after an already-notified bad — bypasses
+//     cooldown once (e.g. agent stale → offline).
 func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notification) {
 	now := e.now().Unix()
 	st, seen, err := e.store.GetAlertState(ctx, key)
@@ -357,35 +379,36 @@ func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notifica
 		e.log.Error("alert: state read", "key", key, "err", err)
 		return
 	}
-	cur := strings.TrimPrefix(st.Value, suppressedPrefix)
-	notified := st.Value != "" && !strings.HasPrefix(st.Value, suppressedPrefix)
 
 	if v.bad == "" { // recovery
-		if !seen || cur == "" {
+		if !seen || st.Value == "" {
 			return // nothing was bad; stay quiet
 		}
-		if notified {
+		if st.Notified {
 			e.send(ctx, n)
-			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", SentAt: now})
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", Notified: false, SentAt: now})
 		} else {
 			// The bad state was never announced — clear silently and keep the
-			// cooldown window so a flap can't reset it.
-			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", SentAt: st.SentAt})
+			// cooldown anchor so an immediate re-flap doesn't reset the window.
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", Notified: false, SentAt: st.SentAt})
 		}
 		return
 	}
 
 	// bad path
+	if seen && st.Value == v.bad && st.Notified {
+		return // same already-announced incident re-observed; nothing to do
+	}
 	inCooldown := seen && now-st.SentAt < int64(e.cfg.Cooldown.Seconds())
-	escalation := notified && cur != "" && cur != v.bad && v.level == LevelCritical
+	escalation := st.Notified && st.Value != "" && st.Value != v.bad && v.level == LevelCritical
 	if inCooldown && !escalation {
-		if st.Value != suppressed(v.bad) {
-			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: suppressed(v.bad), SentAt: st.SentAt})
+		if st.Value != v.bad || st.Notified {
+			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, Notified: false, SentAt: st.SentAt})
 		}
 		return
 	}
 	e.send(ctx, n)
-	_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, SentAt: now})
+	_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, Notified: true, SentAt: now})
 }
 
 func (e *Engine) send(ctx context.Context, n Notification) {

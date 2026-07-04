@@ -1,5 +1,7 @@
 # Release image for trove-server. Built by goreleaser, which places the
 # prebuilt static binary in the build context — no Go toolchain in here.
+# Dev/compose counterpart is ../../Dockerfile.server — keep base image, user,
+# and ENV defaults in sync between the two.
 FROM --platform=$BUILDPLATFORM alpine:3.20 AS data
 RUN mkdir /data && chown 65532:65532 /data
 

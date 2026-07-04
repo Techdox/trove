@@ -1,5 +1,7 @@
 # Release image for trove-agent-k8s. Needs only outbound network + the
 # in-cluster service account; runs as nonroot.
+# Dev/compose counterpart is ../../Dockerfile.agents (CMD=trove-agent-k8s) —
+# keep base image/user in sync.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY trove-agent-k8s /usr/local/bin/trove-agent-k8s
 ENTRYPOINT ["/usr/local/bin/trove-agent-k8s"]

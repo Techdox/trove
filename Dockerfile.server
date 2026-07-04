@@ -1,4 +1,7 @@
 # Trove server — static binary on distroless, runs as nonroot.
+# Dev/compose image; the release counterpart (built from prebuilt binaries by
+# goreleaser) is build/docker/Dockerfile.server — keep base image, user, and
+# ENV defaults in sync between the two.
 FROM golang:1.26 AS build
 WORKDIR /src
 COPY go.mod go.sum ./

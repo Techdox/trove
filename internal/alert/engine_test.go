@@ -186,6 +186,164 @@ func TestEngineAgentTransitions(t *testing.T) {
 	}
 }
 
+// TestEngineReconnectAfterMassStaleDoesNotDropNotifiedBit reproduces a
+// specific pre-fix bug: when an agent goes stale, MarkServicesStaleForAgents
+// mass-flips every live service's health to "stale" directly in SQL (no
+// event, by design — one agent alert instead of an alert per service). When
+// the agent reconnects and reports the SAME still-unhealthy service,
+// ApplyReport diffs against that clobbered "stale" baseline and synthesizes a
+// fresh stale->unhealthy event, even though nothing actually changed from the
+// operator's perspective. Before the fix, deliver() treated that replay as a
+// brand-new bad transition and re-stamped the key as "suppressed", erasing
+// the fact that the original incident had already been announced — so the
+// eventual real recovery went out silently. This test locks in: exactly one
+// alert for the original incident, zero for the reconnect replay, and exactly
+// one resolved notice for the real recovery.
+func TestEngineReconnectAfterMassStaleDoesNotDropNotifiedBit(t *testing.T) {
+	e, st, s, clock := newTestEngine(t)
+	ctx := context.Background()
+	agentToken, agent, _ := st.CreateAgent(ctx, "docker-a")
+	_ = agentToken
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx) // seed
+
+	// Service goes unhealthy: one real, notified alert.
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthUnhealthy)))
+	e.Sweep(ctx)
+	if s.count() != 1 {
+		t.Fatalf("want 1 unhealthy alert, got: %v", s.titles())
+	}
+
+	// Agent goes stale shortly after (well within cooldown): mass-flip, no event.
+	*clock = clock.Add(time.Second)
+	if _, err := st.MarkServicesStaleForAgents(ctx, []int64{agent.ID}); err != nil {
+		t.Fatalf("mark stale: %v", err)
+	}
+	s.reset()
+	e.Sweep(ctx)
+	if s.count() != 0 {
+		t.Fatalf("mass stale flip must not itself alert, got: %v", s.titles())
+	}
+
+	// Agent reconnects, reports the service still unhealthy (unchanged from
+	// the operator's view, but a diff against the clobbered "stale" baseline).
+	*clock = clock.Add(time.Second)
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthUnhealthy)))
+	e.Sweep(ctx)
+	if s.count() != 0 {
+		t.Fatalf("reconnect replay of an already-announced incident must not re-alert, got: %v", s.titles())
+	}
+
+	// It genuinely recovers: must get exactly one resolved notice.
+	*clock = clock.Add(time.Second)
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx)
+	if s.count() != 1 || s.titles()[0][:8] != "resolved" {
+		t.Fatalf("want exactly 1 resolved notice for the real recovery, got: %v", s.titles())
+	}
+}
+
+// TestSweepFreshnessSurvivesUnknownBlip reproduces a specific pre-fix bug: a
+// transient registry error (rate limiting, network blip) makes
+// FreshnessVerdict briefly report "unknown" between two "outdated" sweeps.
+// Before the fix, the sweep's default branch wrote the observed value
+// directly via SetAlertState, bypassing deliver() and losing the "already
+// notified" memory — so when the registry recovered and reported "current",
+// the resolved notice for the real "outdated" incident was silently dropped.
+func TestSweepFreshnessSurvivesUnknownBlip(t *testing.T) {
+	e, st, s, clock := newTestEngine(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+
+	img := "gitea/gitea:1.22"
+	svc := model.ReportService{
+		ExternalID: "c1", Name: "gitea", Kind: model.KindContainer,
+		Image: img, ImageDigest: "sha256:running", State: "running", Health: model.HealthHealthy,
+	}
+	_ = st.ApplyReport(ctx, agent.ID, testReport(svc))
+	e.Sweep(ctx) // first sight: verdict is "unknown" (no registry data yet), seeds silently
+	if s.count() != 0 {
+		t.Fatalf("first-sight seed must be silent, got: %v", s.titles())
+	}
+
+	// Registry reports a newer digest: real, notified "outdated" alert.
+	if err := st.RecordImageDigest(ctx, img, "sha256:newer", clock.Add(time.Hour).Unix()); err != nil {
+		t.Fatalf("record digest: %v", err)
+	}
+	e.Sweep(ctx)
+	if s.count() != 1 {
+		t.Fatalf("want 1 outdated alert, got: %v", s.titles())
+	}
+
+	// Transient registry error: verdict bounces to "unknown".
+	s.reset()
+	if err := st.RecordImageError(ctx, img, "rate limited", clock.Add(time.Hour).Unix()); err != nil {
+		t.Fatalf("record error: %v", err)
+	}
+	e.Sweep(ctx)
+	if s.count() != 0 {
+		t.Fatalf("a registry blip must not itself alert, got: %v", s.titles())
+	}
+
+	// Registry recovers and confirms the image is now current: must resolve.
+	if err := st.RecordImageDigest(ctx, img, "sha256:running", clock.Add(time.Hour).Unix()); err != nil {
+		t.Fatalf("record digest: %v", err)
+	}
+	e.Sweep(ctx)
+	if s.count() != 1 || s.titles()[0][:8] != "resolved" {
+		t.Fatalf("want 1 resolved notice surviving the unknown blip, got: %v", s.titles())
+	}
+}
+
+// TestEngineFlapWithinCooldownStaysConsistent extends the existing flap
+// scenario: after a flap is suppressed (bad value observed but not sent
+// because a resolve was just announced within the cooldown window), a
+// subsequent GENUINE recovery for that same still-unnotified incident must
+// stay silent (nothing was ever announced this round, so nothing should be
+// "resolved") rather than misreporting recovery state.
+func TestEngineFlapWithinCooldownStaysConsistent(t *testing.T) {
+	e, st, s, clock := newTestEngine(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx)
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthUnhealthy)))
+	e.Sweep(ctx) // notified
+	if s.count() != 1 {
+		t.Fatalf("want 1 alert, got: %v", s.titles())
+	}
+
+	s.reset()
+	*clock = clock.Add(time.Minute)
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx) // resolved
+	if s.count() != 1 {
+		t.Fatalf("want 1 resolved, got: %v", s.titles())
+	}
+
+	// Flap back to bad immediately (within cooldown of the resolve): suppressed.
+	s.reset()
+	*clock = clock.Add(time.Second)
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthUnhealthy)))
+	e.Sweep(ctx)
+	if s.count() != 0 {
+		t.Fatalf("flap must be suppressed, got: %v", s.titles())
+	}
+
+	// It "recovers" again without ever having been announced this round —
+	// must stay silent, not claim a resolution that was never communicated.
+	s.reset()
+	*clock = clock.Add(time.Second)
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx)
+	if s.count() != 0 {
+		t.Fatalf("recovery from an unannounced incident must stay silent, got: %v", s.titles())
+	}
+}
+
 func TestEngineKindFiltering(t *testing.T) {
 	e, st, s, _ := newTestEngine(t)
 	e.cfg.Kinds = map[string]bool{"agent": true} // only agent alerts

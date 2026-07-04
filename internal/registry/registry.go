@@ -14,9 +14,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -38,9 +40,59 @@ type Client struct {
 // New builds a client with optional per-host credentials.
 func New(creds map[string]Cred) *Client {
 	return &Client{
-		http:  &http.Client{Timeout: 20 * time.Second},
+		http:  &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{DialContext: dialSSRFGuard}},
 		creds: normalizeCreds(creds),
 	}
+}
+
+// registryDialer rejects connections to network ranges no legitimate
+// registry (or its WWW-Authenticate token endpoint) has any business being
+// on. Both the image reference and the bearer-challenge "realm" URL that
+// drive these requests are attacker-influenced — an agent token or a
+// maliciously published image can set either — so the guard sits at the dial
+// layer, where it also covers HTTP redirects (the stdlib client reuses this
+// same Transport when following one).
+//
+// Control receives the address net/dial has already resolved DNS for, right
+// before connecting — checking here (rather than resolving and checking
+// separately beforehand) means there's no TOCTOU gap for a DNS answer to
+// change between the check and the actual connection.
+//
+// RFC1918 private ranges are deliberately NOT blocked: this project's
+// homelab audience runs self-hosted registries on the LAN
+// (TROVE_REGISTRY_AUTHS exists specifically for that), so blocking private
+// space would break a documented, legitimate use case. What IS blocked —
+// loopback, link-local (which also covers every cloud metadata endpoint;
+// AWS/GCP/Azure all serve theirs from 169.254.169.254), and
+// unspecified/multicast — has no legitimate registry use under any
+// deployment this project supports.
+var registryDialer = &net.Dialer{
+	Timeout: 20 * time.Second,
+	Control: func(_, address string, _ syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return fmt.Errorf("registry: could not parse resolved address %q", host)
+		}
+		if isBlockedDestination(ip) {
+			return fmt.Errorf("registry: refusing to connect to %s (loopback/link-local/unspecified)", host)
+		}
+		return nil
+	},
+}
+
+func dialSSRFGuard(ctx context.Context, network, addr string) (net.Conn, error) {
+	return registryDialer.DialContext(ctx, network, addr)
+}
+
+// isBlockedDestination reports whether ip is a class of address no
+// legitimate container registry (self-hosted or public) is ever reached at.
+func isBlockedDestination(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast()
 }
 
 // manifestAccept lists every manifest/index media type we can handle, so the

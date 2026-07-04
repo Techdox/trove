@@ -273,9 +273,9 @@ function serviceRow(host, s, isChild) {
       data-host="${esc(host.hostname)}" data-ext="${esc(s.external_id)}">
     <td class="svc" title="${esc(s.name || s.external_id)}"><span class="svc-name">${name}</span>${kind}</td>
     <td class="image">${imageHTML(s.image)}</td>
-    <td>${badge(stateClass(s.state), s.state || "?")}</td>
-    <td>${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
-    <td>${freshnessCell(s)}</td>
+    <td class="badgecell">${badge(stateClass(s.state), s.state || "?")}</td>
+    <td class="badgecell">${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
+    <td class="badgecell">${freshnessCell(s)}</td>
     <td class="ports">${portsHTML(s.ports)}</td>
     <td class="muted nowrap seen">${esc(relTime(s.last_seen_at))}</td>
   </tr>`;

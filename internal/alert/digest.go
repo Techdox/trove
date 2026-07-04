@@ -32,7 +32,11 @@ type DigestConfig struct {
 //	TROVE_SMTP_USERNAME / TROVE_SMTP_PASSWORD (optional)
 //	TROVE_SMTP_FROM / TROVE_SMTP_TO (comma-separated)
 //	TROVE_DIGEST  "daily@08:00" (default), "weekly@mon:08:00", or "off"
-func LoadDigestConfigFromEnv() DigestConfig {
+//
+// An invalid TROVE_DIGEST is logged as a warning (via log, which may be nil in
+// tests) rather than silently disabling the digest with no diagnostic trail —
+// the only other visible symptom would be the generic "digest disabled" line.
+func LoadDigestConfigFromEnv(log *slog.Logger) DigestConfig {
 	cfg := DigestConfig{
 		SMTPHost: os.Getenv("TROVE_SMTP_HOST"),
 		SMTPPort: 587,
@@ -54,7 +58,11 @@ func LoadDigestConfigFromEnv() DigestConfig {
 	if sched == "" {
 		sched = "daily@08:00"
 	}
-	cfg.Schedule, _ = ParseSchedule(sched)
+	var err error
+	cfg.Schedule, err = ParseSchedule(sched)
+	if err != nil && log != nil {
+		log.Warn("invalid TROVE_DIGEST, digest disabled", "value", sched, "err", err)
+	}
 	return cfg
 }
 
@@ -187,7 +195,15 @@ func (d *Digester) tick(ctx context.Context) {
 		_ = d.store.SetMeta(ctx, digestLastSentKey, strconv.FormatInt(now.Unix(), 10))
 		return
 	}
-	lastSent, _ := strconv.ParseInt(raw, 10, 64)
+	lastSent, perr := strconv.ParseInt(raw, 10, 64)
+	if perr != nil {
+		// A corrupted timestamp must never silently become epoch zero — that
+		// would summarize the entire event history as "since 1970". Re-anchor
+		// to now instead, same as first boot.
+		d.log.Error("digest: corrupt last-sent, re-anchoring to now", "raw", raw, "err", perr)
+		_ = d.store.SetMeta(ctx, digestLastSentKey, strconv.FormatInt(now.Unix(), 10))
+		return
+	}
 	if now.Before(d.cfg.Schedule.NextAfter(time.Unix(lastSent, 0))) {
 		return
 	}

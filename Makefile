@@ -45,7 +45,7 @@ native:
 ## run: run the server locally (TROVE_DB=./trove.db)
 .PHONY: run
 run:
-	go run ./cmd/$(SERVER)
+	go run ./cmd/trove-server
 
 ## test: run all tests
 .PHONY: test

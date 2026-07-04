@@ -95,6 +95,20 @@ func openStore() (*store.Store, error) {
 	return store.Open(dbPath)
 }
 
+// runSupervised recovers a panic in a background loop and logs it instead of
+// crashing the whole process (including the HTTP server) for a bug in one
+// unrelated ticker. The loop itself does not restart — a repeatedly panicking
+// loop staying dead is preferable to a tight crash-restart loop with no
+// backoff.
+func runSupervised(log *slog.Logger, name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("background loop panicked, it will not restart", "loop", name, "panic", r)
+		}
+	}()
+	fn()
+}
+
 func runServe() error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
@@ -117,11 +131,11 @@ func runServe() error {
 	srv.ConfigureFreshness(server.LoadFreshnessConfigFromEnv())
 	srv.ConfigureRetention(server.LoadRetentionConfigFromEnv())
 
-	go srv.RunStalenessLoop(ctx)
-	go srv.RunFreshnessLoop(ctx)
-	go srv.RunMaintenanceLoop(ctx)
-	go alert.NewEngine(st, logger, alert.LoadConfigFromEnv()).Run(ctx)
-	go alert.NewDigester(st, logger, alert.LoadDigestConfigFromEnv()).Run(ctx)
+	go runSupervised(logger, "staleness", func() { srv.RunStalenessLoop(ctx) })
+	go runSupervised(logger, "freshness", func() { srv.RunFreshnessLoop(ctx) })
+	go runSupervised(logger, "maintenance", func() { srv.RunMaintenanceLoop(ctx) })
+	go runSupervised(logger, "alert", func() { alert.NewEngine(st, logger, alert.LoadConfigFromEnv()).Run(ctx) })
+	go runSupervised(logger, "digest", func() { alert.NewDigester(st, logger, alert.LoadDigestConfigFromEnv(logger)).Run(ctx) })
 
 	httpSrv := &http.Server{
 		Addr:              addr,
@@ -202,7 +216,7 @@ func runAlertCmd(args []string) error {
 		}
 	}
 
-	dcfg := alert.LoadDigestConfigFromEnv()
+	dcfg := alert.LoadDigestConfigFromEnv(logger)
 	if !dcfg.Enabled() {
 		fmt.Println("email digest not configured (TROVE_SMTP_* / TROVE_DIGEST)")
 		return nil

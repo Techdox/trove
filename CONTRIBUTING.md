@@ -52,6 +52,23 @@ Adding an agent for a new platform is deliberately cheap: implement
 `agentkit.Collector`, map your platform's objects onto `model.ReportService`,
 and reuse everything else. See `cmd/trove-agent-proxmox` for a compact example.
 
+## Branching
+
+`main` is protected — it takes PRs only, no direct pushes. Branch, commit,
+push, open a PR:
+
+```sh
+git checkout -b fix/short-description   # or feat/..., docs/..., etc.
+# ... commit ...
+git push -u origin fix/short-description
+gh pr create
+```
+
+CI (`gofmt`, `go vet`, `go test`, cross-compile) must pass on the PR before it
+can merge; branches are deleted automatically after merging. There's no
+persistent `dev` branch — branches are short-lived and scoped to one change,
+so CI always runs against the real merge target.
+
 ## PRs
 
 - Run `gofmt`, `go vet ./...`, and `go test ./...` before pushing — CI enforces

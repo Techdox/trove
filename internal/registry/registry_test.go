@@ -11,7 +11,7 @@ func TestParseImage(t *testing.T) {
 		{"nginx:alpine", "registry-1.docker.io", "library/nginx", "alpine"},
 		{"gitea/gitea:1.22", "registry-1.docker.io", "gitea/gitea", "1.22"},
 		{"ghcr.io/nick/app:v2", "ghcr.io", "nick/app", "v2"},
-		{"gitea.techdox.nz/nick/test-base:latest", "gitea.techdox.nz", "nick/test-base", "latest"},
+		{"registry.example.com:443/acme/widget:v2", "registry.example.com:443", "acme/widget", "v2"},
 		{"localhost:5000/foo:dev", "localhost:5000", "foo", "dev"},
 		{"registry.example.com:443/team/svc", "registry.example.com:443", "team/svc", "latest"},
 		// A pinned digest is dropped in favour of resolving the tag.

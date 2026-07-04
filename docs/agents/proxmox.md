@@ -67,6 +67,9 @@ default self-signed certificate. Drop it if your PVE API has a real cert.
 ## What you'll see
 
 Each Proxmox node appears as a host; its VMs and LXCs are services with
-`running`/`stopped` state. Proxmox has no app-level healthcheck, so health
-shows `unknown` — the state badge carries the up/down signal, and Trove's
-agent heartbeat covers "is the cluster still reporting at all."
+`running`/`stopped` state. The dashboard's Image column shows the guest OS
+reported by Proxmox config (`ostype`) where available — for example `Windows
+11`, `Linux`, `Debian`, or `Ubuntu`. This uses only read-only config endpoints;
+it does not require the QEMU guest agent. Proxmox has no app-level healthcheck,
+so health shows `unknown` — the state badge carries the up/down signal, and
+Trove's agent heartbeat covers "is the cluster still reporting at all."

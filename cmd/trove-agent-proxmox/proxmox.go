@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -91,6 +92,13 @@ type pveResource struct {
 	Template int    `json:"template"` // 1 = template (not a real guest)
 }
 
+// pveGuestConfig is the tiny subset of a QEMU/LXC config we need. `ostype` is
+// enough to show a useful "Image" value for non-container Proxmox guests
+// without relying on the QEMU guest agent.
+type pveGuestConfig struct {
+	OSType string `json:"ostype"`
+}
+
 // collector maps a Proxmox cluster to per-node Trove snapshots.
 type collector struct {
 	cli *proxmoxClient
@@ -131,13 +139,19 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		if name == "" {
 			name = fmt.Sprintf("%s-%d", r.Type, r.VMID)
 		}
+		image, osType := c.guestImage(ctx, r)
+		labels := map[string]string{"node": r.Node, "vmid": strconv.Itoa(r.VMID)}
+		if osType != "" {
+			labels["ostype"] = osType
+		}
 		byNode[r.Node] = append(byNode[r.Node], model.ReportService{
 			ExternalID: fmt.Sprintf("%s/%d", r.Type, r.VMID),
 			Name:       name,
 			Kind:       kind,
+			Image:      image,
 			State:      r.Status,
 			Health:     model.HealthUnknown, // Proxmox has no healthcheck; state carries up/down
-			Labels:     map[string]string{"node": r.Node, "vmid": strconv.Itoa(r.VMID)},
+			Labels:     labels,
 		})
 	}
 
@@ -149,4 +163,84 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		})
 	}
 	return snaps, nil
+}
+
+func (c *collector) guestImage(ctx context.Context, r pveResource) (image, osType string) {
+	pathKind := ""
+	switch r.Type {
+	case "qemu":
+		pathKind = "qemu"
+	case "lxc":
+		pathKind = "lxc"
+	default:
+		return "", ""
+	}
+
+	var resp struct {
+		Data pveGuestConfig `json:"data"`
+	}
+	path := fmt.Sprintf("/api2/json/nodes/%s/%s/%d/config", url.PathEscape(r.Node), pathKind, r.VMID)
+	if err := c.cli.get(ctx, path, &resp); err != nil {
+		c.log.Warn("proxmox: guest config unavailable", "node", r.Node, "type", r.Type, "vmid", r.VMID, "err", err)
+		return "", ""
+	}
+	osType = strings.TrimSpace(resp.Data.OSType)
+	return displayOSType(osType), osType
+}
+
+func displayOSType(osType string) string {
+	switch strings.ToLower(strings.TrimSpace(osType)) {
+	case "":
+		return ""
+	case "win11":
+		return "Windows 11"
+	case "win10":
+		return "Windows 10"
+	case "win8":
+		return "Windows 8"
+	case "win7":
+		return "Windows 7"
+	case "wvista":
+		return "Windows Vista"
+	case "w2k8":
+		return "Windows Server 2008"
+	case "w2k3":
+		return "Windows Server 2003"
+	case "w2k":
+		return "Windows 2000"
+	case "wxp":
+		return "Windows XP"
+	case "l26":
+		return "Linux"
+	case "l24":
+		return "Linux 2.4"
+	case "debian":
+		return "Debian"
+	case "ubuntu":
+		return "Ubuntu"
+	case "alpine":
+		return "Alpine"
+	case "archlinux":
+		return "Arch Linux"
+	case "centos":
+		return "CentOS"
+	case "devuan":
+		return "Devuan"
+	case "fedora":
+		return "Fedora"
+	case "gentoo":
+		return "Gentoo"
+	case "nixos":
+		return "NixOS"
+	case "opensuse":
+		return "openSUSE"
+	case "solaris":
+		return "Solaris"
+	case "other":
+		return "Other"
+	case "unmanaged":
+		return "Unmanaged"
+	default:
+		return osType
+	}
 }

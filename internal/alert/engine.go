@@ -295,7 +295,7 @@ func (e *Engine) sweepFreshness(ctx context.Context) {
 	}
 	for i := range rows {
 		row := &rows[i]
-		if row.State == "removed" || row.Image == "" {
+		if row.State == "removed" || row.Image == "" || row.ImageDigest == "" {
 			continue
 		}
 		verdict := row.FreshnessVerdict()

@@ -38,6 +38,39 @@ func svc(id, state string, health model.Health) model.ReportService {
 	}
 }
 
+func TestImagesDueForCheckRequiresRunningDigest(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "mixed")
+
+	withDigest := svc("container", "running", model.HealthHealthy)
+	withDigest.Image = "ghcr.io/techdox/app:1"
+	withDigest.ImageDigest = "sha256:running"
+
+	proxmoxVM := model.ReportService{
+		ExternalID: "qemu/101",
+		Name:       "winbox",
+		Kind:       model.KindVM,
+		Image:      "Windows 11",
+		State:      "running",
+		Health:     model.HealthUnknown,
+	}
+	localImage := svc("local", "running", model.HealthHealthy)
+	localImage.Image = "local/dev:latest"
+	localImage.ImageDigest = ""
+
+	if err := st.ApplyReport(ctx, agent.ID, report(withDigest, proxmoxVM, localImage)); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	images, err := st.ImagesDueForCheck(ctx, 10)
+	if err != nil {
+		t.Fatalf("images due: %v", err)
+	}
+	if len(images) != 1 || images[0] != "ghcr.io/techdox/app:1" {
+		t.Fatalf("images due = %+v, want only digest-backed container image", images)
+	}
+}
+
 func TestAgentCreateAndAuthenticate(t *testing.T) {
 	st, _ := newTestStore(t)
 	ctx := context.Background()

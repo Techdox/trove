@@ -6,8 +6,9 @@ import (
 )
 
 // ImagesDueForCheck returns distinct image references used by live services
-// that are due for a freshness check (never checked, or past next_check_at).
-// Limited so a single ticker pass can't stampede a registry.
+// with a captured running digest that are due for a freshness check (never
+// checked, or past next_check_at). Limited so a single ticker pass can't
+// stampede a registry.
 func (s *Store) ImagesDueForCheck(ctx context.Context, limit int) ([]string, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
@@ -17,7 +18,7 @@ func (s *Store) ImagesDueForCheck(ctx context.Context, limit int) ([]string, err
 		SELECT DISTINCT s.image
 		  FROM services s
 		  LEFT JOIN image_checks c ON c.image = s.image
-		 WHERE s.image != '' AND s.state != 'removed'
+		 WHERE s.image != '' AND s.image_digest != '' AND s.state != 'removed'
 		   AND (c.image IS NULL OR c.next_check_at <= ?)
 		 LIMIT ?`, now, limit)
 	if err != nil {

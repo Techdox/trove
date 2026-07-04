@@ -73,6 +73,9 @@ so CI always runs against the real merge target.
 
 - Run `gofmt`, `go vet ./...`, and `go test ./...` before pushing — CI enforces
   all three.
+- Use a roughly [Conventional Commits](https://www.conventionalcommits.org/)
+  style commit message (`feat: ...`, `fix: ...`, `docs: ...`, `ci: ...`) —
+  releases are versioned from these (see below).
 - Keep schema changes additive and put them in a new numbered migration under
   `internal/store/migrations/`. Never edit an existing migration.
 - New config should be env vars with safe defaults, documented in the README
@@ -80,3 +83,25 @@ so CI always runs against the real merge target.
 - Small, reviewable PRs beat big ones. For anything architectural, open an
   issue first — the [ROADMAP](ROADMAP.md) explains what's deliberately
   deferred and why.
+
+## Releases
+
+[release-please](https://github.com/googleapis/release-please) watches every
+merge to `main` and keeps a "chore(main): release X.Y.Z" PR open with the next
+version number and changelog computed from commit messages since the last
+release (`feat` → minor, `fix` → patch). It never publishes anything by
+itself — merging that PR is what creates the `vX.Y.Z` tag, which triggers
+[release.yml](.github/workflows/release.yml) (goreleaser: cross-compiled
+binaries + multi-arch Docker images to GHCR + a GitHub Release). So `main` is
+always at most one PR-merge away from being exactly what's published; there's
+no separate manual tagging step.
+
+release-please is configured with `skip-github-release: true` — it only
+manages the tag, `CHANGELOG.md`, and the version PR; goreleaser remains the
+only thing that actually creates the GitHub Release and its assets, so the
+two never race to create the same release.
+
+It authenticates with a fine-grained PAT in the `RELEASE_PLEASE_TOKEN` repo
+secret, not the default `GITHUB_TOKEN` — GitHub won't trigger downstream
+workflows (i.e. CI) for anything the built-in token opens, which would leave
+the release PR stuck forever unable to satisfy `main`'s required check.

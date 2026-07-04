@@ -35,7 +35,7 @@ jobs:
             "trove-server_${version}_linux_arm64.tar.gz"
           )
 
-          if ! gh release view "$TAG" --json assets --jq '.assets[].name' > /tmp/trove-release-assets.txt 2>/tmp/trove-release-check.err; then
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > /tmp/trove-release-assets.txt 2>/tmp/trove-release-check.err; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

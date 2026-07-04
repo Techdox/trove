@@ -1,6 +1,6 @@
 # Release image for trove-server. Built by goreleaser, which places the
 # prebuilt static binary in the build context — no Go toolchain in here.
-FROM alpine:3.20 AS data
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS data
 RUN mkdir /data && chown 65532:65532 /data
 
 FROM gcr.io/distroless/static-debian12:nonroot

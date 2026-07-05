@@ -471,6 +471,8 @@ function renderDrawer() {
       ${s.freshness === "outdated" ? badge("b-peach", "update available")
         : s.freshness === "current" ? badge("b-blue", "up to date") : ""}
     </div>
+    ${s.health === "unhealthy" && s.health_detail
+      ? `<div class="d-why"><span class="d-why-label">Why</span> ${esc(s.health_detail)}</div>` : ""}
     <div class="d-mono">
       <span class="lbl">host</span> ${esc(host.hostname)} · <span class="lbl">agent</span> ${esc(host.agent)} (${esc(host.platform || "—")})
     </div>

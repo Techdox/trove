@@ -10,19 +10,20 @@ import (
 // owning agent. The dashboard groups these by host; the API layer overlays
 // derived staleness using the agent heartbeat fields.
 type ServiceRow struct {
-	ID          int64
-	ExternalID  string
-	Name        string
-	Kind        string
-	Image       string
-	ImageDigest string
-	State       string
-	Health      string
-	PortsJSON   string
-	LabelsJSON  string
-	FirstSeenAt int64
-	LastSeenAt  int64
-	UpdatedAt   int64
+	ID           int64
+	ExternalID   string
+	Name         string
+	Kind         string
+	Image        string
+	ImageDigest  string
+	State        string
+	Health       string
+	HealthDetail string
+	PortsJSON    string
+	LabelsJSON   string
+	FirstSeenAt  int64
+	LastSeenAt   int64
+	UpdatedAt    int64
 
 	HostID       int64
 	Hostname     string
@@ -72,6 +73,7 @@ func (r *ServiceRow) FreshnessVerdict() string {
 func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, s.external_id, s.name, s.kind, s.image, s.image_digest, s.state, s.health,
+		       s.health_detail,
 		       s.ports_json, s.labels_json, s.first_seen_at, s.last_seen_at, s.updated_at,
 		       h.id, h.hostname, h.platform_meta_json,
 		       a.id, a.name, a.platform, a.report_interval_seconds, a.last_seen_at,
@@ -93,6 +95,7 @@ func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
 		var r ServiceRow
 		if err := rows.Scan(
 			&r.ID, &r.ExternalID, &r.Name, &r.Kind, &r.Image, &r.ImageDigest, &r.State, &r.Health,
+			&r.HealthDetail,
 			&r.PortsJSON, &r.LabelsJSON, &r.FirstSeenAt, &r.LastSeenAt, &r.UpdatedAt,
 			&r.HostID, &r.Hostname, &r.HostMetaJSON,
 			&r.AgentID, &r.AgentName, &r.AgentPlatform, &r.AgentIntervalSeconds, &r.AgentLastSeenAt,

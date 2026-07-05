@@ -1,6 +1,12 @@
 # Build artifacts
 /bin/
 /dist/
+# stray binaries from `go build ./cmd/<x>` in the repo root
+/trove-server
+/trove-agent-docker
+/trove-agent-k8s
+/trove-agent-proxmox
+/trove-agent-local
 
 # Local SQLite database (+ WAL sidecars)
 *.db

@@ -52,6 +52,10 @@ the reported hostname comes from the Docker daemon.
 - Exited with restart policy `always`/`unless-stopped` → `unhealthy`
   (it was meant to stay up); otherwise `unknown`.
 
+When a container is unhealthy, click its row: the detail drawer shows **why** —
+the failing healthcheck's last output and exit code, or the exit code (and any
+daemon error) of a container that stopped when it was meant to stay up.
+
 ## Notes
 
 - Mounting the Docker socket is inherently sensitive. The agent's API usage is

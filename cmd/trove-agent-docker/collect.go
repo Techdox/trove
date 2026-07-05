@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/techdox/trove/internal/agentkit"
@@ -39,16 +40,18 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 			c.log.Debug("inspect container failed", "id", short(ct.ID), "err", err)
 		}
 
+		health := mapHealth(ct.State, insp)
 		services = append(services, model.ReportService{
-			ExternalID:  ct.ID,
-			Name:        containerName(ct.Names),
-			Kind:        model.KindContainer,
-			Image:       ct.Image,
-			ImageDigest: c.resolveDigest(ctx, ct.ImageID, digestCache),
-			State:       ct.State,
-			Health:      mapHealth(ct.State, insp),
-			Ports:       mapPorts(ct.Ports),
-			Labels:      ct.Labels,
+			ExternalID:   ct.ID,
+			Name:         containerName(ct.Names),
+			Kind:         model.KindContainer,
+			Image:        ct.Image,
+			ImageDigest:  c.resolveDigest(ctx, ct.ImageID, digestCache),
+			State:        ct.State,
+			Health:       health,
+			HealthDetail: healthDetail(ct.State, insp, health),
+			Ports:        mapPorts(ct.Ports),
+			Labels:       ct.Labels,
 		})
 	}
 
@@ -131,6 +134,46 @@ func mapHealth(state string, insp dockerInspect) model.Health {
 		return model.HealthUnknown
 	}
 }
+
+// healthDetail explains WHY a container is unhealthy, so the dashboard can show
+// more than a red badge. It prefers the failing healthcheck's last output;
+// failing that (a stopped container that was meant to stay up), it reports the
+// exit code and any daemon error. Empty for healthy/unknown states.
+func healthDetail(state string, insp dockerInspect, health model.Health) string {
+	if health != model.HealthUnhealthy {
+		return ""
+	}
+	const maxLen = 300
+	if h := insp.State.Health; h != nil && len(h.Log) > 0 {
+		last := h.Log[len(h.Log)-1]
+		out := collapseWS(last.Output)
+		if len(out) > maxLen {
+			out = out[:maxLen] + "…"
+		}
+		if out != "" {
+			return "healthcheck failing (exit " + itoa(last.ExitCode) + "): " + out
+		}
+		return "healthcheck failing (exit " + itoa(last.ExitCode) + ", " + itoa(h.FailingStreak) + " in a row)"
+	}
+	if state == "exited" || state == "dead" {
+		d := "container " + state + " (exit " + itoa(insp.State.ExitCode) + ")"
+		if insp.State.Error != "" {
+			if e := collapseWS(insp.State.Error); e != "" {
+				d += ": " + e
+			}
+		}
+		return d
+	}
+	return ""
+}
+
+// collapseWS trims and collapses all runs of whitespace (including the newlines
+// Docker healthcheck output usually carries) into single spaces.
+func collapseWS(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
 
 // mapPorts converts Docker port entries to model ports, de-duplicating the
 // IPv4/IPv6 pairs Docker reports for a single published mapping.

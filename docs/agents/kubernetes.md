@@ -89,5 +89,8 @@ supported via `TROVE_KUBE_APISERVER`, `TROVE_KUBE_TOKEN`, `TROVE_KUBE_CA`, and
 - Pods appear nested under their workload (pod → ReplicaSet → Deployment
   ownership is resolved automatically), with per-pod phase and readiness.
 - Bare pods and Job pods (no workload owner) appear as top-level services.
+- An unhealthy pod's detail drawer shows **why** — the not-ready container's
+  waiting reason (`CrashLoopBackOff`, `ImagePullBackOff`, …) or termination
+  reason (`OOMKilled`, exit code), falling back to the pod-level reason.
 - Pod image digests are captured, so image freshness works for cluster
   workloads just like containers.

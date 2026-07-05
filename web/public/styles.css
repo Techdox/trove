@@ -445,6 +445,26 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
 }
 .d-close:hover { color: var(--text); border-color: var(--border-strong); }
 .d-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 4px; }
+.d-why {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 107, 122, 0.08);
+  border: 1px solid rgba(255, 107, 122, 0.3);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.d-why-label {
+  color: var(--red);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  margin-right: 6px;
+}
 .d-sec {
   font-family: var(--font-mono);
   text-transform: uppercase;

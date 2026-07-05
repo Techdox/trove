@@ -53,6 +53,27 @@ docker run -d --name trove-agent-proxmox --restart unless-stopped \
 `TROVE_PROXMOX_INSECURE=true` skips TLS verification — needed for Proxmox's
 default self-signed certificate. Drop it if your PVE API has a real cert.
 
+### Or with Docker Compose (server + agent together)
+
+If you don't already have a Trove server running, the quickstart compose file
+stands up both at once — no cloning or building:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker-compose.proxmox.yml
+
+export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+export TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006
+export TROVE_PROXMOX_TOKEN='trove@pve!trove-agent=YOUR-TOKEN-SECRET'
+docker compose -f docker-compose.proxmox.yml up -d
+docker compose -f docker-compose.proxmox.yml logs -f agent   # watch it connect
+```
+
+> The agent image is `trove-agent-proxmox` — **not** `trove-agent-docker`. The
+> Docker agent ignores the `TROVE_PROXMOX_*` variables and reads the Docker
+> socket instead, so it will connect and look healthy while never contacting
+> Proxmox. If you're adapting your own compose file, make sure the agent uses
+> the Proxmox image (and it needs no `/var/run/docker.sock` mount).
+
 ## Configuration
 
 | Variable                 | Default      | Purpose                                          |

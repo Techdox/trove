@@ -41,7 +41,13 @@ not a feature toggle, and it's the project's one hard rule.
 
 ## Quickstart (5 minutes)
 
-Requires Docker with Compose on the machine that will host the dashboard.
+Trove is a **server** (the dashboard + API) plus one **agent per platform** you
+want to watch. The server is the same everywhere; only the agent differs. Start
+with the compose file that matches what you're watching — each one stands up the
+server *and* the right agent together. Requires Docker with Compose on the
+machine that will host the dashboard.
+
+**Docker host** — server + an agent watching this box's containers:
 
 ```sh
 mkdir trove && cd trove
@@ -51,9 +57,28 @@ export TROVE_TOKEN=trove_$(openssl rand -hex 24)
 docker compose up -d
 ```
 
-Open <http://localhost:8080>. This host's containers appear within ~30
-seconds. That's the whole install: a server plus a Docker agent watching the
-same machine.
+**Proxmox VE** — server + an agent watching your cluster's VMs and LXCs. First
+create a read-only API token (the [Proxmox guide](docs/agents/proxmox.md) has
+the exact `pveum` commands), then:
+
+```sh
+mkdir trove && cd trove
+curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker-compose.proxmox.yml
+
+export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+export TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006
+export TROVE_PROXMOX_TOKEN='trove@pve!trove-agent=YOUR-TOKEN-SECRET'
+docker compose -f docker-compose.proxmox.yml up -d
+```
+
+**Kubernetes** or **bare-metal Linux** — the agent doesn't run in Compose
+(the K8s agent runs in-cluster as a Deployment; the bare-metal agent runs as a
+systemd unit). Stand up the server with either compose file above, then deploy
+the agent from the [Kubernetes](docs/agents/kubernetes.md) or
+[bare-metal](docs/agents/local.md) guide.
+
+Open <http://localhost:8080>. Your services appear within ~30 seconds. If an
+agent doesn't show up, watch it connect with `docker compose logs -f agent`.
 
 > ⚠️ The dashboard has **no authentication yet** — keep it on a trusted
 > network (LAN/VPN/tailnet) or behind an authenticating reverse proxy. See

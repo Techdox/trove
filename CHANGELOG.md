@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Techdox/trove/compare/v0.6.0...v0.7.0) (2026-07-05)
+
+
+### Features
+
+* dashboard legibility + surface why a service is unhealthy ([#16](https://github.com/Techdox/trove/issues/16)) ([7133701](https://github.com/Techdox/trove/commit/71337013e8767e40b1fd73da3768fe946b89879a))
+
 ## [0.6.0](https://github.com/Techdox/trove/compare/v0.5.0...v0.6.0) (2026-07-05)
 
 

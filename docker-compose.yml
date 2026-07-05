@@ -1,7 +1,17 @@
-# CONTRIBUTOR dev stack: builds server + agent from this checkout.
+# ==========================================================================
+#  CONTRIBUTOR DEV STACK — builds from source. This is NOT how you run Trove.
 #
-# Just want to RUN Trove? Use examples/docker-compose.yml instead — it pulls
-# the published images and needs no clone or toolchain.
+#  Just want to RUN Trove?  Use the published-image quickstart compose files,
+#  which need no clone, no build, no Go toolchain (see the README Quickstart):
+#      examples/docker-compose.yml           -> Docker host
+#      examples/docker-compose.proxmox.yml   -> Proxmox cluster
+#
+#  This file exists only for hacking on Trove itself. It builds the DOCKER
+#  agent (Dockerfile.agent); pointing its env at another platform (Proxmox/K8s)
+#  will NOT work — those agents are separate binaries/images. To watch Proxmox
+#  or Kubernetes, use the quickstart above or the per-platform guides in
+#  docs/agents/ — don't edit this dev stack.
+# ==========================================================================
 #
 # `docker compose up --build` and open http://localhost:8080.
 #

@@ -1,0 +1,52 @@
+# Trove quickstart for Proxmox — the server plus a Proxmox agent that watches
+# your PVE cluster, using the published images. No cloning or building required.
+#
+#   1. Create a read-only Proxmox API token (PVEAuditor role). See:
+#        https://github.com/techdox/trove/blob/main/docs/agents/proxmox.md
+#   2. Set a Trove token and your Proxmox connection details:
+#        export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+#        export TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006
+#        export TROVE_PROXMOX_TOKEN='trove@pve!trove-agent=YOUR-TOKEN-SECRET'
+#   3. Start the stack:
+#        docker compose -f docker-compose.proxmox.yml up -d
+#   4. Open http://localhost:8080 — your VMs and LXCs appear within ~30s.
+#      Watch the agent while it connects:  docker compose logs -f agent
+#
+# To watch OTHER hosts/platforms too, mint each its own token on the server
+# and add its agent (see the per-platform guides):
+#        docker compose exec server trove-server agent create <name>
+#
+# ⚠ The dashboard has no authentication yet — keep port 8080 on a trusted
+#   network (LAN/VPN) or behind an authenticating reverse proxy.
+
+services:
+  server:
+    image: ghcr.io/techdox/trove-server:latest
+    environment:
+      TROVE_BOOTSTRAP_AGENT: "proxmox"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  export TROVE_TOKEN=trove_$(openssl rand -hex 24)}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - trove-data:/data
+    restart: unless-stopped
+
+  agent:
+    # The Proxmox agent — NOT trove-agent-docker. It reads the PVE API only;
+    # it needs no Docker socket.
+    image: ghcr.io/techdox/trove-agent-proxmox:latest
+    environment:
+      TROVE_SERVER_URL: "http://server:8080"
+      TROVE_TOKEN: "${TROVE_TOKEN}"
+      TROVE_PROXMOX_URL: "${TROVE_PROXMOX_URL:?set your Proxmox API URL, e.g. https://192.168.1.10:8006}"
+      TROVE_PROXMOX_TOKEN: "${TROVE_PROXMOX_TOKEN:?set your Proxmox API token in the form USER@REALM!TOKENID=SECRET}"
+      # Proxmox ships a self-signed cert by default; "true" accepts it. Set to
+      # "false" (or remove) once your PVE API has a trusted certificate.
+      TROVE_PROXMOX_INSECURE: "true"
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  trove-data:

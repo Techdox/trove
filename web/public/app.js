@@ -151,11 +151,11 @@ function portsHTML(ports) {
 function freshnessCell(s) {
   switch (s.freshness) {
     case "outdated":
-      return `<span class="badge b-peach" title="running: ${esc(s.image_digest || "?")}\nlatest:  ${esc(s.latest_digest || "?")}">update</span>`;
+      return `<span class="badge b-peach" title="A newer image is available for this tag.&#10;running: ${esc(s.image_digest || "?")}&#10;latest:  ${esc(s.latest_digest || "?")}">update</span>`;
     case "current":
       return '<span class="badge b-blue">up to date</span>';
     default:
-      return '<span class="muted">—</span>';
+      return '<span class="muted" title="Freshness not tracked — no image digest to compare (e.g. VMs/LXCs, or an image without a resolvable tag).">—</span>';
   }
 }
 
@@ -200,24 +200,37 @@ function computeCounts() {
 
 // ------------------------------------------------------------- summary ----
 
+// The summary is the at-a-glance answer: a health verdict + a read-only
+// overview. Filtering lives in the chip row below, so these are not clickable
+// (no duplicate controls).
 function renderSummary() {
   const c = computeCounts();
-  const agents = state.data.agents?.agents?.length ?? 0;
-  const stat = (n, label, cls, chip) => {
-    const active = chip && state.chips.has(chip) ? " active" : "";
-    return `<button class="stat ${cls}${active}" data-chip="${chip}"
-      aria-pressed="${!!active}" title="filter: ${label}"><b>${n}</b> ${label}</button>`;
-  };
-  $("summary").innerHTML = [
-    `<span class="stat"><b>${agents}</b> agent${agents === 1 ? "" : "s"}</span>`,
-    `<span class="stat"><b>${c.hosts}</b> host${c.hosts === 1 ? "" : "s"}</span>`,
-    `<span class="stat"><b>${c.services}</b> service${c.services === 1 ? "" : "s"}</span>`,
-    `<span class="sep">—</span>`,
-    stat(c.running, "running", "c-green", "running"),
-    stat(c.unhealthy, "unhealthy", "c-red", "unhealthy"),
-    stat(c.outdated, "outdated", "c-peach", "outdated"),
-    stat(c.stale, "stale", "c-gray", "stale"),
-  ].join("");
+  const agentList = state.data.agents?.agents || [];
+  const agents = agentList.length;
+  const agentsOffline = agentList.filter((a) => a.status === "offline").length;
+  const agentsStale = agentList.filter((a) => a.status === "stale").length;
+
+  // What "needs attention" — most urgent first.
+  const parts = [];
+  if (c.unhealthy) parts.push(`${c.unhealthy} unhealthy`);
+  if (agentsOffline) parts.push(`${agentsOffline} agent${agentsOffline === 1 ? "" : "s"} offline`);
+  if (c.stale) parts.push(`${c.stale} stale`);
+  if (agentsStale) parts.push(`${agentsStale} agent${agentsStale === 1 ? "" : "s"} not reporting`);
+  if (c.outdated) parts.push(`${c.outdated} outdated`);
+
+  const cls = parts.length === 0 ? "ok" : (c.unhealthy > 0 || agentsOffline > 0 ? "crit" : "warn");
+  const text = parts.length === 0 ? "All systems operational" : "Needs attention";
+  const overview =
+    `${agents} agent${agents === 1 ? "" : "s"} · ` +
+    `${c.hosts} host${c.hosts === 1 ? "" : "s"} · ` +
+    `${c.services} service${c.services === 1 ? "" : "s"}`;
+
+  $("summary").innerHTML =
+    `<div class="verdict verdict-${cls}"><span class="vdot"></span>` +
+    `<span class="vtext">${text}</span>` +
+    (parts.length ? `<span class="vbreak">${esc(parts.join(" · "))}</span>` : "") +
+    `</div>` +
+    `<span class="overview">${esc(overview)}</span>`;
 }
 
 function renderChips() {
@@ -232,6 +245,9 @@ function renderChips() {
   chips.push(`<button class="chip c-gray${remActive}" data-chip="removed"
     aria-pressed="${state.showRemoved}" title="show services no longer reported (kept 24h)">
     removed <span class="n">${c.removed}</span></button>`);
+  if (state.q.trim() !== "" || state.chips.size > 0 || state.showRemoved) {
+    chips.push(`<button class="chip chip-clear" data-clear="1" title="clear all filters (esc)">✕ clear</button>`);
+  }
   $("chips").innerHTML = chips.join("");
 }
 
@@ -455,6 +471,8 @@ function renderDrawer() {
       ${s.freshness === "outdated" ? badge("b-peach", "update available")
         : s.freshness === "current" ? badge("b-blue", "up to date") : ""}
     </div>
+    ${s.health === "unhealthy" && s.health_detail
+      ? `<div class="d-why"><span class="d-why-label">Why</span> ${esc(s.health_detail)}</div>` : ""}
     <div class="d-mono">
       <span class="lbl">host</span> ${esc(host.hostname)} · <span class="lbl">agent</span> ${esc(host.agent)} (${esc(host.platform || "—")})
     </div>
@@ -576,7 +594,17 @@ function toggleChip(key) {
   render();
 }
 
+function clearFilters() {
+  state.q = "";
+  $("q").value = "";
+  state.chips.clear();
+  state.showRemoved = false;
+  render();
+}
+
 document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-clear]")) { clearFilters(); return; }
+
   const chip = e.target.closest("[data-chip]");
   if (chip) { toggleChip(chip.dataset.chip); return; }
 
@@ -607,12 +635,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
     if (state.drawerKey) { state.drawerKey = null; render(); return; }
-    if (state.q || state.chips.size > 0) {
-      state.q = "";
-      $("q").value = "";
-      state.chips.clear();
-      render();
-    }
+    if (state.q || state.chips.size > 0 || state.showRemoved) clearFilters();
     return;
   }
   if (typing) return;

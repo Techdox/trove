@@ -109,15 +109,19 @@ type ReportService struct {
 	// ParentExternalID, if set, is the ExternalID of this service's parent
 	// within the same report/host — e.g. a pod's owning Deployment. The server
 	// resolves it to an internal parent link. Empty for standalone services.
-	ParentExternalID string            `json:"parent_external_id,omitempty"`
-	Name             string            `json:"name"`
-	Kind             Kind              `json:"kind"`
-	Image            string            `json:"image"`
-	ImageDigest      string            `json:"image_digest,omitempty"`
-	State            string            `json:"state"`
-	Health           Health            `json:"health"`
-	Ports            []Port            `json:"ports,omitempty"`
-	Labels           map[string]string `json:"labels,omitempty"`
+	ParentExternalID string `json:"parent_external_id,omitempty"`
+	Name             string `json:"name"`
+	Kind             Kind   `json:"kind"`
+	Image            string `json:"image"`
+	ImageDigest      string `json:"image_digest,omitempty"`
+	State            string `json:"state"`
+	Health           Health `json:"health"`
+	// HealthDetail is an optional short, human-readable reason for the health
+	// state — e.g. a failing Docker healthcheck's last output, or a Kubernetes
+	// pod's waiting/termination reason. Empty when there's nothing to explain.
+	HealthDetail string            `json:"health_detail,omitempty"`
+	Ports        []Port            `json:"ports,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"`
 }
 
 // Port is a published port mapping.

@@ -118,10 +118,10 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE services
 				    SET name = ?, kind = ?, image = ?, image_digest = ?, state = ?, health = ?,
-				        ports_json = ?, labels_json = ?, last_seen_at = ?, updated_at = ?
+				        health_detail = ?, ports_json = ?, labels_json = ?, last_seen_at = ?, updated_at = ?
 				  WHERE id = ?`,
 				svc.Name, string(svc.Kind), svc.Image, svc.ImageDigest, svc.State, string(svc.Health),
-				portsJSON, labelsJSON, now, now, ex.id,
+				svc.HealthDetail, portsJSON, labelsJSON, now, now, ex.id,
 			); err != nil {
 				return fmt.Errorf("update service %q: %w", svc.ExternalID, err)
 			}
@@ -132,10 +132,10 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		res, err := tx.ExecContext(ctx,
 			`INSERT INTO services
 			   (host_id, external_id, name, kind, image, image_digest, state, health,
-			    ports_json, labels_json, first_seen_at, last_seen_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			    health_detail, ports_json, labels_json, first_seen_at, last_seen_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			hostID, svc.ExternalID, svc.Name, string(svc.Kind), svc.Image, svc.ImageDigest,
-			svc.State, string(svc.Health), portsJSON, labelsJSON, now, now, now,
+			svc.State, string(svc.Health), svc.HealthDetail, portsJSON, labelsJSON, now, now, now,
 		)
 		if err != nil {
 			return fmt.Errorf("insert service %q: %w", svc.ExternalID, err)

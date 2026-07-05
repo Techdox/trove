@@ -127,34 +127,24 @@ header h1 {
   align-items: center;
   margin: 22px 0 16px;
 }
-.summary .sep { color: var(--border-strong); padding: 0 2px; }
-.stat {
+/* health verdict — the at-a-glance answer */
+.verdict {
   display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 7px 13px;
-  border: 1px solid var(--border);
+  align-items: center;
+  gap: 9px;
+  padding: 8px 15px;
   border-radius: 999px;
-  background: rgba(36, 34, 56, 0.55);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  cursor: default;
+  border: 1px solid transparent;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
 }
-.stat b { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text); }
-button.stat { cursor: pointer; transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease; }
-button.stat:hover { transform: translateY(-1px); border-color: var(--border-strong); }
-.stat.c-green b  { color: var(--green); }
-.stat.c-red b    { color: var(--red); }
-.stat.c-yellow b { color: var(--amber); }
-.stat.c-peach b  { color: var(--amber); }
-.stat.c-gray b   { color: var(--subtle); }
-.stat.active { border-color: currentColor; background: rgba(36, 34, 56, 0.92); }
-.stat.c-green.active  { color: var(--green); }
-.stat.c-red.active    { color: var(--red); }
-.stat.c-yellow.active { color: var(--amber); }
-.stat.c-peach.active  { color: var(--amber); }
-.stat.c-gray.active   { color: var(--muted); }
+.verdict .vdot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: none; }
+.verdict .vbreak { font-family: var(--font-mono); font-weight: 500; font-size: 12px; opacity: 0.85; }
+.verdict-ok   { color: var(--green); background: rgba(155, 226, 143, 0.08); border-color: rgba(155, 226, 143, 0.3); }
+.verdict-warn { color: var(--amber); background: rgba(242, 166, 90, 0.08); border-color: rgba(242, 166, 90, 0.32); }
+.verdict-crit { color: var(--red);   background: rgba(255, 107, 122, 0.08); border-color: rgba(255, 107, 122, 0.34); }
+.overview { color: var(--subtle); font-family: var(--font-mono); font-size: 12.5px; }
 
 /* ---- filter bar ---- */
 .filterbar {
@@ -202,6 +192,8 @@ button.stat:hover { transform: translateY(-1px); border-color: var(--border-stro
 .chip.active.c-yellow { color: var(--amber);  border-color: var(--amber); }
 .chip.active.c-peach  { color: var(--amber);  border-color: var(--amber); }
 .chip.active.c-gray   { color: var(--muted); }
+.chip-clear { color: var(--subtle); border-style: dashed; }
+.chip-clear:hover { color: var(--text); border-color: var(--border-strong); }
 
 /* ---- section titles ---- */
 .section-title {
@@ -292,7 +284,7 @@ th.w-state   { width: 116px; }
 th.w-health  { width: 112px; }
 th.w-fresh   { width: 124px; }
 th.w-ports   { width: 15%; }
-th.w-seen    { width: 90px; }
+th.w-seen    { width: 108px; }
 /* image column takes the remainder */
 
 tbody td {
@@ -356,6 +348,10 @@ tbody tr.child .svc-name { color: var(--muted); font-family: var(--font-body); f
 .muted { color: var(--subtle); }
 .nowrap { white-space: nowrap; }
 td.seen { text-align: right; color: var(--subtle); font-family: var(--font-mono); font-size: 11.5px; }
+/* Persistent, subtle "open me" cue so clickable rows are discoverable without
+   having to hover first; brightens on hover. */
+tbody tr[data-ext] td.seen::after { content: "›"; margin-left: 9px; color: var(--border-strong); font-weight: 700; }
+tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
 
 /* ---- badges ---- */
 .badge {
@@ -449,6 +445,26 @@ td.seen { text-align: right; color: var(--subtle); font-family: var(--font-mono)
 }
 .d-close:hover { color: var(--text); border-color: var(--border-strong); }
 .d-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 4px; }
+.d-why {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 107, 122, 0.08);
+  border: 1px solid rgba(255, 107, 122, 0.3);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.d-why-label {
+  color: var(--red);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  margin-right: 6px;
+}
 .d-sec {
   font-family: var(--font-mono);
   text-transform: uppercase;

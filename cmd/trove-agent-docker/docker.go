@@ -104,8 +104,16 @@ type dockerContainer struct {
 
 type dockerInspect struct {
 	State struct {
-		Health   *struct{ Status string } `json:"Health"`
-		ExitCode int                      `json:"ExitCode"`
+		Health *struct {
+			Status        string `json:"Status"`
+			FailingStreak int    `json:"FailingStreak"`
+			Log           []struct {
+				ExitCode int    `json:"ExitCode"`
+				Output   string `json:"Output"`
+			} `json:"Log"`
+		} `json:"Health"`
+		ExitCode int    `json:"ExitCode"`
+		Error    string `json:"Error"`
 	} `json:"State"`
 	HostConfig struct {
 		RestartPolicy struct {

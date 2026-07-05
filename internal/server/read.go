@@ -21,7 +21,8 @@ type serviceDTO struct {
 	ImageDigest      string          `json:"image_digest,omitempty"`
 	State            string          `json:"state"`
 	Health           string          `json:"health"`
-	Freshness        string          `json:"freshness"` // current | outdated | unknown
+	HealthDetail     string          `json:"health_detail,omitempty"` // why unhealthy, when known
+	Freshness        string          `json:"freshness"`               // current | outdated | unknown
 	LatestDigest     string          `json:"latest_digest,omitempty"`
 	Ports            json.RawMessage `json:"ports"`
 	Labels           json.RawMessage `json:"labels"`
@@ -117,6 +118,7 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 			ImageDigest:      row.ImageDigest,
 			State:            row.State,
 			Health:           row.Health,
+			HealthDetail:     row.HealthDetail,
 			Freshness:        freshness,
 			LatestDigest:     latestDigest,
 			Ports:            rawJSON(row.PortsJSON, "[]"),

@@ -186,14 +186,28 @@ type pod struct {
 	} `json:"spec"`
 	Status struct {
 		Phase      string `json:"phase"`
+		Reason     string `json:"reason"`  // pod-level, e.g. "Evicted"
+		Message    string `json:"message"` // pod-level detail
 		Conditions []struct {
 			Type   string `json:"type"`
 			Status string `json:"status"`
 		} `json:"conditions"`
 		ContainerStatuses []struct {
+			Name    string `json:"name"`
 			Image   string `json:"image"`
 			ImageID string `json:"imageID"`
 			Ready   bool   `json:"ready"`
+			State   struct {
+				Waiting *struct {
+					Reason  string `json:"reason"` // e.g. CrashLoopBackOff, ImagePullBackOff
+					Message string `json:"message"`
+				} `json:"waiting"`
+				Terminated *struct {
+					Reason   string `json:"reason"` // e.g. Error, OOMKilled
+					Message  string `json:"message"`
+					ExitCode int    `json:"exitCode"`
+				} `json:"terminated"`
+			} `json:"state"`
 		} `json:"containerStatuses"`
 	} `json:"status"`
 }

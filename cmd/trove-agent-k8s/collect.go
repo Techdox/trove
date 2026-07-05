@@ -108,6 +108,7 @@ func podService(p *pod, rsOwner map[string]string) model.ReportService {
 	} else if len(p.Spec.Containers) > 0 {
 		image = p.Spec.Containers[0].Image
 	}
+	health := podHealth(p)
 	return model.ReportService{
 		ExternalID:       extID("pod", p.Metadata.Namespace, p.Metadata.Name),
 		ParentExternalID: podParent(p, rsOwner),
@@ -116,9 +117,55 @@ func podService(p *pod, rsOwner map[string]string) model.ReportService {
 		Image:            image,
 		ImageDigest:      digest,
 		State:            strings.ToLower(p.Status.Phase),
-		Health:           podHealth(p),
+		Health:           health,
+		HealthDetail:     podDetail(p, health),
 		Labels:           map[string]string{"namespace": p.Metadata.Namespace, "node": p.Spec.NodeName},
 	}
+}
+
+// podDetail explains why a pod is unhealthy: the first not-ready container's
+// waiting reason (CrashLoopBackOff, ImagePullBackOff, …) or termination reason
+// (OOMKilled, Error + exit code), falling back to the pod-level reason
+// (Evicted, …). Empty for healthy/unknown pods.
+func podDetail(p *pod, health model.Health) string {
+	if health != model.HealthUnhealthy {
+		return ""
+	}
+	for _, cs := range p.Status.ContainerStatuses {
+		if cs.Ready {
+			continue
+		}
+		if w := cs.State.Waiting; w != nil && w.Reason != "" {
+			return joinReason(cs.Name, w.Reason, w.Message)
+		}
+		if t := cs.State.Terminated; t != nil && (t.Reason != "" || t.ExitCode != 0) {
+			reason := t.Reason
+			if reason == "" {
+				reason = "Terminated"
+			}
+			return joinReason(cs.Name, fmt.Sprintf("%s (exit %d)", reason, t.ExitCode), t.Message)
+		}
+	}
+	if p.Status.Reason != "" {
+		return joinReason("", p.Status.Reason, p.Status.Message)
+	}
+	return ""
+}
+
+// joinReason formats "<container>: <reason> — <message>", trimming and capping
+// the free-form message.
+func joinReason(container, reason, message string) string {
+	s := reason
+	if container != "" {
+		s = container + ": " + reason
+	}
+	if msg := strings.Join(strings.Fields(message), " "); msg != "" {
+		if len(msg) > 240 {
+			msg = msg[:240] + "…"
+		}
+		s += " — " + msg
+	}
+	return s
 }
 
 func podParent(p *pod, rsOwner map[string]string) string {

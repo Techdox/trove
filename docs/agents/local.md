@@ -7,31 +7,43 @@ running Docker or Kubernetes but still matters. Read-only: it only ever runs
 Runs directly on the host (not in a container), since it needs the host's
 systemd. Ships as a static binary in the release archives.
 
+**Where things run:** you need a Trove **server** running and reachable first
+(see the [Quickstart](../../README.md#quickstart-5-minutes)). This agent runs on
+the host you want to watch and pushes to that server.
+
 ## 1. Mint a token
 
+On the server (this must run against the server's database):
+
 ```sh
-trove-server agent create nas01
+# Docker Compose server:
+docker compose exec server trove-server agent create nas01
+# bare-metal server: sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create nas01
 ```
 
 ## 2. Install the binary + unit
 
 ```sh
-# grab the archive for your arch from the latest release
-curl -LO https://github.com/techdox/trove/releases/latest/download/trove-agent-local_<version>_linux_amd64.tar.gz
-tar xzf trove-agent-local_*_linux_amd64.tar.gz
+# grab the archive for your arch from the latest release. Set VERSION to the
+# release you're installing (see https://github.com/techdox/trove/releases).
+VERSION=0.4.0
+curl -fLO "https://github.com/techdox/trove/releases/download/v${VERSION}/trove-agent-local_${VERSION}_linux_amd64.tar.gz"
+tar xzf trove-agent-local_${VERSION}_linux_amd64.tar.gz
 sudo install -m 0755 trove-agent-local /usr/local/bin/
 
-sudo cp deploy/systemd/trove-agent-local.service /etc/systemd/system/ 2>/dev/null \
-  || sudo cp trove-agent-local.service /etc/systemd/system/   # unit is bundled in the archive
+# the systemd unit is bundled in the archive under deploy/systemd/
+sudo cp deploy/systemd/trove-agent-local.service /etc/systemd/system/
 
-# configure
+# configure — TROVE_SERVER_URL is your server's address as seen from THIS host
+# (use http://localhost:8080 only if the server also runs on this box)
 sudo tee /etc/trove-agent-local.env >/dev/null <<EOF
-TROVE_SERVER_URL=http://trove.lan:8080
+TROVE_SERVER_URL=http://YOUR-SERVER:8080
 TROVE_TOKEN=trove_xxxxxxxx
 EOF
 sudo chmod 600 /etc/trove-agent-local.env
 
 sudo systemctl enable --now trove-agent-local
+journalctl -u trove-agent-local -f   # watch it connect
 ```
 
 ## Configuration

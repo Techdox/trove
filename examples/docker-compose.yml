@@ -1,8 +1,10 @@
 # Trove quickstart — server + a Docker agent watching this host, using the
 # published images. No cloning or building required.
 #
-#   1. Generate a token for this host's agent:
-#        export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+#   1. Generate a token for this host's agent and save it to .env (Compose
+#      loads .env automatically, and it survives restarts/upgrades — an
+#      `export` would be lost in a new shell):
+#        echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)" > .env
 #   2. Start the stack:
 #        docker compose up -d
 #   3. Open http://localhost:8080 — your containers appear within ~30s.
@@ -20,7 +22,7 @@ services:
     image: ghcr.io/techdox/trove-server:latest
     environment:
       TROVE_BOOTSTRAP_AGENT: "docker-local"
-      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  export TROVE_TOKEN=trove_$(openssl rand -hex 24)}"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
     ports:
       - "8080:8080"
     volumes:

@@ -53,7 +53,10 @@ machine that will host the dashboard.
 mkdir trove && cd trove
 curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker-compose.yml
 
-export TROVE_TOKEN=trove_$(openssl rand -hex 24)
+# Save the agent's token to .env — Compose loads it automatically and it
+# survives restarts and upgrades. (Don't just `export` it: a new shell would
+# lose it, and re-running with a fresh token silently breaks the agent.)
+echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)" > .env
 docker compose up -d
 ```
 
@@ -65,20 +68,33 @@ the exact `pveum` commands), then:
 mkdir trove && cd trove
 curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker-compose.proxmox.yml
 
-export TROVE_TOKEN=trove_$(openssl rand -hex 24)
-export TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006
-export TROVE_PROXMOX_TOKEN='trove@pve!trove-agent=YOUR-TOKEN-SECRET'
+# Save settings to .env (Compose loads it automatically; it persists across
+# restarts). TROVE_TOKEN is Trove's own agent token; TROVE_PROXMOX_TOKEN is
+# your Proxmox API token — two different credentials.
+{
+  echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)"
+  echo "TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006"
+  echo "TROVE_PROXMOX_TOKEN=trove@pve!trove-agent=YOUR-TOKEN-SECRET"
+} > .env
+# now edit .env to fill in your real PVE host and API token, then:
 docker compose -f docker-compose.proxmox.yml up -d
 ```
 
 **Kubernetes** or **bare-metal Linux** — the agent doesn't run in Compose
 (the K8s agent runs in-cluster as a Deployment; the bare-metal agent runs as a
-systemd unit). Stand up the server with either compose file above, then deploy
-the agent from the [Kubernetes](docs/agents/kubernetes.md) or
-[bare-metal](docs/agents/local.md) guide.
+systemd unit). Stand up just the server —
+[`docker-compose.server.yml`](examples/docker-compose.server.yml) runs the
+server with no bundled agent — then deploy the agent from the
+[Kubernetes](docs/agents/kubernetes.md) or [bare-metal](docs/agents/local.md)
+guide.
+
+The compose files auto-register this first agent from `TROVE_TOKEN` (via
+`TROVE_BOOTSTRAP_*`), so you don't run `agent create` for it — every
+*additional* host gets its own token ([below](#adding-more-hosts-and-platforms)).
 
 Open <http://localhost:8080>. Your services appear within ~30 seconds. If an
-agent doesn't show up, watch it connect with `docker compose logs -f agent`.
+agent doesn't show up, watch it connect with `docker compose logs -f agent`
+(add `-f docker-compose.proxmox.yml` if you used the Proxmox file).
 
 > ⚠️ The dashboard has **no authentication yet** — keep it on a trusted
 > network (LAN/VPN/tailnet) or behind an authenticating reverse proxy. See
@@ -86,11 +102,23 @@ agent doesn't show up, watch it connect with `docker compose logs -f agent`.
 
 ## Adding more hosts and platforms
 
-Every agent needs its own token, minted on the server:
+Each host or platform you watch runs its **own agent** — a separate process or
+container, with its own image and its own token. You don't repoint an existing
+agent at a new platform; you run another one. (Setting `TROVE_PROXMOX_*` on the
+Docker agent, for example, does nothing — it's a different agent image; it will
+connect, look healthy, and never report your Proxmox guests.)
+
+Mint a token per agent, on the server:
 
 ```sh
+# server running via Docker Compose (the quickstart):
 docker compose exec server trove-server agent create <name>
-# e.g.: agent create docker-nas, agent create k8s-homelab, agent create proxmox
+
+# server running as a bare-metal binary — point at the SAME database the server
+# uses, or the token lands in a throwaway ./trove.db and the agent can't auth
+# (the systemd unit sets TROVE_DB=/var/lib/trove/trove.db):
+sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create <name>
+# e.g. <name> = docker-nas, k8s-homelab, proxmox
 ```
 
 Then follow the guide for the platform:
@@ -124,25 +152,42 @@ Static binaries for everything (including the bare-metal agent) are on the
                   └─────────────────────────────┘
 ```
 
+- **Agents, hosts, services**: an *agent* is one connection to the server (one
+  token). It reports one or more *hosts* — a Docker host, each Proxmox node, a
+  whole cluster — and each host has *services* (containers, VMs/LXCs, pods,
+  systemd units). A Docker agent reports one host; one Proxmox agent reports
+  every node in its cluster. On the dashboard, services are grouped by host.
 - **Push model**: agents POST full-state snapshots on an interval. The server
   never reaches into your infrastructure — homelab/NAT friendly.
 - **Heartbeats**: miss 3 intervals → agent (and its services) marked *stale*;
   miss 10 → *offline*. Thresholds scale with each agent's own interval.
 - **Full-state reports** are idempotent and tolerate lost pushes. Services
-  that disappear are soft-removed and pruned after 24h.
+  that disappear are soft-removed and pruned after 24h (configurable,
+  `TROVE_REMOVED_RETENTION`).
 
 ## Server install options
 
 **Docker Compose** — the quickstart above; data lives in the `trove-data` volume.
 
-**Bare metal** — grab `trove-server` from a release archive and use
-[deploy/systemd/trove-server.service](deploy/systemd/trove-server.service):
+**Bare metal** — download the `trove-server` archive for your arch from the
+[latest release](https://github.com/techdox/trove/releases/latest) (the
+`trove-server.service` unit is bundled inside it):
 
 ```sh
+# pick the URL for your arch off the releases page, e.g.:
+VERSION=0.4.0        # the release you're installing
+curl -fLO "https://github.com/techdox/trove/releases/download/v${VERSION}/trove-server_${VERSION}_linux_amd64.tar.gz"
+tar xzf trove-server_${VERSION}_linux_amd64.tar.gz
+
 sudo install -m 0755 trove-server /usr/local/bin/
 sudo cp deploy/systemd/trove-server.service /etc/systemd/system/
 sudo systemctl enable --now trove-server
 ```
+
+The server listens on `:8080` and stores its database at
+`/var/lib/trove/trove.db` (the unit creates that directory via
+`StateDirectory`). Mint agent tokens against that same DB — see
+[Adding more hosts](#adding-more-hosts-and-platforms).
 
 **Go install** (needs Go 1.26+):
 
@@ -162,7 +207,7 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 | `TROVE_FRESHNESS_INTERVAL` | `5m`       | How often to scan for images due a check.                              |
 | `TROVE_FRESHNESS_TTL`      | `6h`       | How long a resolved digest counts as fresh before rechecking.          |
 | `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
-| `TROVE_EVENT_RETENTION`    | `720h`     | How long events (activity feed / alert stream) are kept.               |
+| `TROVE_EVENT_RETENTION`    | `720h` (30d) | How long events (activity feed / alert stream) are kept.             |
 | `TROVE_REMOVED_RETENTION`  | `24h`      | How long removed services linger before being purged.                  |
 | `TROVE_ALERT_*` / `TROVE_SMTP_*` | _(unset)_ | Notification channels & SMTP — see [docs/alerts.md](docs/alerts.md). |
 | `TROVE_DIGEST`             | `daily@08:00`* | Digest schedule; *only takes effect once `TROVE_SMTP_*` is set — see [docs/alerts.md](docs/alerts.md). |
@@ -197,8 +242,13 @@ each [agent guide](docs/agents/).
 trove-server agent create <name>    # mint a token (shown once, stored hashed)
 trove-server agent list             # names, platform, status, last seen
 trove-server agent delete <name>    # remove an agent and all its data
-trove-server alert test             # push a test notification through configured channels
+trove-server alert test             # test every configured channel + send a sample digest
 ```
+
+On a Docker Compose server, run these inside the container, e.g.
+`docker compose exec server trove-server agent create <name>`. On a bare-metal
+server, set `TROVE_DB` to the server's database path (see
+[Adding more hosts](#adding-more-hosts-and-platforms)).
 
 ## API
 

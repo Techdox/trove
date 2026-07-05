@@ -2,9 +2,11 @@
 #
 # Install:
 #   sudo cp trove-server /usr/local/bin/            # from the release archive
-#   sudo mkdir -p /var/lib/trove
 #   sudo cp deploy/systemd/trove-server.service /etc/systemd/system/
 #   sudo systemctl enable --now trove-server
+#
+# StateDirectory=trove creates and owns /var/lib/trove automatically — no
+# manual mkdir needed (and a manual one can mis-own it against DynamicUser).
 #
 # Override settings via a drop-in (systemctl edit trove-server) or
 # /etc/trove-server.env. The dashboard has no auth — bind to a trusted

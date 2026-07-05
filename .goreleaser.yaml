@@ -52,7 +52,10 @@ archives:
     ids: [trove-server]
     name_template: "trove-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
-    files: [LICENSE, README.md]
+    # Ship the systemd unit alongside the binary so the bare-metal install in
+    # docs/README ("cp deploy/systemd/trove-server.service ...") works from the
+    # extracted archive — same as the trove-agent-local archive below.
+    files: [LICENSE, README.md, deploy/systemd/trove-server.service]
   - id: trove-agent-docker
     ids: [trove-agent-docker]
     name_template: "trove-agent-docker_{{ .Version }}_{{ .Os }}_{{ .Arch }}"

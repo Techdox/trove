@@ -1,8 +1,14 @@
-# Trove
+<p align="center">
+  <img src="docs/brand/trove-social-card.png" alt="Trove — read-only service catalog for Docker, Kubernetes, Proxmox, and bare-metal Linux" width="720">
+</p>
 
-[![CI](https://github.com/techdox/trove/actions/workflows/ci.yml/badge.svg)](https://github.com/techdox/trove/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/techdox/trove?sort=semver)](https://github.com/techdox/trove/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/techdox/trove/actions/workflows/ci.yml"><img src="https://github.com/techdox/trove/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/techdox/trove/releases"><img src="https://img.shields.io/github/v/release/techdox/trove?sort=semver" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
+# Trove
 
 **One pane of glass for everything running in your homelab.** Small agents sit
 next to your workloads — Docker hosts, Kubernetes clusters, Proxmox nodes,

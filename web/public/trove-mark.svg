@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Trove logo mark">
+  <defs>
+    <linearGradient id="g" x1="70" y1="48" x2="442" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b48cff"/>
+      <stop offset="0.62" stop-color="#9be28f"/>
+      <stop offset="1" stop-color="#f2a65a"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.70  0 0 0 0 0.55  0 0 0 0 1  0 0 0 .35 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="28" y="28" width="456" height="456" rx="96" fill="#1e1d2f"/>
+  <rect x="43" y="43" width="426" height="426" rx="82" fill="none" stroke="#3b3655" stroke-width="18"/>
+
+  <rect x="118" y="118" width="276" height="276" rx="42" fill="#242238" stroke="url(#g)" stroke-width="12" filter="url(#softGlow)"/>
+
+  <g stroke-linecap="round" stroke-width="18">
+    <line x1="164" y1="180" x2="276" y2="180" stroke="#aaa4c6" opacity=".95"/>
+    <line x1="164" y1="256" x2="276" y2="256" stroke="#aaa4c6" opacity=".95"/>
+    <line x1="164" y1="332" x2="276" y2="332" stroke="#aaa4c6" opacity=".95"/>
+  </g>
+
+  <circle cx="325" cy="180" r="15" fill="#9be28f"/>
+  <circle cx="325" cy="256" r="15" fill="#f2a65a"/>
+  <circle cx="325" cy="332" r="15" fill="#9be28f"/>
+
+  <g stroke="#b48cff" stroke-linecap="round" stroke-linejoin="round" stroke-width="28">
+    <line x1="180" y1="118" x2="332" y2="118"/>
+    <line x1="256" y1="118" x2="256" y2="394"/>
+  </g>
+
+  <path d="M219 394h74a20 20 0 0 1 20 20v10H199v-10a20 20 0 0 1 20-20z" fill="#1e1d2f" stroke="#9be28f" stroke-width="10"/>
+</svg>

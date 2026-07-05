@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/Techdox/trove/compare/v0.4.0...v0.4.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* bundle systemd unit in the trove-server release archive ([#7](https://github.com/Techdox/trove/issues/7)) ([b93a9e9](https://github.com/Techdox/trove/commit/b93a9e91ce36718c2268dc77e0d6361eaaad987d))
+* warn when an agent collects zero hosts ([#6](https://github.com/Techdox/trove/issues/6)) ([8d21785](https://github.com/Techdox/trove/commit/8d217858f409640b0f3bd084c1a08000fcc0f1d0))
+
 ## [0.4.0](https://github.com/Techdox/trove/compare/v0.3.1...v0.4.0) (2026-07-04)
 
 

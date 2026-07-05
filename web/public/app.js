@@ -27,7 +27,7 @@ const CHIP_DEFS = [
   { key: "running",   cls: "c-green",  test: (s) => s.state === "running" },
   { key: "unhealthy", cls: "c-red",    test: (s) => s.health === "unhealthy" },
   { key: "outdated",  cls: "c-peach",  test: (s) => s.freshness === "outdated" },
-  { key: "stale",     cls: "c-yellow", test: (s) => s.health === "stale" },
+  { key: "stale",     cls: "c-gray",   test: (s) => s.health === "stale" },
 ];
 
 // A service is identified by agent + hostname + external_id (hostnames are
@@ -74,7 +74,7 @@ function absTime(iso) {
 const HEALTH_CLASS = {
   healthy: "b-green",
   unhealthy: "b-red",
-  stale: "b-yellow",
+  stale: "b-gray",
   unknown: "b-gray",
 };
 
@@ -153,7 +153,7 @@ function freshnessCell(s) {
     case "outdated":
       return `<span class="badge b-peach" title="running: ${esc(s.image_digest || "?")}\nlatest:  ${esc(s.latest_digest || "?")}">update</span>`;
     case "current":
-      return '<span class="badge b-green">up to date</span>';
+      return '<span class="badge b-blue">up to date</span>';
     default:
       return '<span class="muted">—</span>';
   }
@@ -216,7 +216,7 @@ function renderSummary() {
     stat(c.running, "running", "c-green", "running"),
     stat(c.unhealthy, "unhealthy", "c-red", "unhealthy"),
     stat(c.outdated, "outdated", "c-peach", "outdated"),
-    stat(c.stale, "stale", "c-yellow", "stale"),
+    stat(c.stale, "stale", "c-gray", "stale"),
   ].join("");
 }
 
@@ -453,7 +453,7 @@ function renderDrawer() {
       ${badge(stateClass(s.state), s.state || "?")}
       ${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}
       ${s.freshness === "outdated" ? badge("b-peach", "update available")
-        : s.freshness === "current" ? badge("b-green", "up to date") : ""}
+        : s.freshness === "current" ? badge("b-blue", "up to date") : ""}
     </div>
     <div class="d-mono">
       <span class="lbl">host</span> ${esc(host.hostname)} · <span class="lbl">agent</span> ${esc(host.agent)} (${esc(host.platform || "—")})

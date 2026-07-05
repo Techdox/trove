@@ -282,13 +282,16 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Upgrades & backup
 
-- **Upgrade**: pull the new image (or binary) and restart. Schema migrations
-  run automatically on startup; agents and server tolerate version skew within
-  a minor version.
-- **Backup**: everything is one SQLite file (`trove.db` / the `trove-data`
-  volume). Copy it while the server is stopped, or use `sqlite3 ... ".backup"`
-  live. Trove state is rebuildable anyway — agents repopulate the catalog
-  within one interval; you'd lose only event history.
+Upgrades are a `pull` (or binary swap) and restart away: schema migrations apply
+automatically on startup and are additive, and the server and agents tolerate
+version skew within a minor version. Everything is one SQLite file (`trove.db` /
+the `trove-data` volume) — back it up by copying it with the server stopped or
+via `sqlite3 ... ".backup"`; state is rebuildable anyway, since agents repopulate
+the catalog within one interval (a lost database costs only event history).
+
+See **[docs/upgrades.md](docs/upgrades.md)** for per-method upgrade steps (Docker
+Compose, bare metal, `go install`, agents), version pinning, backup commands,
+and how to roll back.
 
 ## Building from source
 

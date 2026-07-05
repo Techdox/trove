@@ -78,3 +78,30 @@ jobs:
           git push "https://x-access-token:${RELEASE_PLEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${tag}"
 
           echo "Created ${tag} at ${GITHUB_SHA}. The Release workflow will publish artifacts from this tag."
+
+      - name: Mark the merged release PR as tagged
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # release-please refuses to open the NEXT release PR while a merged
+          # one is still labelled "autorelease: pending" ("untagged, merged
+          # release PRs outstanding"). With skip-github-release it never flips
+          # that label itself — it expects whatever tags the release to do it.
+          # Since we just created the tag above, close the loop here. Without
+          # this, every release gets stuck after the first.
+          gh label create "autorelease: tagged" --color 00FF00 \
+            --description "release-please: this release PR has been tagged/released" 2>/dev/null || true
+
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged \
+            --label "autorelease: pending" --json number --jq '.[].number')
+          if [ -z "$prs" ]; then
+            echo "No merged release PR labelled 'autorelease: pending'; nothing to relabel."
+          fi
+          for pr in $prs; do
+            echo "Marking PR #${pr} as autorelease: tagged"
+            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" \
+              --add-label "autorelease: tagged" --remove-label "autorelease: pending" || true
+          done

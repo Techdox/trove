@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Techdox/trove/compare/v0.5.0...v0.6.0) (2026-07-05)
+
+
+### Features
+
+* restyle the dashboard in the brand design system ([#13](https://github.com/Techdox/trove/issues/13)) ([f3ed18b](https://github.com/Techdox/trove/commit/f3ed18bcfa9397a34270e255cf47fec9e9938b0a))
+
 ## [0.5.0](https://github.com/Techdox/trove/compare/v0.4.1...v0.5.0) (2026-07-05)
 
 

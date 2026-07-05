@@ -3,10 +3,16 @@
 #
 #   1. Create a read-only Proxmox API token (PVEAuditor role). See:
 #        https://github.com/techdox/trove/blob/main/docs/agents/proxmox.md
-#   2. Set a Trove token and your Proxmox connection details:
-#        export TROVE_TOKEN=trove_$(openssl rand -hex 24)
-#        export TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006
-#        export TROVE_PROXMOX_TOKEN='trove@pve!trove-agent=YOUR-TOKEN-SECRET'
+#   2. Save a Trove token and your Proxmox connection details to .env (Compose
+#      loads .env automatically and it persists across restarts/upgrades):
+#        {
+#          echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)"
+#          echo "TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006"
+#          echo "TROVE_PROXMOX_TOKEN=trove@pve!trove-agent=YOUR-TOKEN-SECRET"
+#        } > .env
+#      then edit .env to fill in your real PVE host and API token.
+#      Note: TROVE_TOKEN (Trove's own agent token) and TROVE_PROXMOX_TOKEN
+#      (your Proxmox API token) are two different credentials.
 #   3. Start the stack:
 #        docker compose -f docker-compose.proxmox.yml up -d
 #   4. Open http://localhost:8080 — your VMs and LXCs appear within ~30s.
@@ -24,7 +30,7 @@ services:
     image: ghcr.io/techdox/trove-server:latest
     environment:
       TROVE_BOOTSTRAP_AGENT: "proxmox"
-      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  export TROVE_TOKEN=trove_$(openssl rand -hex 24)}"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
     ports:
       - "8080:8080"
     volumes:

@@ -22,14 +22,16 @@ Copy the `trove_...` token — it is shown once.
 
 ```sh
 docker run -d --name trove-agent --restart unless-stopped \
-  -e TROVE_SERVER_URL=http://trove.lan:8080 \
+  -e TROVE_SERVER_URL=http://YOUR-SERVER:8080 \
   -e TROVE_TOKEN=trove_xxxxxxxx \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   ghcr.io/techdox/trove-agent-docker:latest
 ```
 
-The host and its containers appear on the dashboard within one push interval
-(30s by default).
+Replace `YOUR-SERVER` with your Trove server's address as reachable from this
+host (a LAN IP or hostname; `localhost` only if the server runs on this same
+box). The host and its containers appear on the dashboard within one push
+interval (30s by default).
 
 ## Configuration
 

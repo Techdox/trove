@@ -1,0 +1,37 @@
+# Trove server only — no bundled agent. Use this when the thing you want to
+# watch runs its agent elsewhere: a Kubernetes cluster (in-cluster Deployment)
+# or a bare-metal host (systemd unit). Uses the published image; no build.
+#
+#   1. Save a token for your first agent to .env (Compose loads it automatically
+#      and it persists across restarts/upgrades):
+#        echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)" > .env
+#   2. Start the server:
+#        docker compose -f docker-compose.server.yml up -d
+#   3. Open http://localhost:8080 (empty until an agent connects).
+#   4. Deploy the agent per its guide, pointing TROVE_SERVER_URL at THIS host's
+#      LAN address (e.g. http://192.168.1.50:8080) — not localhost, which from
+#      inside a pod or another box means "myself":
+#        docs/agents/kubernetes.md   or   docs/agents/local.md
+#
+# The TROVE_BOOTSTRAP_* pair seeds that first agent from TROVE_TOKEN, so you
+# don't run `agent create` for it. Additional agents each get their own token:
+#        docker compose -f docker-compose.server.yml exec server \
+#          trove-server agent create <name>
+#
+# ⚠ The dashboard has no authentication yet — keep port 8080 on a trusted
+#   network (LAN/VPN) or behind an authenticating reverse proxy.
+
+services:
+  server:
+    image: ghcr.io/techdox/trove-server:latest
+    environment:
+      TROVE_BOOTSTRAP_AGENT: "first-agent"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - trove-data:/data
+    restart: unless-stopped
+
+volumes:
+  trove-data:

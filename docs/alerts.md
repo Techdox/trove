@@ -6,12 +6,32 @@ email digest summarizing the fleet. Everything is configured with environment
 variables on **the server** (agents are not involved), and none of it changes
 anything: notifications are outbound-only.
 
+> **Where these variables go.** They must reach the *server process* — setting
+> them in your shell with `export` does nothing. For a Docker Compose server,
+> add them under the `server` service's `environment:` and re-run
+> `docker compose up -d`. For a bare-metal server, put them in
+> `/etc/trove-server.env` (the systemd unit reads it via `EnvironmentFile`) and
+> `systemctl restart trove-server`.
+
 Verify any setup with one command:
 
 ```sh
 trove-server alert test
 # compose: docker compose exec server trove-server alert test
 ```
+
+It POSTs a test notification through every configured instant channel and, if
+SMTP is set, sends a sample digest — printing one line per channel:
+
+```
+  webhook  ok
+  discord  ok
+  digest   ok
+```
+
+`ok` means the channel accepted the request (so also check that the message
+actually arrived on your phone/Discord). If you see `no instant channels
+configured`, the variables didn't reach the server — see the note above.
 
 ## Instant channels
 
@@ -109,6 +129,11 @@ TROVE_SMTP_FROM=trove@example.com
 TROVE_SMTP_TO=nick@example.com   # comma-separated for multiple
 TROVE_DIGEST=daily@08:00         # or weekly@mon:08:00, or off
 ```
+
+`TROVE_SMTP_HOST`, `TROVE_SMTP_FROM`, and `TROVE_SMTP_TO` are the required trio
+(username/password are optional, for open relays). If any of the three is
+missing the digest silently stays off — `alert test` will report `email digest
+not configured`.
 
 Gmail: use an [app password](https://myaccount.google.com/apppasswords) with
 `TROVE_SMTP_HOST=smtp.gmail.com`, port 587.

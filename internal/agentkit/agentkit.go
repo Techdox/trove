@@ -128,6 +128,19 @@ func runOnce(ctx context.Context, envelope model.ReportAgent, c Collector, p *pu
 		log.Error("collect failed", "err", err)
 		return
 	}
+	if len(snaps) == 0 {
+		// Collect succeeded but returned nothing to report. This is almost
+		// always a misconfiguration that would otherwise fail silently — the
+		// agent connects, looks healthy, and the dashboard just stays empty.
+		// The usual cause is a platform credential that authenticates but
+		// lacks read permission (e.g. a Proxmox API token without the
+		// PVEAuditor role, where the API answers 200 with an empty list), or
+		// the agent pointed at the wrong target. Surface it loudly.
+		log.Warn("collected 0 hosts — the agent reached its platform but found nothing to report; " +
+			"this is usually a credential/permission problem (for Proxmox, a token missing the PVEAuditor role) " +
+			"or the wrong target. Nothing will appear on the dashboard until this is resolved")
+		return
+	}
 	total := 0
 	for i := range snaps {
 		report := &model.Report{Agent: envelope, Host: snaps[i].Host, Services: snaps[i].Services}

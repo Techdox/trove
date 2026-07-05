@@ -89,19 +89,25 @@ so CI always runs against the real merge target.
 [release-please](https://github.com/googleapis/release-please) watches every
 merge to `main` and keeps a "chore(main): release X.Y.Z" PR open with the next
 version number and changelog computed from commit messages since the last
-release (`feat` → minor, `fix` → patch). It never publishes anything by
-itself — merging that PR is what creates the `vX.Y.Z` tag, which triggers
+release (`feat` → minor, `fix` → patch). When you want to ship, merge that
+release PR.
+
+Merging the release PR updates `CHANGELOG.md` and
+`.release-please-manifest.json` on `main`. The
+[release-tag.yml](.github/workflows/release-tag.yml) workflow sees that manifest
+change, creates the matching `vX.Y.Z` tag, and that tag triggers
 [release.yml](.github/workflows/release.yml) (goreleaser: cross-compiled
 binaries + multi-arch Docker images to GHCR + a GitHub Release). So `main` is
-always at most one PR-merge away from being exactly what's published; there's
-no separate manual tagging step.
+always at most one release-PR merge away from being exactly what's published;
+there's no separate manual tagging step.
 
-release-please is configured with `skip-github-release: true` — it only
-manages the tag, `CHANGELOG.md`, and the version PR; goreleaser remains the
-only thing that actually creates the GitHub Release and its assets, so the
-two never race to create the same release.
+release-please is configured with `skip-github-release: true` — it only manages
+`CHANGELOG.md`, `.release-please-manifest.json`, and the version PR. The tagger
+workflow creates the tag, and goreleaser remains the only thing that creates the
+GitHub Release and its assets, so the tools never race to create the same
+release.
 
-It authenticates with a fine-grained PAT in the `RELEASE_PLEASE_TOKEN` repo
-secret, not the default `GITHUB_TOKEN` — GitHub won't trigger downstream
-workflows (i.e. CI) for anything the built-in token opens, which would leave
-the release PR stuck forever unable to satisfy `main`'s required check.
+Both release-please and release-tag use the fine-grained PAT in the
+`RELEASE_PLEASE_TOKEN` repo secret, not the default `GITHUB_TOKEN`. GitHub won't
+trigger downstream workflows (CI or tag-triggered releases) for refs created by
+the built-in token, which would leave release automation stuck halfway through.

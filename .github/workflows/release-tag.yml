@@ -1,0 +1,80 @@
+name: release-tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tag-release:
+    name: tag release from release-please manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check whether release manifest changed
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files=$(git diff --name-only "$BEFORE" "$AFTER")
+          if printf '%s\n' "$changed_files" | grep -Fxq '.release-please-manifest.json'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release tag
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RELEASE_PLEASE_TOKEN}" ]; then
+            echo "::error::RELEASE_PLEASE_TOKEN is required to create release tags that trigger release.yml."
+            exit 1
+          fi
+
+          version=$(python3 - <<'PY'
+          import json
+          with open('.release-please-manifest.json', 'r', encoding='utf-8') as f:
+              manifest = json.load(f)
+          version = manifest.get('.')
+          if not version:
+              raise SystemExit('manifest does not contain package "."')
+          print(version)
+          PY
+          )
+          tag="v${version}"
+
+          git fetch origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null || true
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            existing=$(git rev-list -n 1 "refs/tags/${tag}")
+            if [ "$existing" = "$GITHUB_SHA" ]; then
+              echo "${tag} already points at ${GITHUB_SHA}; nothing to do."
+              exit 0
+            fi
+            echo "::error::${tag} already exists at ${existing}, not ${GITHUB_SHA}. Refusing to move it."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "release ${tag}" "$GITHUB_SHA"
+          git push "https://x-access-token:${RELEASE_PLEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${tag}"
+
+          echo "Created ${tag} at ${GITHUB_SHA}. The Release workflow will publish artifacts from this tag."

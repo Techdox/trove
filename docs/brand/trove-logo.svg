@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="Trove wordmark">
+  <defs>
+    <linearGradient id="g" x1="30" y1="32" x2="300" y2="322" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b48cff"/>
+      <stop offset=".64" stop-color="#9be28f"/>
+      <stop offset="1" stop-color="#f2a65a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="360" fill="none"/>
+  <g transform="translate(32 32)">
+    <rect x="0" y="0" width="296" height="296" rx="62" fill="#1e1d2f"/>
+    <rect x="10" y="10" width="276" height="276" rx="52" fill="none" stroke="#3b3655" stroke-width="12"/>
+    <rect x="70" y="70" width="156" height="156" rx="24" fill="#242238" stroke="url(#g)" stroke-width="8"/>
+    <g stroke-linecap="round" stroke-width="10">
+      <line x1="98" y1="106" x2="158" y2="106" stroke="#aaa4c6"/>
+      <line x1="98" y1="148" x2="158" y2="148" stroke="#aaa4c6"/>
+      <line x1="98" y1="190" x2="158" y2="190" stroke="#aaa4c6"/>
+    </g>
+    <circle cx="188" cy="106" r="8" fill="#9be28f"/>
+    <circle cx="188" cy="148" r="8" fill="#f2a65a"/>
+    <circle cx="188" cy="190" r="8" fill="#9be28f"/>
+    <g stroke="#b48cff" stroke-linecap="round" stroke-linejoin="round" stroke-width="16">
+      <line x1="104" y1="70" x2="192" y2="70"/>
+      <line x1="148" y1="70" x2="148" y2="226"/>
+    </g>
+  </g>
+
+  <text x="380" y="158" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Arial, sans-serif"
+        font-size="86" font-weight="800" letter-spacing="13" fill="#eee8ff">TROVE</text>
+  <text x="385" y="222" font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace"
+        font-size="28" font-weight="500" letter-spacing="2" fill="#aaa4c6">read-only service catalog</text>
+  <text x="385" y="272" font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace"
+        font-size="22" fill="#9be28f">one pane of glass for the homelab</text>
+</svg>

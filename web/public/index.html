@@ -4,14 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#1e1d2f" />
   <title>Trove</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>📦</text></svg>" />
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="trove-icon-180.png" />
+  <link rel="manifest" href="site.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>TROVE</h1>
+      <a class="brand" href="." aria-label="Trove">
+        <img class="mark" src="trove-mark.svg" alt="" width="30" height="30" />
+        <h1>TROVE</h1>
+      </a>
       <span class="tagline">read-only service catalog</span>
       <div class="status-line">
         <span id="updated">connecting…</span>

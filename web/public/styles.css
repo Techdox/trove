@@ -49,12 +49,23 @@ a { color: var(--blue); }
 /* ---- header ---- */
 header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 14px;
   border-bottom: 1px solid var(--surface0);
   padding-bottom: 12px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.brand .mark {
+  display: block;
+  width: 30px;
+  height: 30px;
 }
 header h1 {
   font-size: 20px;

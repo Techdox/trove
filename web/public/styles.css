@@ -445,26 +445,31 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
 }
 .d-close:hover { color: var(--text); border-color: var(--border-strong); }
 .d-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 4px; }
-.d-why {
+.d-detail {
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(255, 107, 122, 0.08);
-  border: 1px solid rgba(255, 107, 122, 0.3);
+  background: rgba(113, 183, 255, 0.07);
+  border: 1px solid rgba(113, 183, 255, 0.24);
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
-.d-why-label {
-  color: var(--red);
+.d-detail.bad {
+  background: rgba(255, 107, 122, 0.08);
+  border-color: rgba(255, 107, 122, 0.3);
+}
+.d-detail-label {
+  color: var(--blue);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 10px;
   margin-right: 6px;
 }
+.d-detail.bad .d-detail-label { color: var(--red); }
 .d-sec {
   font-family: var(--font-mono);
   text-transform: uppercase;
@@ -483,6 +488,7 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
 }
 .kv .k { color: var(--subtle); font-family: var(--font-mono); overflow-wrap: anywhere; }
 .kv .v { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.kv.metrics .v { color: var(--text); }
 .pchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .pchip {
   border: 1px solid var(--border);

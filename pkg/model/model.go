@@ -116,9 +116,10 @@ type ReportService struct {
 	ImageDigest      string `json:"image_digest,omitempty"`
 	State            string `json:"state"`
 	Health           Health `json:"health"`
-	// HealthDetail is an optional short, human-readable reason for the health
-	// state — e.g. a failing Docker healthcheck's last output, or a Kubernetes
-	// pod's waiting/termination reason. Empty when there's nothing to explain.
+	// HealthDetail is an optional short, human-readable note about the current
+	// state — e.g. a failing Docker healthcheck's last output, a Kubernetes
+	// pod's waiting/termination reason, or a Proxmox guest's resource summary.
+	// Empty when there's nothing to add.
 	HealthDetail string            `json:"health_detail,omitempty"`
 	Ports        []Port            `json:"ports,omitempty"`
 	Labels       map[string]string `json:"labels,omitempty"`

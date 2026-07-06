@@ -106,6 +106,65 @@ function badge(cls, label, extra) {
   return `<span class="badge ${cls}${extra ? " " + extra : ""}">${esc(label)}</span>`;
 }
 
+const PROXMOX_METRIC_KEYS = new Set([
+  "node",
+  "vmid",
+  "ostype",
+  "proxmox.cpu_pct",
+  "proxmox.maxcpu",
+  "proxmox.mem_used",
+  "proxmox.mem_total",
+  "proxmox.mem_pct",
+  "proxmox.disk_used",
+  "proxmox.disk_total",
+  "proxmox.disk_pct",
+  "proxmox.uptime",
+]);
+
+function proxmoxMetricRows(labels) {
+  if (!labels || typeof labels !== "object") return [];
+  const rows = [];
+  if (labels.node) rows.push(["Node", labels.node]);
+  if (labels.vmid) rows.push(["VMID", labels.vmid]);
+  if (labels.ostype) rows.push(["OS type", labels.ostype]);
+  if (labels["proxmox.cpu_pct"]) {
+    const cores = labels["proxmox.maxcpu"] ? ` of ${labels["proxmox.maxcpu"]} cores` : "";
+    rows.push(["CPU", `${labels["proxmox.cpu_pct"]}${cores}`]);
+  } else if (labels["proxmox.maxcpu"]) {
+    rows.push(["CPU", `${labels["proxmox.maxcpu"]} cores`]);
+  }
+  const mem = metricUsage(labels["proxmox.mem_used"], labels["proxmox.mem_total"], labels["proxmox.mem_pct"]);
+  if (mem) rows.push(["Memory", mem]);
+  const disk = metricUsage(labels["proxmox.disk_used"], labels["proxmox.disk_total"], labels["proxmox.disk_pct"]);
+  if (disk) rows.push(["Disk", disk]);
+  if (labels["proxmox.uptime"]) rows.push(["Uptime", labels["proxmox.uptime"]]);
+  return rows;
+}
+
+function metricUsage(used, total, pct) {
+  if (used && total && pct) return `${used} / ${total} · ${pct}`;
+  if (used && total) return `${used} / ${total}`;
+  if (total && pct) return `${pct} of ${total}`;
+  return used || total || pct || "";
+}
+
+function isProxmoxService(host, svc) {
+  return host.platform === "proxmox" || host.platform === "pve"
+    || svc.labels?.["proxmox.cpu_pct"] !== undefined
+    || svc.labels?.["proxmox.mem_pct"] !== undefined
+    || svc.labels?.["proxmox.disk_pct"] !== undefined;
+}
+
+function hostPlatformLine(host) {
+  const parts = [host.agent, host.platform || "—"];
+  const meta = host.meta && typeof host.meta === "object" ? host.meta : {};
+  if (meta["proxmox.version"]) {
+    const release = meta["proxmox.release"] ? `-${meta["proxmox.release"]}` : "";
+    parts.push(`Proxmox ${meta["proxmox.version"]}${release}`);
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+
 // ------------------------------------------------------- cell rendering ----
 
 // splitImage separates "registry/namespace/name:tag" so the prefix can
@@ -349,7 +408,7 @@ function renderHosts() {
       <div class="host-head" role="button" aria-expanded="${!collapsed}">
         <span class="chev">${collapsed ? "▸" : "▾"}</span>
         <span class="hostname">${esc(h.hostname)}</span>
-        <span class="sub">${esc(h.agent)} · ${esc(h.platform || "—")}</span>
+        <span class="sub">${esc(hostPlatformLine(h))}</span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
@@ -451,7 +510,10 @@ function renderDrawer() {
     .filter((e) => e.service === s.name && e.hostname === host.hostname)
     .slice(0, 12);
 
-  const labels = Object.entries(s.labels && typeof s.labels === "object" ? s.labels : {})
+  const rawLabels = s.labels && typeof s.labels === "object" ? s.labels : {};
+  const metricRows = isProxmoxService(host, s) ? proxmoxMetricRows(rawLabels) : [];
+  const labels = Object.entries(rawLabels)
+    .filter(([k]) => !PROXMOX_METRIC_KEYS.has(k))
     .sort(([a], [b]) => a.localeCompare(b));
 
   const ports = Array.isArray(s.ports)
@@ -471,8 +533,8 @@ function renderDrawer() {
       ${s.freshness === "outdated" ? badge("b-peach", "update available")
         : s.freshness === "current" ? badge("b-blue", "up to date") : ""}
     </div>
-    ${s.health === "unhealthy" && s.health_detail
-      ? `<div class="d-why"><span class="d-why-label">Why</span> ${esc(s.health_detail)}</div>` : ""}
+    ${s.health_detail
+      ? `<div class="d-detail ${s.health === "unhealthy" ? "bad" : ""}"><span class="d-detail-label">${s.health === "unhealthy" ? "Why" : "Detail"}</span> ${esc(s.health_detail)}</div>` : ""}
     <div class="d-mono">
       <span class="lbl">host</span> ${esc(host.hostname)} · <span class="lbl">agent</span> ${esc(host.agent)} (${esc(host.platform || "—")})
     </div>
@@ -484,6 +546,9 @@ function renderDrawer() {
       ${s.latest_digest ? `<div class="d-mono"><span class="lbl">latest&nbsp;</span> ${esc(s.latest_digest)}</div>` : ""}` : "")}
 
     ${sec("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
+
+    ${sec("Metrics", metricRows.length ? `<div class="kv metrics">${metricRows.map(([k, v]) =>
+      `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
 
     ${sec(`Instances (${children.length})`, children.length ? `<div class="d-kids">${children.map((k) => `
       <div class="krow">${badge(HEALTH_CLASS[k.health] || "b-gray", k.health, "mini")} ${esc(k.name)}

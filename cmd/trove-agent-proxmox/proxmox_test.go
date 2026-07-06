@@ -110,16 +110,30 @@ func TestProxmoxGuestHealth(t *testing.T) {
 			wantDetail: "Guest is stopped",
 		},
 		{
-			name:       "running high memory is unhealthy",
-			resource:   pveResource{Status: "running", Mem: 96, MaxMem: 100},
-			wantHealth: model.HealthUnhealthy,
-			wantDetail: "High memory usage: 96% of 100 B",
+			name: "running under normal load is healthy",
+			resource: pveResource{
+				Status: "running", CPU: 0.03, MaxCPU: 4,
+				Mem: 4 * 1024 * 1024 * 1024, MaxMem: 8 * 1024 * 1024 * 1024,
+				Disk: 40 * 1024 * 1024 * 1024, MaxDisk: 100 * 1024 * 1024 * 1024,
+				Uptime: 90061,
+			},
+			wantHealth: model.HealthHealthy,
+			wantDetail: "Running · 1d 1h · CPU 3% · RAM 50% · disk 40%",
 		},
 		{
-			name:       "running high disk is unhealthy",
+			// Regression guard: resource pressure must NOT map to unhealthy.
+			// High memory is normal for a running guest and would otherwise
+			// fire spurious events/alerts.
+			name:       "running near memory limit stays healthy",
+			resource:   pveResource{Status: "running", Mem: 96, MaxMem: 100},
+			wantHealth: model.HealthHealthy,
+			wantDetail: "Running · CPU 0% · RAM 96%",
+		},
+		{
+			name:       "running near disk limit stays healthy",
 			resource:   pveResource{Status: "running", Disk: 97, MaxDisk: 100},
-			wantHealth: model.HealthUnhealthy,
-			wantDetail: "High disk usage: 97% of 100 B",
+			wantHealth: model.HealthHealthy,
+			wantDetail: "Running · CPU 0% · disk 97%",
 		},
 		{
 			name:       "unexpected state is unknown",

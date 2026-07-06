@@ -139,10 +139,13 @@ reported by Proxmox config (`ostype`) where available — for example `Windows
 11`, `Linux`, `Debian`, or `Ubuntu`. This uses only read-only config endpoints;
 it does not require the QEMU guest agent.
 
-Proxmox health is infrastructure-level, not application-level:
+Proxmox health tracks power state, not resource usage:
 
-- `running` guests are `healthy` unless Proxmox reports obvious pressure such as
-  memory or disk usage at 95% or higher.
+- `running` guests are `healthy`. Trove surfaces their live CPU, memory, disk,
+  and uptime as metrics (click the guest to see them) but does **not** turn
+  resource usage into a health verdict — a VM legitimately running near its
+  memory limit is not "unhealthy", and treating it as such would fire spurious
+  events and alerts.
 - `stopped` guests stay neutral: their state says `stopped`, health remains
   `unknown`, and the detail says `Guest is stopped`. Trove does not require you
   to maintain a list of VMs that are expected to be on or off.
@@ -153,9 +156,8 @@ agent reads it with `GET /api2/json/nodes/{node}/version` and stores it as host
 metadata (`proxmox.version`, `proxmox.release`, and `proxmox.repoid`) rather
 than repeating it on every VM/LXC.
 
-Click a Proxmox guest in the dashboard to see the reported metrics used for that
-health summary: node, CPU, memory, disk, uptime, VMID, and OS type where
-available.
+Click a Proxmox guest in the dashboard to see its reported metrics: node, CPU,
+memory, disk, uptime, VMID, and OS type where available.
 
 ## Nothing showing up?
 

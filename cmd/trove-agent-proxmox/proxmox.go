@@ -204,18 +204,19 @@ func (c *collector) nodeMeta(ctx context.Context, node string) map[string]string
 	return meta
 }
 
-const proxmoxPressureThreshold = 95.0
-
+// proxmoxGuestHealth maps a guest's power state to Trove's health enum.
+//
+// Health is deliberately NOT derived from resource usage. Proxmox reports
+// infrastructure metrics, not an application healthcheck, and high memory is
+// normal for a running guest — KVM guests trend toward ~100% of assigned RAM
+// (caches, JVMs, databases, no ballooning), and flagging that as `unhealthy`
+// would fire spurious events/alerts for ordinary VMs. The live CPU/memory/disk
+// numbers are surfaced as informational metrics (see proxmoxLabels and the
+// running detail line), not as a verdict.
 func proxmoxGuestHealth(r pveResource) (model.Health, string) {
 	status := strings.ToLower(strings.TrimSpace(r.Status))
 	switch status {
 	case "running":
-		if pct, ok := percent(r.Mem, r.MaxMem); ok && pct >= proxmoxPressureThreshold {
-			return model.HealthUnhealthy, fmt.Sprintf("High memory usage: %.0f%% of %s", pct, formatBytes(r.MaxMem))
-		}
-		if pct, ok := percent(r.Disk, r.MaxDisk); ok && pct >= proxmoxPressureThreshold {
-			return model.HealthUnhealthy, fmt.Sprintf("High disk usage: %.0f%% of %s", pct, formatBytes(r.MaxDisk))
-		}
 		return model.HealthHealthy, runningDetail(r)
 	case "stopped":
 		return model.HealthUnknown, "Guest is stopped"

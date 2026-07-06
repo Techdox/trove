@@ -1,0 +1,21 @@
+name: PR Title
+
+# Squash-merges use the pull request title as the commit subject on main, and
+# release-please only cuts a release when that subject is a Conventional Commit
+# (feat:, fix:, …). A non-conventional title (e.g. an auto-generated
+# "Feat/branch name") is silently non-releasable, so guard the title here.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

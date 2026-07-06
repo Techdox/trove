@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/Techdox/trove/compare/v0.7.0...v0.8.0) (2026-07-06)
+
+
+### Features
+
+* surface Proxmox health & version metadata ([#22](https://github.com/Techdox/trove/issues/22)) ([60e3a41](https://github.com/Techdox/trove/commit/60e3a414a5f525878513947434892ff7687cde45))
+
 ## [0.7.0](https://github.com/Techdox/trove/compare/v0.6.0...v0.7.0) (2026-07-05)
 
 

@@ -82,14 +82,28 @@ type pveNode struct {
 	Node string `json:"node"`
 }
 
+// pveNodeVersion is returned by /nodes/{node}/version.
+type pveNodeVersion struct {
+	Version string `json:"version"`
+	Release string `json:"release"`
+	RepoID  string `json:"repoid"`
+}
+
 // pveResource is a guest entry from /cluster/resources?type=vm.
 type pveResource struct {
-	Type     string `json:"type"` // "qemu" or "lxc"
-	VMID     int    `json:"vmid"`
-	Name     string `json:"name"`
-	Status   string `json:"status"` // running | stopped
-	Node     string `json:"node"`
-	Template int    `json:"template"` // 1 = template (not a real guest)
+	Type     string  `json:"type"` // "qemu" or "lxc"
+	VMID     int     `json:"vmid"`
+	Name     string  `json:"name"`
+	Status   string  `json:"status"` // running | stopped
+	Node     string  `json:"node"`
+	Template int     `json:"template"` // 1 = template (not a real guest)
+	CPU      float64 `json:"cpu"`      // ratio, e.g. 0.03 = 3%
+	MaxCPU   int     `json:"maxcpu"`
+	Mem      uint64  `json:"mem"`
+	MaxMem   uint64  `json:"maxmem"`
+	Disk     uint64  `json:"disk"`
+	MaxDisk  uint64  `json:"maxdisk"`
+	Uptime   uint64  `json:"uptime"` // seconds
 }
 
 // pveGuestConfig is the tiny subset of a QEMU/LXC config we need. `ostype` is
@@ -140,29 +154,156 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 			name = fmt.Sprintf("%s-%d", r.Type, r.VMID)
 		}
 		image, osType := c.guestImage(ctx, r)
-		labels := map[string]string{"node": r.Node, "vmid": strconv.Itoa(r.VMID)}
+		health, healthDetail := proxmoxGuestHealth(r)
+		labels := proxmoxLabels(r)
 		if osType != "" {
 			labels["ostype"] = osType
 		}
 		byNode[r.Node] = append(byNode[r.Node], model.ReportService{
-			ExternalID: fmt.Sprintf("%s/%d", r.Type, r.VMID),
-			Name:       name,
-			Kind:       kind,
-			Image:      image,
-			State:      r.Status,
-			Health:     model.HealthUnknown, // Proxmox has no healthcheck; state carries up/down
-			Labels:     labels,
+			ExternalID:   fmt.Sprintf("%s/%d", r.Type, r.VMID),
+			Name:         name,
+			Kind:         kind,
+			Image:        image,
+			State:        r.Status,
+			Health:       health,
+			HealthDetail: healthDetail,
+			Labels:       labels,
 		})
 	}
 
 	snaps := make([]agentkit.HostSnapshot, 0, len(nodesResp.Data))
 	for _, n := range nodesResp.Data {
 		snaps = append(snaps, agentkit.HostSnapshot{
-			Host:     model.ReportHost{Hostname: n.Node, Meta: map[string]string{"platform": "proxmox"}},
+			Host:     model.ReportHost{Hostname: n.Node, Meta: c.nodeMeta(ctx, n.Node)},
 			Services: byNode[n.Node],
 		})
 	}
 	return snaps, nil
+}
+
+func (c *collector) nodeMeta(ctx context.Context, node string) map[string]string {
+	meta := map[string]string{"platform": "proxmox"}
+
+	var resp struct {
+		Data pveNodeVersion `json:"data"`
+	}
+	path := fmt.Sprintf("/api2/json/nodes/%s/version", url.PathEscape(node))
+	if err := c.cli.get(ctx, path, &resp); err != nil {
+		c.log.Warn("proxmox: node version unavailable", "node", node, "err", err)
+		return meta
+	}
+	if v := strings.TrimSpace(resp.Data.Version); v != "" {
+		meta["proxmox.version"] = v
+	}
+	if release := strings.TrimSpace(resp.Data.Release); release != "" {
+		meta["proxmox.release"] = release
+	}
+	if repoID := strings.TrimSpace(resp.Data.RepoID); repoID != "" {
+		meta["proxmox.repoid"] = repoID
+	}
+	return meta
+}
+
+const proxmoxPressureThreshold = 95.0
+
+func proxmoxGuestHealth(r pveResource) (model.Health, string) {
+	status := strings.ToLower(strings.TrimSpace(r.Status))
+	switch status {
+	case "running":
+		if pct, ok := percent(r.Mem, r.MaxMem); ok && pct >= proxmoxPressureThreshold {
+			return model.HealthUnhealthy, fmt.Sprintf("High memory usage: %.0f%% of %s", pct, formatBytes(r.MaxMem))
+		}
+		if pct, ok := percent(r.Disk, r.MaxDisk); ok && pct >= proxmoxPressureThreshold {
+			return model.HealthUnhealthy, fmt.Sprintf("High disk usage: %.0f%% of %s", pct, formatBytes(r.MaxDisk))
+		}
+		return model.HealthHealthy, runningDetail(r)
+	case "stopped":
+		return model.HealthUnknown, "Guest is stopped"
+	case "":
+		return model.HealthUnknown, "Proxmox did not report a guest status"
+	default:
+		return model.HealthUnknown, "Unexpected Proxmox status: " + r.Status
+	}
+}
+
+func runningDetail(r pveResource) string {
+	parts := []string{"Running"}
+	if r.Uptime > 0 {
+		parts = append(parts, formatDuration(r.Uptime))
+	}
+	parts = append(parts, fmt.Sprintf("CPU %.0f%%", r.CPU*100))
+	if pct, ok := percent(r.Mem, r.MaxMem); ok {
+		parts = append(parts, fmt.Sprintf("RAM %.0f%%", pct))
+	}
+	if pct, ok := percent(r.Disk, r.MaxDisk); ok {
+		parts = append(parts, fmt.Sprintf("disk %.0f%%", pct))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func proxmoxLabels(r pveResource) map[string]string {
+	labels := map[string]string{"node": r.Node, "vmid": strconv.Itoa(r.VMID)}
+	labels["proxmox.cpu_pct"] = fmt.Sprintf("%.0f%%", r.CPU*100)
+	if r.MaxCPU > 0 {
+		labels["proxmox.maxcpu"] = strconv.Itoa(r.MaxCPU)
+	}
+	if r.Mem > 0 {
+		labels["proxmox.mem_used"] = formatBytes(r.Mem)
+	}
+	if r.MaxMem > 0 {
+		labels["proxmox.mem_total"] = formatBytes(r.MaxMem)
+		if pct, ok := percent(r.Mem, r.MaxMem); ok {
+			labels["proxmox.mem_pct"] = fmt.Sprintf("%.0f%%", pct)
+		}
+	}
+	if r.Disk > 0 {
+		labels["proxmox.disk_used"] = formatBytes(r.Disk)
+	}
+	if r.MaxDisk > 0 {
+		labels["proxmox.disk_total"] = formatBytes(r.MaxDisk)
+		if pct, ok := percent(r.Disk, r.MaxDisk); ok {
+			labels["proxmox.disk_pct"] = fmt.Sprintf("%.0f%%", pct)
+		}
+	}
+	if r.Uptime > 0 {
+		labels["proxmox.uptime"] = formatDuration(r.Uptime)
+	}
+	return labels
+}
+
+func percent(used, total uint64) (float64, bool) {
+	if total == 0 {
+		return 0, false
+	}
+	return float64(used) / float64(total) * 100, true
+}
+
+func formatBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := uint64(unit), 0
+	for n/div >= unit && exp < 4 {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+func formatDuration(seconds uint64) string {
+	days := seconds / 86400
+	seconds %= 86400
+	hours := seconds / 3600
+	seconds %= 3600
+	minutes := seconds / 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh", days, hours)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("%dm", minutes)
 }
 
 func (c *collector) guestImage(ctx context.Context, r pveResource) (image, osType string) {

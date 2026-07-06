@@ -21,13 +21,15 @@ func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 		switch r.URL.Path {
 		case "/api2/json/nodes":
 			writePVEResponse(t, w, []pveNode{{Node: "pve-a"}})
+		case "/api2/json/nodes/pve-a/version":
+			writePVEResponse(t, w, pveNodeVersion{Version: "8.4.1", Release: "1", RepoID: "a2b3c4d5"})
 		case "/api2/json/cluster/resources":
 			if got := r.URL.Query().Get("type"); got != "vm" {
 				t.Fatalf("resources type query = %q, want vm", got)
 			}
 			writePVEResponse(t, w, []pveResource{
-				{Type: "qemu", VMID: 101, Name: "winbox", Status: "running", Node: "pve-a"},
-				{Type: "lxc", VMID: 202, Name: "debian-ct", Status: "running", Node: "pve-a"},
+				{Type: "qemu", VMID: 101, Name: "winbox", Status: "running", Node: "pve-a", CPU: 0.03, MaxCPU: 4, Mem: 4 * 1024 * 1024 * 1024, MaxMem: 8 * 1024 * 1024 * 1024, Disk: 40 * 1024 * 1024 * 1024, MaxDisk: 100 * 1024 * 1024 * 1024, Uptime: 90061},
+				{Type: "lxc", VMID: 202, Name: "debian-ct", Status: "running", Node: "pve-a", CPU: 0.01, MaxCPU: 2, Mem: 512 * 1024 * 1024, MaxMem: 1024 * 1024 * 1024, Disk: 2 * 1024 * 1024 * 1024, MaxDisk: 8 * 1024 * 1024 * 1024, Uptime: 3600},
 			})
 		case "/api2/json/nodes/pve-a/qemu/101/config":
 			writePVEResponse(t, w, pveGuestConfig{OSType: "win11"})
@@ -50,6 +52,18 @@ func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 	if len(snaps) != 1 {
 		t.Fatalf("snapshots = %d, want 1", len(snaps))
 	}
+	if got := snaps[0].Host.Meta["platform"]; got != "proxmox" {
+		t.Fatalf("host platform meta = %q, want proxmox", got)
+	}
+	if got := snaps[0].Host.Meta["proxmox.version"]; got != "8.4.1" {
+		t.Fatalf("host proxmox.version meta = %q, want 8.4.1", got)
+	}
+	if got := snaps[0].Host.Meta["proxmox.release"]; got != "1" {
+		t.Fatalf("host proxmox.release meta = %q, want 1", got)
+	}
+	if got := snaps[0].Host.Meta["proxmox.repoid"]; got != "a2b3c4d5" {
+		t.Fatalf("host proxmox.repoid meta = %q, want a2b3c4d5", got)
+	}
 	services := snaps[0].Services
 	if len(services) != 2 {
 		t.Fatalf("services = %d, want 2", len(services))
@@ -58,14 +72,70 @@ func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 
 	assertServiceImage(t, services[0], "lxc/202", model.KindLXC, "Debian", "debian")
 	assertServiceImage(t, services[1], "qemu/101", model.KindVM, "Windows 11", "win11")
+	if services[1].Health != model.HealthHealthy {
+		t.Fatalf("qemu/101 health = %q, want healthy", services[1].Health)
+	}
+	if services[1].HealthDetail != "Running · 1d 1h · CPU 3% · RAM 50% · disk 40%" {
+		t.Fatalf("qemu/101 health detail = %q", services[1].HealthDetail)
+	}
+	if got := services[1].Labels["proxmox.mem_pct"]; got != "50%" {
+		t.Fatalf("qemu/101 mem pct label = %q, want 50%%", got)
+	}
+	if got := services[1].Labels["proxmox.uptime"]; got != "1d 1h" {
+		t.Fatalf("qemu/101 uptime label = %q, want 1d 1h", got)
+	}
 
 	for _, path := range []string{
+		"/api2/json/nodes/pve-a/version",
 		"/api2/json/nodes/pve-a/qemu/101/config",
 		"/api2/json/nodes/pve-a/lxc/202/config",
 	} {
 		if !seen[path] {
 			t.Fatalf("expected config endpoint %s to be queried", path)
 		}
+	}
+}
+
+func TestProxmoxGuestHealth(t *testing.T) {
+	cases := []struct {
+		name       string
+		resource   pveResource
+		wantHealth model.Health
+		wantDetail string
+	}{
+		{
+			name:       "stopped is neutral",
+			resource:   pveResource{Status: "stopped"},
+			wantHealth: model.HealthUnknown,
+			wantDetail: "Guest is stopped",
+		},
+		{
+			name:       "running high memory is unhealthy",
+			resource:   pveResource{Status: "running", Mem: 96, MaxMem: 100},
+			wantHealth: model.HealthUnhealthy,
+			wantDetail: "High memory usage: 96% of 100 B",
+		},
+		{
+			name:       "running high disk is unhealthy",
+			resource:   pveResource{Status: "running", Disk: 97, MaxDisk: 100},
+			wantHealth: model.HealthUnhealthy,
+			wantDetail: "High disk usage: 97% of 100 B",
+		},
+		{
+			name:       "unexpected state is unknown",
+			resource:   pveResource{Status: "suspended"},
+			wantHealth: model.HealthUnknown,
+			wantDetail: "Unexpected Proxmox status: suspended",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotHealth, gotDetail := proxmoxGuestHealth(tc.resource)
+			if gotHealth != tc.wantHealth || gotDetail != tc.wantDetail {
+				t.Fatalf("proxmoxGuestHealth() = %q/%q, want %q/%q", gotHealth, gotDetail, tc.wantHealth, tc.wantDetail)
+			}
+		})
 	}
 }
 

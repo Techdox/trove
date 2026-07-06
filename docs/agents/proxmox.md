@@ -137,9 +137,25 @@ Each Proxmox node appears as a host; its VMs and LXCs are services with
 `running`/`stopped` state. The dashboard's Image column shows the guest OS
 reported by Proxmox config (`ostype`) where available — for example `Windows
 11`, `Linux`, `Debian`, or `Ubuntu`. This uses only read-only config endpoints;
-it does not require the QEMU guest agent. Proxmox has no app-level healthcheck,
-so health shows `unknown` — the state badge carries the up/down signal, and
-Trove's agent heartbeat covers "is the cluster still reporting at all."
+it does not require the QEMU guest agent.
+
+Proxmox health is infrastructure-level, not application-level:
+
+- `running` guests are `healthy` unless Proxmox reports obvious pressure such as
+  memory or disk usage at 95% or higher.
+- `stopped` guests stay neutral: their state says `stopped`, health remains
+  `unknown`, and the detail says `Guest is stopped`. Trove does not require you
+  to maintain a list of VMs that are expected to be on or off.
+- unusual Proxmox states remain `unknown` with the raw state shown in the detail.
+
+Each host header also shows the Proxmox VE node version when available. The
+agent reads it with `GET /api2/json/nodes/{node}/version` and stores it as host
+metadata (`proxmox.version`, `proxmox.release`, and `proxmox.repoid`) rather
+than repeating it on every VM/LXC.
+
+Click a Proxmox guest in the dashboard to see the reported metrics used for that
+health summary: node, CPU, memory, disk, uptime, VMID, and OS type where
+available.
 
 ## Nothing showing up?
 

@@ -102,9 +102,9 @@ Open <http://localhost:8080>. Your services appear within ~30 seconds. If an
 agent doesn't show up, watch it connect with `docker compose logs -f agent`
 (add `-f docker-compose.proxmox.yml` if you used the Proxmox file).
 
-> ⚠️ The dashboard has **no authentication yet** — keep it on a trusted
-> network (LAN/VPN/tailnet) or behind an authenticating reverse proxy. See
-> [Security model](#security-model).
+> ⚠️ By default, the dashboard and read APIs are open. Keep Trove on a trusted
+> network (LAN/VPN/tailnet), put it behind an authenticating reverse proxy, or
+> enable native OIDC. See [Dashboard authentication](docs/authentication.md).
 
 ## Adding more hosts and platforms
 
@@ -219,6 +219,52 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 | `TROVE_DIGEST`             | `daily@08:00`* | Digest schedule; *only takes effect once `TROVE_SMTP_*` is set — see [docs/alerts.md](docs/alerts.md). |
 | `TROVE_BOOTSTRAP_AGENT` / `TROVE_BOOTSTRAP_TOKEN` | _(unset)_ | Seed one agent at startup (used by the quickstart compose). |
 
+#### Dashboard authentication (OIDC)
+
+By default the dashboard and read APIs are open — bind to a
+trusted network or front with a reverse proxy. For native authentication,
+configure any OIDC-compatible provider (Authentik, Keycloak, Auth0, Google,
+Dex, etc.):
+
+| Variable | Purpose |
+| --- | --- |
+| `TROVE_OIDC_ISSUER` | OIDC discovery URL, e.g. `https://auth.example/application/o/trove/` |
+| `TROVE_OIDC_CLIENT_ID` | OAuth2 client ID registered with your IdP |
+| `TROVE_OIDC_CLIENT_SECRET` | OAuth2 client secret |
+| `TROVE_OIDC_REDIRECT_URL` | Callback URL, e.g. `https://trove.example/oauth2/callback` |
+| `TROVE_API_TOKEN` | _(optional)_ Bearer token for programmatic API access (bypasses OIDC) |
+| `TROVE_OIDC_SESSION_MAX_AGE` | _(optional)_ Session duration (default `8h`) |
+
+When `TROVE_OIDC_ISSUER` is set, browser requests without a session are
+redirected to your IdP's login page. After login, a signed session cookie
+is set (8h default, no server-side session store). API requests with
+`Authorization: Bearer <your-api-token>` bypass OIDC for script access.
+
+Logout clears Trove's local session cookie and, when the provider exposes an
+OIDC `end_session_endpoint`, redirects through provider logout so users are not
+silently signed straight back in by an upstream SSO session.
+
+Agent ingest (`POST /api/v1/report`) and `/healthz` are never gated by OIDC.
+
+**Authentik setup:** create an OAuth2/OpenID provider with these settings:
+
+- Redirect URI: `https://trove.<your-domain>/oauth2/callback`
+- Post-logout redirect/return URI: `https://trove.<your-domain>/`
+- Client type: Confidential
+- Scopes: `openid`, `profile`, `email`
+
+Then set the env vars:
+
+```sh
+TROVE_OIDC_ISSUER=https://auth.<your-domain>/application/o/trove/
+TROVE_OIDC_CLIENT_ID=trove
+TROVE_OIDC_CLIENT_SECRET=<your-client-secret>
+TROVE_OIDC_REDIRECT_URL=https://trove.<your-domain>/oauth2/callback
+```
+
+Full setup, logout behaviour, verification commands, and troubleshooting live
+in [docs/authentication.md](docs/authentication.md).
+
 Private registry / Docker Hub credentials for freshness checks:
 
 ```sh
@@ -261,9 +307,10 @@ server, set `TROVE_DB` to the server's database path (see
 | Method & path           | Auth   | Purpose                                     |
 | ----------------------- | ------ | ------------------------------------------- |
 | `POST /api/v1/report`   | Bearer | Agent pushes a full-state report.           |
-| `GET /api/v1/services`  | none   | Services grouped by host (dashboard data).  |
-| `GET /api/v1/agents`    | none   | Agents with derived heartbeat status.       |
-| `GET /api/v1/events`    | none   | Recent state-change events (`?limit=`).     |
+| `GET /api/v1/services`  | OIDC or optional API token | Services grouped by host (dashboard data).  |
+| `GET /api/v1/agents`    | OIDC or optional API token | Agents with derived heartbeat status.       |
+| `GET /api/v1/events`    | OIDC or optional API token | Recent state-change events (`?limit=`).     |
+| `GET /api/v1/me`        | OIDC or optional API token | Current dashboard/API auth state.           |
 | `GET /healthz`          | none   | Liveness + database reachability.           |
 
 The wire contract lives in [`pkg/model`](pkg/model/model.go) — the one package
@@ -274,9 +321,11 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - Agent ingest is authenticated with per-agent bearer tokens (256-bit random,
   stored only as SHA-256 hashes). Revoke by deleting the agent.
-- **The dashboard and read APIs have no authentication in this phase.** Treat
-  the server like any internal tool: trusted network only, or front it with an
-  authenticating reverse proxy. Native OIDC is on the roadmap.
+- **The dashboard and read APIs support optional OIDC authentication.** When
+  `TROVE_OIDC_ISSUER` is set, the dashboard and all read APIs require a valid
+  OIDC session. When unset, the dashboard is open — bind to a trusted network
+  (LAN/VPN/tailnet) or front it with an authenticating reverse proxy. See
+  [Dashboard authentication](#dashboard-authentication-oidc).
 - Agents cannot change anything on the platforms they watch — read-only is
   enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).
 
@@ -308,7 +357,7 @@ into the server binary.
 
 ## Roadmap & contributing
 
-Planned next: OIDC / dashboard auth, Helm chart, cert-expiry monitoring — see
+Planned next: Helm chart, cert-expiry monitoring — see
 [ROADMAP.md](ROADMAP.md) for the reasoning and sequencing. Contributions
 welcome: start with [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -108,6 +108,35 @@ header h1 {
   font-size: 12px;
   font-family: var(--font-mono);
 }
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--subtle);
+}
+.user-chip .user-email {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-chip .sign-out {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.user-chip .sign-out:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
 .pulse {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--green);

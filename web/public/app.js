@@ -652,6 +652,45 @@ async function refresh() {
   }
 }
 
+// ---- user chip / sign-out ----
+
+async function loadUserChip() {
+  try {
+    const res = await fetch("api/v1/me", { headers: { Accept: "application/json" } });
+    if (!res.ok) return;
+    const me = await res.json();
+    const chip = $("user-chip");
+    if (me.authenticated && me.via === "oidc" && me.email) {
+      chip.innerHTML = "";
+      const email = document.createElement("span");
+      email.className = "user-email";
+      email.textContent = me.email;
+      email.title = me.email;
+      const btn = document.createElement("button");
+      btn.className = "sign-out";
+      btn.textContent = "Sign out";
+      btn.addEventListener("click", () => {
+        // Use a real form submission instead of fetch so any IdP logout
+        // redirect is followed as top-level browser navigation.
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = "oauth2/logout";
+        form.hidden = true;
+        document.body.appendChild(form);
+        form.submit();
+      });
+      chip.appendChild(email);
+      chip.appendChild(btn);
+      chip.hidden = false;
+    } else {
+      chip.hidden = true;
+    }
+  } catch {
+    // not configured or unreachable — hide the chip
+    $("user-chip").hidden = true;
+  }
+}
+
 // ------------------------------------------------------------- wiring ----
 
 function toggleChip(key) {
@@ -731,3 +770,4 @@ $("q").addEventListener("input", (e) => {
 
 refresh();
 setInterval(refresh, POLL_MS);
+loadUserChip();

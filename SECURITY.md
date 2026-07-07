@@ -7,10 +7,17 @@ Trove's security posture is deliberately simple in the current phase:
 - **Agent ingest is authenticated**: every agent holds a per-agent bearer token
   minted by `trove-server agent create`. Tokens are 256-bit random values and
   are stored server-side only as SHA-256 hashes.
-- **The dashboard and read APIs are NOT authenticated.** Run the server on a
-  trusted network (LAN, VPN, tailnet) or behind an authenticating reverse
-  proxy. Do not expose it directly to the internet. Native OIDC is on the
-  roadmap.
+- **The dashboard and read APIs support optional OIDC authentication.** When
+  `TROVE_OIDC_ISSUER` is set, the dashboard and all read APIs require a valid
+  OIDC session (any standard OIDC provider — Authentik, Keycloak, Auth0, Google,
+  Dex). When unset, the dashboard is open — bind to a trusted network (LAN/VPN/
+  tailnet) or front it with an authenticating reverse proxy. Agent ingest
+  (`POST /api/v1/report`) and `/healthz` are never gated by OIDC. An optional
+  `TROVE_API_TOKEN` allows Bearer-token access for programmatic API clients
+  that can't do a browser-based OAuth flow. Logout uses the provider's OIDC
+  `end_session_endpoint` when available so upstream SSO sessions are terminated
+  instead of silently re-authenticating the dashboard. See
+  [docs/authentication.md](docs/authentication.md).
 - **Trove is read-only by design.** Agents cannot mutate the platforms they
   watch — there is no deploy/restart/exec code path anywhere. A compromised
   Trove server can see your service inventory, but cannot touch your

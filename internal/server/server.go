@@ -33,6 +33,10 @@ type Server struct {
 
 	// retention drives the maintenance loop (event/removed-service pruning).
 	retention RetentionConfig
+
+	// oidc, if non-nil, gates the dashboard + read APIs behind OIDC
+	// authentication. Agent ingest and /healthz are never gated.
+	oidc *oidcProvider
 }
 
 // New constructs a Server and registers its routes.
@@ -50,25 +54,59 @@ func New(st *store.Store, log *slog.Logger) *Server {
 	return s
 }
 
+// ConfigureOIDC enables OIDC authentication on the dashboard and read APIs.
+// Must be called before the server starts listening. Returns an error if
+// OIDC discovery fails (e.g. the issuer is unreachable).
+func (s *Server) ConfigureOIDC(cfg OIDCConfig) error {
+	if !cfg.Enabled() {
+		return nil
+	}
+	provider, err := newOIDCProvider(cfg, s.log)
+	if err != nil {
+		return err
+	}
+	s.oidc = provider
+	// Re-register routes with OIDC middleware now active.
+	s.routes()
+	return nil
+}
+
 // Handler returns the HTTP handler for the whole server.
 func (s *Server) Handler() http.Handler {
 	return withRecover(s.log, s.mux)
 }
 
 func (s *Server) routes() {
-	// Agent ingest — the only authenticated endpoint.
+	s.mux = http.NewServeMux() // reset so ConfigureOIDC can re-register
+
+	// Agent ingest — always authenticated via bearer token, never gated by OIDC.
 	s.mux.HandleFunc("POST /api/v1/report", s.requireAgent(s.handleReport))
 
-	// Read-only dashboard APIs — no auth in Phase 1 (see README: bind to a
-	// trusted network).
-	s.mux.HandleFunc("GET /api/v1/services", s.handleServices)
-	s.mux.HandleFunc("GET /api/v1/agents", s.handleAgents)
-	s.mux.HandleFunc("GET /api/v1/events", s.handleEvents)
+	// /healthz — never gated (container healthchecks need unauthenticated access).
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 
+	// Read-only dashboard APIs + SPA. When OIDC is configured, these are
+	// wrapped in the auth middleware; otherwise they're open (Phase 1 behavior).
+	readAPIs := http.NewServeMux()
+	readAPIs.HandleFunc("GET /api/v1/services", s.handleServices)
+	readAPIs.HandleFunc("GET /api/v1/agents", s.handleAgents)
+	readAPIs.HandleFunc("GET /api/v1/events", s.handleEvents)
+	readAPIs.HandleFunc("GET /api/v1/me", s.handleMe)
 	// Embedded SPA. FileServerFS serves index.html for "/" and 404s cleanly
 	// for missing assets.
-	s.mux.Handle("GET /", http.FileServerFS(web.FS()))
+	readAPIs.Handle("GET /", http.FileServerFS(web.FS()))
+
+	var readHandler http.Handler = readAPIs
+	if s.oidc != nil {
+		// OIDC auth endpoints (not themselves gated).
+		s.mux.HandleFunc("GET /oauth2/login", s.oidc.handleOIDCLogin)
+		s.mux.HandleFunc("GET /oauth2/callback", s.oidc.handleOIDCCallback)
+		s.mux.HandleFunc("POST /oauth2/logout", s.oidc.handleOIDCLogout)
+		readHandler = s.oidc.requireAuth(readHandler)
+	}
+
+	// Mount the (possibly wrapped) read APIs + SPA at root.
+	s.mux.Handle("/", readHandler)
 }
 
 // RunStalenessLoop runs the background ticker until ctx is cancelled. It marks

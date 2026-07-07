@@ -162,6 +162,12 @@ function hostPlatformLine(host) {
     const release = meta["proxmox.release"] ? `-${meta["proxmox.release"]}` : "";
     parts.push(`Proxmox ${meta["proxmox.version"]}${release}`);
   }
+  if (meta["docker.version"]) {
+    parts.push(`Docker ${meta["docker.version"]}`);
+  }
+  if (meta["kubernetes.version"]) {
+    parts.push(`Kubernetes ${meta["kubernetes.version"]}`);
+  }
   return parts.filter(Boolean).join(" · ");
 }
 

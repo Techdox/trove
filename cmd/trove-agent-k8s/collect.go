@@ -68,10 +68,23 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		services = append(services, podService(&pods.Items[i], rsOwner))
 	}
 
+	// Fetch cluster version from the discovery API.
+	meta := map[string]string{"platform": string(model.PlatformKubernetes)}
+	if sv, err := c.cli.serverVersion(ctx); err != nil {
+		c.log.Debug("kube server version failed", "err", err)
+	} else {
+		if sv.GitVersion != "" {
+			meta["kubernetes.version"] = sv.GitVersion
+		}
+		if sv.Platform != "" {
+			meta["kubernetes.platform"] = sv.Platform
+		}
+	}
+
 	return []agentkit.HostSnapshot{{
 		Host: model.ReportHost{
 			Hostname: c.cfg.cluster,
-			Meta:     map[string]string{"platform": string(model.PlatformKubernetes)},
+			Meta:     meta,
 		},
 		Services: services,
 	}}, nil

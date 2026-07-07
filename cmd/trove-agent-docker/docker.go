@@ -129,6 +129,17 @@ type dockerImage struct {
 type dockerInfo struct {
 	Name          string `json:"Name"`
 	ServerVersion string `json:"ServerVersion"`
+	OSType        string `json:"OSType"`
+	Arch          string `json:"Architecture"`
+}
+
+// dockerVersion is the response from /version. It carries the API version
+// and OS/arch details that /info doesn't always populate consistently.
+type dockerVersion struct {
+	Version    string `json:"Version"`
+	APIVersion string `json:"ApiVersion"`
+	OS         string `json:"Os"`
+	Arch       string `json:"Arch"`
 }
 
 // ---- typed calls ---------------------------------------------------------
@@ -156,6 +167,12 @@ func (c *dockerClient) inspectImage(ctx context.Context, id string) (dockerImage
 func (c *dockerClient) info(ctx context.Context) (dockerInfo, error) {
 	var out dockerInfo
 	err := c.get(ctx, "/info", &out)
+	return out, err
+}
+
+func (c *dockerClient) version(ctx context.Context) (dockerVersion, error) {
+	var out dockerVersion
+	err := c.get(ctx, "/version", &out)
 	return out, err
 }
 

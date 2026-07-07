@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/Techdox/trove/compare/v0.9.0...v0.10.0) (2026-07-07)
+
+
+### Features
+
+* add OIDC authentication for dashboard and read APIs ([#30](https://github.com/Techdox/trove/issues/30)) ([07400e1](https://github.com/Techdox/trove/commit/07400e1efda6596268fea9338ffcad656485e79a))
+
 ## [0.9.0](https://github.com/Techdox/trove/compare/v0.8.0...v0.9.0) (2026-07-07)
 
 

@@ -29,3 +29,26 @@ jobs:
         run: go test ./...
       - name: cross-compile all binaries (linux amd64 + arm64)
         run: make build
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs full history for commit scanning; govulncheck
+          # only needs the working tree, but a single fetch-depth: 0
+          # covers both without a meaningful cost on a repo this size.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

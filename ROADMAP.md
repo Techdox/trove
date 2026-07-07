@@ -99,10 +99,13 @@ design (targets, SNI, self-signed policy); slated alongside Phase 5.
 
 **Goal:** make Trove safe to expose beyond a trusted network, and easy to deploy.
 
-- **OIDC** on the dashboard and read APIs. Phase 1 intentionally has **no auth**
-  (README says bind to a trusted network / front with an authenticating proxy);
-  this closes that gap. A reverse-proxy (oauth2-proxy) deployment is the interim
-  answer until native OIDC lands.
+- **OIDC** on the dashboard and read APIs — **delivered.** Any standard OIDC
+  provider (Authentik, Keycloak, Auth0, Google, Dex) is supported via
+  `TROVE_OIDC_*` env vars. When configured, the dashboard redirects
+  unauthenticated browser requests to the IdP; API clients can use
+  `TROVE_API_TOKEN` for Bearer-token access. Agent ingest and `/healthz`
+  are never gated. When OIDC is not configured, the dashboard is open
+  (backward compatible with Phase 1).
 - **Helm chart** for Kubernetes deployment (natural companion to the Phase 3 K8s
   agent).
 

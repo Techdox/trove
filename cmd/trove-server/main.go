@@ -80,6 +80,11 @@ Environment:
   TROVE_DB                sqlite path    (default "trove.db")
   TROVE_BOOTSTRAP_AGENT   dev-only: seed an agent with this name at startup
   TROVE_BOOTSTRAP_TOKEN   dev-only: token for the bootstrapped agent
+  TROVE_OIDC_ISSUER       OIDC discovery URL (enables dashboard auth when set)
+  TROVE_OIDC_CLIENT_ID    OAuth2 client ID
+  TROVE_OIDC_CLIENT_SECRET  OAuth2 client secret
+  TROVE_OIDC_REDIRECT_URL   OAuth2 callback URL
+  TROVE_API_TOKEN         Bearer token for programmatic API access (with OIDC)
 `)
 }
 
@@ -130,6 +135,13 @@ func runServe() error {
 
 	srv.ConfigureFreshness(server.LoadFreshnessConfigFromEnv())
 	srv.ConfigureRetention(server.LoadRetentionConfigFromEnv())
+
+	// Configure OIDC if env vars are set. When configured, the dashboard
+	// and read APIs require an OIDC session; when unset, behavior is
+	// unchanged (no auth — bind to a trusted network).
+	if err := srv.ConfigureOIDC(server.LoadOIDCConfigFromEnv()); err != nil {
+		return fmt.Errorf("configure oidc: %w", err)
+	}
 
 	go runSupervised(logger, "staleness", func() { srv.RunStalenessLoop(ctx) })
 	go runSupervised(logger, "freshness", func() { srv.RunFreshnessLoop(ctx) })

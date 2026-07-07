@@ -24,6 +24,7 @@ import (
 	"syscall"
 
 	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/pkg/model"
 )
 
 // version is stamped at build time via -ldflags "-X main.version=...".
@@ -47,5 +48,5 @@ func main() {
 	defer stop()
 
 	col := &collector{cli: cli, cfg: kcfg, log: log}
-	agentkit.Run(ctx, cfg, "kubernetes", version, col, log)
+	agentkit.Run(ctx, cfg, model.PlatformKubernetes, version, col, log)
 }

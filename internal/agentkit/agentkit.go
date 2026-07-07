@@ -91,7 +91,7 @@ type Collector interface {
 // Run drives the collect-and-push loop until ctx is cancelled. It pushes once
 // immediately, then on every interval. Each HostSnapshot is sent as its own
 // full-state report sharing the agent envelope built from cfg/platform/version.
-func Run(ctx context.Context, cfg Config, platform, version string, c Collector, log *slog.Logger) {
+func Run(ctx context.Context, cfg Config, platform model.Platform, version string, c Collector, log *slog.Logger) {
 	p := &pusher{
 		http:      &http.Client{Timeout: 15 * time.Second},
 		serverURL: cfg.ServerURL,

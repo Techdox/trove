@@ -84,7 +84,7 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 	}
 
 	return []agentkit.HostSnapshot{{
-		Host:     model.ReportHost{Hostname: c.hostname, Meta: map[string]string{"platform": "local"}},
+		Host:     model.ReportHost{Hostname: c.hostname, Meta: map[string]string{"platform": string(model.PlatformLocal)}},
 		Services: services,
 	}}, nil
 }
@@ -130,7 +130,7 @@ func main() {
 		includeAll: includeAll,
 		hostname:   hostname,
 	}
-	agentkit.Run(ctx, cfg, "local", version, col, log)
+	agentkit.Run(ctx, cfg, model.PlatformLocal, version, col, log)
 }
 
 func parseBool(s string) (bool, bool) {

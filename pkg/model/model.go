@@ -60,10 +60,29 @@ func (k Kind) Valid() bool {
 	}
 }
 
-// Platform identifies the agent type. Only Docker exists in Phase 1.
+// Platform identifies the agent type. Every agent must report one of these
+// values; the server validates it on ingest. The typed enum prevents
+// silent typos at the call site (agents use the constants, turning a
+// misspelling into a compile error) and lets the server reject unknown
+// platforms with a 400 rather than storing a free-string.
+type Platform string
+
 const (
-	PlatformDocker = "docker"
+	PlatformDocker     Platform = "docker"
+	PlatformKubernetes Platform = "kubernetes"
+	PlatformProxmox    Platform = "proxmox"
+	PlatformLocal      Platform = "local"
 )
+
+// Valid reports whether p is a recognized platform value.
+func (p Platform) Valid() bool {
+	switch p {
+	case PlatformDocker, PlatformKubernetes, PlatformProxmox, PlatformLocal:
+		return true
+	default:
+		return false
+	}
+}
 
 // StateRemoved is the synthetic state the server assigns to a service that was
 // previously reported but is absent from the latest full-state report. Agents
@@ -82,9 +101,9 @@ type Report struct {
 
 // ReportAgent identifies the pushing agent.
 type ReportAgent struct {
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
-	Version  string `json:"version"`
+	Name     string   `json:"name"`
+	Platform Platform `json:"platform"`
+	Version  string   `json:"version"`
 	// IntervalSeconds is the agent's configured push interval. The server
 	// stores it and derives staleness thresholds per-agent (stale/offline are
 	// multiples of this), so a slow-polling agent isn't falsely flagged. Zero
@@ -139,8 +158,11 @@ func (r *Report) Validate() error {
 	if strings.TrimSpace(r.Agent.Name) == "" {
 		return errors.New("agent.name is required")
 	}
-	if strings.TrimSpace(r.Agent.Platform) == "" {
+	if strings.TrimSpace(string(r.Agent.Platform)) == "" {
 		return errors.New("agent.platform is required")
+	}
+	if !r.Agent.Platform.Valid() {
+		return fmt.Errorf("agent.platform %q is not a recognized platform", r.Agent.Platform)
 	}
 	if strings.TrimSpace(r.Host.Hostname) == "" {
 		return errors.New("host.hostname is required")

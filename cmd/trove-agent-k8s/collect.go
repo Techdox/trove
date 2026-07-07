@@ -71,7 +71,7 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 	return []agentkit.HostSnapshot{{
 		Host: model.ReportHost{
 			Hostname: c.cfg.cluster,
-			Meta:     map[string]string{"platform": "kubernetes"},
+			Meta:     map[string]string{"platform": string(model.PlatformKubernetes)},
 		},
 		Services: services,
 	}}, nil

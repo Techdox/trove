@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/Techdox/trove/compare/v0.8.0...v0.9.0) (2026-07-07)
+
+
+### Features
+
+* **meta:** show engine/cluster version consistently across platforms ([#26](https://github.com/Techdox/trove/issues/26)) ([cc93b75](https://github.com/Techdox/trove/commit/cc93b75a913e3c97b8aff7171bc5c8fef56b997c))
+
 ## [0.8.0](https://github.com/Techdox/trove/compare/v0.7.0...v0.8.0) (2026-07-06)
 
 

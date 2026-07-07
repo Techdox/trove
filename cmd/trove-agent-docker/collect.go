@@ -62,7 +62,9 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 }
 
 // hostInfo returns the hostname and platform metadata, falling back to the OS
-// hostname if the daemon info call fails.
+// hostname if the daemon info call fails. Meta keys use the dotted convention
+// (docker.version, docker.api_version, docker.os, docker.arch) matching the
+// Proxmox agent's proxmox.version pattern.
 func (c *collector) hostInfo(ctx context.Context) (string, map[string]string) {
 	info, err := c.cli.info(ctx)
 	if err != nil {
@@ -76,7 +78,26 @@ func (c *collector) hostInfo(ctx context.Context) (string, map[string]string) {
 	}
 	meta := map[string]string{}
 	if info.ServerVersion != "" {
-		meta["docker_version"] = info.ServerVersion
+		meta["docker.version"] = info.ServerVersion
+	}
+	// The /version endpoint carries API version and OS/arch details.
+	v, err := c.cli.version(ctx)
+	if err != nil {
+		c.log.Debug("docker version failed", "err", err)
+	} else {
+		if v.APIVersion != "" {
+			meta["docker.api_version"] = v.APIVersion
+		}
+		if v.OS != "" {
+			meta["docker.os"] = v.OS
+		} else if info.OSType != "" {
+			meta["docker.os"] = info.OSType
+		}
+		if v.Arch != "" {
+			meta["docker.arch"] = v.Arch
+		} else if info.Arch != "" {
+			meta["docker.arch"] = info.Arch
+		}
 	}
 	return hostname, meta
 }

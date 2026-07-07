@@ -26,7 +26,7 @@ func newTestStore(t *testing.T) (*Store, *time.Time) {
 func report(services ...model.ReportService) *model.Report {
 	return &model.Report{
 		Agent:    model.ReportAgent{Name: "docker-a", Platform: "docker", Version: "0.1.0"},
-		Host:     model.ReportHost{Hostname: "host-a", Meta: map[string]string{"docker_version": "29.0"}},
+		Host:     model.ReportHost{Hostname: "host-a", Meta: map[string]string{"docker.version": "29.0"}},
 		Services: services,
 	}
 }

@@ -112,7 +112,7 @@ type ReportAgent struct {
 }
 
 // ReportHost describes the machine the agent runs on. Meta carries
-// platform-specific facts (e.g. docker_version) that are useful to surface but
+// platform-specific facts (e.g. docker.version) that are useful to surface but
 // not worth first-class columns.
 type ReportHost struct {
 	Hostname string            `json:"hostname"`

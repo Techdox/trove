@@ -219,3 +219,18 @@ func (c *collector) apiPath(group, resource string) string {
 	}
 	return group + "/" + resource
 }
+
+// k8sServerVersion is the response from GET /version (the Kubernetes discovery
+// API). It carries the cluster's gitVersion, platform, and build details.
+type k8sServerVersion struct {
+	GitVersion string `json:"gitVersion"`
+	Platform   string `json:"platform"`
+	BuildDate  string `json:"buildDate"`
+}
+
+// serverVersion fetches the cluster version from the discovery API.
+func (c *kubeClient) serverVersion(ctx context.Context) (k8sServerVersion, error) {
+	var out k8sServerVersion
+	err := c.get(ctx, "/version", &out)
+	return out, err
+}

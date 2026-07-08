@@ -1,13 +1,15 @@
 name: Preview images
 
-# Builds and pushes branch-tagged Docker images to GHCR on every push to a
-# feature branch. This lets you test a PR build without merging to main:
+# Builds and pushes branch-tagged Docker images to GHCR for server/runtime
+# changes on feature branches. This lets you test a PR build without merging
+# to main:
 #
 #   docker pull ghcr.io/techdox/trove-server:feat-oidc-auth
 #
 # Only the server image is built (it's the one with dashboard/auth changes).
 # Agent images are unchanged by most feature work and can be tested with
-# the latest released image.
+# the latest released image. Docs-only branches/changes deliberately do not
+# publish preview images.
 #
 # Images are tagged with a sanitized branch name. On main, the tag is
 # "main" (overwritten on every push). Tags are never published to
@@ -26,8 +28,17 @@ on:
       - 'fix/**'
       - 'refactor/**'
       - 'ci/**'
-      - 'docs/**'
       - 'main'
+    paths:
+      - '.dockerignore'
+      - '.github/workflows/preview-images.yml'
+      - 'Dockerfile.server'
+      - 'cmd/trove-server/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'internal/**'
+      - 'pkg/**'
+      - 'web/**'
 
 permissions:
   contents: read

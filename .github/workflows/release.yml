@@ -61,7 +61,7 @@ jobs:
         run: |
           echo "${{ github.ref_name }} is already published; no duplicate release work needed."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.existing_release.outputs.skip != 'true'
         with:
           fetch-depth: 0 # goreleaser needs tags/history for the changelog

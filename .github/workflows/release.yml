@@ -65,7 +65,7 @@ jobs:
         if: steps.existing_release.outputs.skip != 'true'
         with:
           fetch-depth: 0 # goreleaser needs tags/history for the changelog
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         if: steps.existing_release.outputs.skip != 'true'
         with:
           go-version-file: go.mod

@@ -1,13 +1,26 @@
 # Trove Roadmap
 
-**Status:** Phases 1–4 are shipped on `main` — Docker/Kubernetes/Proxmox/
-bare-metal agents, per-agent token auth, heartbeat/staleness, image freshness,
-the parent/child model, configurable retention, and alerting (webhook/Discord/
-ntfy + email digest — see [docs/alerts.md](docs/alerts.md)). Both pinned
-decisions are resolved: D2 (parent/child) shipped with Phase 3, D1 (retention)
-with Phase 4. Licensed MIT and prepared for public release. See the
-[README](README.md) for what exists today. Phase 5 remains, plus cert
-monitoring (deferred out of Phase 4).
+**Status:** `v0.10.0` is the current public release. Phases 1–4 are shipped on
+`main` — Docker/Kubernetes/Proxmox/bare-metal agents, per-agent token auth,
+heartbeat/staleness, image freshness, the parent/child model, configurable
+retention, and alerting (webhook/Discord/ntfy + email digest — see
+[docs/alerts.md](docs/alerts.md)). Phase 5 is partially delivered: OIDC auth
+for the dashboard and read APIs shipped in `v0.10.0`; Helm packaging remains.
+Both pinned decisions are resolved: D2 (parent/child) shipped with Phase 3, D1
+(retention) with Phase 4. Trove is MIT licensed and public. See the
+[README](README.md) for what exists today.
+
+## Current milestone
+
+The path to `v1.0.0` is now a confidence pass, not a large feature push:
+
+- Dogfood OIDC behind a real provider (Authentik is the reference setup).
+- Validate the public docs, wiki, example config, and upgrade notes against that
+  deployment.
+- Keep the read-only contract intact: no deploy/restart/exec/edit paths.
+
+Post-`v1.0.0`, the next roadmap items are Helm packaging and cert-expiry
+monitoring.
 
 ## Principles carried forward
 
@@ -91,13 +104,15 @@ platform onto `model.Report`.
   ingest write path onto an hourly maintenance loop.
 
 **Deferred out of this phase:** cert-expiry monitoring — needs its own probing
-design (targets, SNI, self-signed policy); slated alongside Phase 5.
+design (targets, SNI, self-signed policy); slated after `v1.0.0`.
 
 ---
 
 ## Phase 5 — Auth & packaging
 
 **Goal:** make Trove safe to expose beyond a trusted network, and easy to deploy.
+
+**Delivered in `v0.10.0`:**
 
 - **OIDC** on the dashboard and read APIs — **delivered.** Any standard OIDC
   provider (Authentik, Keycloak, Auth0, Google, Dex) is supported via
@@ -106,8 +121,16 @@ design (targets, SNI, self-signed policy); slated alongside Phase 5.
   `TROVE_API_TOKEN` for Bearer-token access. Agent ingest and `/healthz`
   are never gated. When OIDC is not configured, the dashboard is open
   (backward compatible with Phase 1).
+
+**Remaining:**
+
+- **Dogfood and documentation pass** before `v1.0.0`: run Trove behind a real
+  OIDC provider, confirm the API-token path, and keep the repo docs/wiki/example
+  config aligned with the tested setup.
 - **Helm chart** for Kubernetes deployment (natural companion to the Phase 3 K8s
-  agent).
+  agent), planned after `v1.0.0`.
+- **Certificate-expiry monitoring** for HTTPS targets, including target config,
+  SNI handling, and self-signed certificate policy, planned after `v1.0.0`.
 
 ---
 
@@ -125,8 +148,8 @@ and weekly digests need more than 24h of history.
 
 **Implemented as proposed** (migration 0004 + `store.Prune` + the server's
 hourly maintenance loop):
-- Make retention **configurable** (e.g. `TROVE_EVENT_RETENTION`, default 24h),
-  and raise it (30–90d) once reporting exists.
+- Make retention **configurable** (`TROVE_EVENT_RETENTION` default 30d,
+  `TROVE_REMOVED_RETENTION` default 24h).
 - **Move pruning off the write path** to a periodic maintenance job once volume
   grows — pruning inside every ingest transaction won't scale to many agents.
 - Keep `events` as the append-only source of truth; add downsampling/rollups

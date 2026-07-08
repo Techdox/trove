@@ -27,6 +27,8 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      - name: Dockerfile drift check
+        run: ./scripts/check-dockerfile-drift.sh
       - name: golangci-lint
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
       - name: go test with coverage

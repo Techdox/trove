@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -48,6 +49,8 @@ func main() {
 		err = runAgent(args[1:])
 	case "alert":
 		err = runAlertCmd(args[1:])
+	case "backup":
+		err = runBackup(args[1:])
 	case "healthcheck":
 		err = runHealthcheck()
 	case "version", "-v", "--version":
@@ -73,6 +76,7 @@ Commands:
   agent list                list agents with last-seen status
   agent delete <name>       remove an agent and all its data
   alert test                send a test notification through configured channels
+  backup [path]             write a consistent SQLite backup (default timestamped file)
   healthcheck               probe /healthz on the local server (exit 0/1)
 
 Environment:
@@ -195,6 +199,48 @@ func bootstrapAgent(ctx context.Context, st *store.Store, logger *slog.Logger) e
 	if created {
 		logger.Warn("bootstrapped dev agent from env (do not use in production)", "agent", name)
 	}
+	return nil
+}
+
+// runBackup writes a consistent SQLite backup using VACUUM INTO. It refuses to
+// overwrite an existing file; backups are rollback points, not disposable temp
+// files.
+func runBackup(args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: trove-server backup [path]")
+	}
+	dst := ""
+	if len(args) == 1 {
+		dst = args[0]
+	} else {
+		dst = "trove-backup-" + time.Now().UTC().Format("20060102-150405") + ".db"
+	}
+	if dst == "" {
+		return errors.New("backup path is required")
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("backup path %q already exists", dst)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat backup path: %w", err)
+	}
+	if dir := filepath.Dir(dst); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create backup directory: %w", err)
+		}
+	}
+
+	st, err := openStore()
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer st.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := st.Backup(ctx, dst); err != nil {
+		return err
+	}
+	fmt.Printf("backup written to %s\n", dst)
 	return nil
 }
 

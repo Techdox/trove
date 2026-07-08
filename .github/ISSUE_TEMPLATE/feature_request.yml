@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a read-only visibility improvement for Trove
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Trove is intentionally read-only. Requests that add management verbs (restart, delete, mutate infrastructure) are out of scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What visibility gap does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Server/dashboard API
+        - Docker agent
+        - Kubernetes agent
+        - Proxmox agent
+        - Local agent
+        - Alerts/digests
+        - Deployment/docs
+        - CI/release
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

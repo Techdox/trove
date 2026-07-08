@@ -1,0 +1,69 @@
+name: Bug report
+description: Report something broken in Trove
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. The details below help us separate server issues from agent/runtime issues quickly.
+  - type: input
+    id: version
+    attributes:
+      label: Trove version
+      description: Output from `trove-server version` and the agent binary/image tag.
+      placeholder: v0.10.0
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - trove-server
+        - trove-agent-docker
+        - trove-agent-k8s
+        - trove-agent-proxmox
+        - trove-agent-local
+        - CI/release pipeline
+        - documentation
+    validations:
+      required: true
+  - type: textarea
+    id: runtime
+    attributes:
+      label: Runtime details
+      description: How are you running it? Include Docker Compose/Kubernetes/systemd snippets with secrets redacted.
+      placeholder: |
+        Server: Docker Compose on Debian 13
+        Agent: trove-agent-docker image ghcr.io/techdox/trove-agent-docker:v0.10.0
+        Database: /data/trove.db
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include relevant logs, HTTP status codes, screenshots, or API responses. Redact tokens.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Configure ...
+        2. Start ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Extra context
+      description: Anything else that might matter, especially agent platform versions.

@@ -12,8 +12,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
           cache: true
@@ -25,30 +27,41 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
-      - name: go test
-        run: go test ./...
+      - name: golangci-lint
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
+      - name: go test with coverage
+        run: |
+          go test -covermode=atomic -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tee coverage.txt
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
+          echo "### Go coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "Total: $total" >> "$GITHUB_STEP_SUMMARY"
+      - name: go test race detector
+        run: go test -race ./...
       - name: cross-compile all binaries (linux amd64 + arm64)
         run: make build
+      - name: GoReleaser config check
+        run: go run github.com/goreleaser/goreleaser/v2@v2.17.0 check
 
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           # gitleaks needs full history for commit scanning; govulncheck
           # only needs the working tree, but a single fetch-depth: 0
           # covers both without a meaningful cost on a repo this size.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      # actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
           cache: true
       - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        # gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

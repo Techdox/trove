@@ -59,6 +59,21 @@ custom scripts):
 
 `level` is one of `info`, `warning`, `critical`, `resolved`.
 
+Optional request signing:
+
+```sh
+TROVE_ALERT_WEBHOOK_SECRET=change-me
+```
+
+When set, Trove adds:
+
+- `X-Trove-Timestamp`: unix timestamp used in the signature payload
+- `X-Trove-Signature`: `sha256=<hex hmac>`
+
+The signature is HMAC-SHA256 over `timestamp + "." + raw_json_body` using the
+secret. Receivers should verify the signature before trusting the payload, and
+reject old timestamps if replay protection matters for their workflow.
+
 ### Discord
 
 Server Settings → Integrations → Webhooks → New Webhook, copy the URL:

@@ -33,6 +33,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, agent stor
 		return
 	}
 
+	s.reportsAccepted.Add(1)
 	s.log.Info("report accepted",
 		"agent", agent.Name, "host", report.Host.Hostname, "services", len(report.Services))
 	writeJSON(w, http.StatusOK, map[string]any{

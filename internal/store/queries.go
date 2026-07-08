@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // ServiceRow is a fully-joined service record: the service plus its host and
@@ -47,6 +48,23 @@ type ServiceRow struct {
 	FreshnessCheckedAt sql.NullInt64
 }
 
+// ServiceListOptions filters/paginates the services read API. Zero values keep
+// the original dashboard behaviour: return all services in stable grouping
+// order.
+type ServiceListOptions struct {
+	Limit        int
+	Offset       int
+	UpdatedSince int64
+}
+
+// EventListOptions filters/paginates the activity feed.
+type EventListOptions struct {
+	Limit  int
+	Offset int
+	Since  int64
+	Kind   string
+}
+
 // FreshnessVerdict derives the image-freshness verdict for a service row by
 // comparing the running image digest to the latest digest cached from the
 // registry: "current", "outdated", or "unknown" (no data / locally built).
@@ -71,7 +89,14 @@ func (r *ServiceRow) FreshnessVerdict() string {
 // ListServices returns every service joined to its host and agent, ordered for
 // stable grouping (agent, host, name).
 func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.ListServicesPage(ctx, ServiceListOptions{})
+}
+
+// ListServicesPage returns services with optional updated-since filtering and
+// limit/offset pagination.
+func (s *Store) ListServicesPage(ctx context.Context, opts ServiceListOptions) ([]ServiceRow, error) {
+	var b strings.Builder
+	b.WriteString(`
 		SELECT s.id, s.external_id, s.name, s.kind, s.image, s.image_digest, s.state, s.health,
 		       s.health_detail,
 		       s.ports_json, s.labels_json, s.first_seen_at, s.last_seen_at, s.updated_at,
@@ -83,8 +108,25 @@ func (s *Store) ListServices(ctx context.Context) ([]ServiceRow, error) {
 		  JOIN hosts h  ON h.id = s.host_id
 		  JOIN agents a ON a.id = h.agent_id
 		  LEFT JOIN services p     ON p.id = s.parent_id
-		  LEFT JOIN image_checks c ON c.image = s.image
+		  LEFT JOIN image_checks c ON c.image = s.image`)
+	var args []any
+	if opts.UpdatedSince > 0 {
+		b.WriteString(`
+		 WHERE s.updated_at >= ?`)
+		args = append(args, opts.UpdatedSince)
+	}
+	b.WriteString(`
 		 ORDER BY a.name, h.hostname, s.name`)
+	if opts.Limit > 0 {
+		b.WriteString(`
+		 LIMIT ?`)
+		args = append(args, opts.Limit)
+		if opts.Offset > 0 {
+			b.WriteString(` OFFSET ?`)
+			args = append(args, opts.Offset)
+		}
+	}
+	rows, err := s.db.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list services: %w", err)
 	}
@@ -127,14 +169,42 @@ type EventRow struct {
 
 // RecentEvents returns the most recent events, newest first.
 func (s *Store) RecentEvents(ctx context.Context, limit int) ([]EventRow, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 100
+	return s.ListEvents(ctx, EventListOptions{Limit: limit})
+}
+
+// ListEvents returns recent events, newest first, with optional kind/since
+// filtering and limit/offset pagination.
+func (s *Store) ListEvents(ctx context.Context, opts EventListOptions) ([]EventRow, error) {
+	if opts.Limit <= 0 || opts.Limit > 500 {
+		opts.Limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	var b strings.Builder
+	b.WriteString(`
 		SELECT id, kind, service_id, agent_id, service, hostname, agent, from_state, to_state, at
-		  FROM events
+		  FROM events`)
+	var where []string
+	var args []any
+	if opts.Since > 0 {
+		where = append(where, "at >= ?")
+		args = append(args, opts.Since)
+	}
+	if opts.Kind != "" {
+		where = append(where, "kind = ?")
+		args = append(args, opts.Kind)
+	}
+	if len(where) > 0 {
+		b.WriteString("\n\t\t WHERE ")
+		b.WriteString(strings.Join(where, " AND "))
+	}
+	b.WriteString(`
 		 ORDER BY at DESC, id DESC
-		 LIMIT ?`, limit)
+		 LIMIT ?`)
+	args = append(args, opts.Limit)
+	if opts.Offset > 0 {
+		b.WriteString(` OFFSET ?`)
+		args = append(args, opts.Offset)
+	}
+	rows, err := s.db.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("recent events: %w", err)
 	}

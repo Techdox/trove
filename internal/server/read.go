@@ -3,11 +3,14 @@ package server
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/techdox/trove/internal/staleness"
+	"github.com/techdox/trove/internal/store"
 )
 
 // ---- response DTOs -------------------------------------------------------
@@ -40,9 +43,17 @@ type hostGroupDTO struct {
 	Services    []serviceDTO    `json:"services"`
 }
 
+type paginationDTO struct {
+	Limit      int  `json:"limit,omitempty"`
+	Offset     int  `json:"offset"`
+	Count      int  `json:"count"`
+	NextOffset *int `json:"next_offset,omitempty"`
+}
+
 type servicesResponse struct {
 	GeneratedAt string         `json:"generated_at"`
 	Hosts       []hostGroupDTO `json:"hosts"`
+	Pagination  *paginationDTO `json:"pagination,omitempty"`
 }
 
 type agentDTO struct {
@@ -61,6 +72,7 @@ type agentsResponse struct {
 }
 
 type eventDTO struct {
+	ID        int64  `json:"id"`
 	Kind      string `json:"kind"` // state | health | agent
 	Service   string `json:"service,omitempty"`
 	Hostname  string `json:"hostname,omitempty"`
@@ -71,14 +83,29 @@ type eventDTO struct {
 }
 
 type eventsResponse struct {
-	GeneratedAt string     `json:"generated_at"`
-	Events      []eventDTO `json:"events"`
+	GeneratedAt string         `json:"generated_at"`
+	Events      []eventDTO     `json:"events"`
+	Pagination  *paginationDTO `json:"pagination,omitempty"`
 }
 
 // ---- handlers ------------------------------------------------------------
 
 func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.ListServices(r.Context())
+	limit, offset, err := parseLimitOffset(r, 0, 500)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	since, err := parseSince(r.URL.Query().Get("since"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rows, err := s.store.ListServicesPage(r.Context(), store.ServiceListOptions{
+		Limit:        limit,
+		Offset:       offset,
+		UpdatedSince: since,
+	})
 	if err != nil {
 		s.log.Error("list services", "err", err)
 		writeError(w, http.StatusInternalServerError, "failed to load services")
@@ -132,6 +159,7 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, servicesResponse{
 		GeneratedAt: now.Format(time.RFC3339),
 		Hosts:       hosts,
+		Pagination:  pagination(limit, offset, len(rows), limit > 0 || offset > 0 || since > 0),
 	})
 }
 
@@ -162,13 +190,23 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	limit := 100
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if n, err := strconv.Atoi(q); err == nil {
-			limit = n
-		}
+	limit, offset, err := parseLimitOffset(r, 100, 500)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	events, err := s.store.RecentEvents(r.Context(), limit)
+	since, err := parseSince(r.URL.Query().Get("since"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	events, err := s.store.ListEvents(r.Context(), store.EventListOptions{
+		Limit:  limit,
+		Offset: offset,
+		Since:  since,
+		Kind:   kind,
+	})
 	if err != nil {
 		s.log.Error("recent events", "err", err)
 		writeError(w, http.StatusInternalServerError, "failed to load events")
@@ -177,6 +215,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	out := make([]eventDTO, 0, len(events))
 	for _, e := range events {
 		out = append(out, eventDTO{
+			ID:        e.ID,
 			Kind:      e.Kind,
 			Service:   e.Service,
 			Hostname:  e.Hostname,
@@ -189,6 +228,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, eventsResponse{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Events:      out,
+		Pagination:  pagination(limit, offset, len(events), true),
 	})
 }
 
@@ -212,6 +252,63 @@ func agentStatus(lastSeen sql.NullInt64, intervalSeconds int, now time.Time) sta
 		ls = &t
 	}
 	return staleness.Evaluate(ls, intervalSeconds, now)
+}
+
+func parseLimitOffset(r *http.Request, defaultLimit, maxLimit int) (int, int, error) {
+	q := r.URL.Query()
+	limit := defaultLimit
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			return 0, 0, fmt.Errorf("limit must be a positive integer")
+		}
+		if n > maxLimit {
+			n = maxLimit
+		}
+		limit = n
+	}
+	offset := 0
+	if raw := q.Get("offset"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return 0, 0, fmt.Errorf("offset must be a non-negative integer")
+		}
+		offset = n
+	}
+	if offset > 0 && limit == 0 {
+		limit = maxLimit
+	}
+	return limit, offset, nil
+}
+
+func parseSince(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		if n < 0 {
+			return 0, fmt.Errorf("since must be a unix timestamp or RFC3339 time")
+		}
+		return n, nil
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return 0, fmt.Errorf("since must be a unix timestamp or RFC3339 time")
+	}
+	return t.UTC().Unix(), nil
+}
+
+func pagination(limit, offset, count int, enabled bool) *paginationDTO {
+	if !enabled {
+		return nil
+	}
+	out := &paginationDTO{Limit: limit, Offset: offset, Count: count}
+	if limit > 0 && count == limit {
+		next := offset + limit
+		out.NextOffset = &next
+	}
+	return out
 }
 
 func rfc3339(sec int64) string {

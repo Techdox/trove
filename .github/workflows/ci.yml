@@ -13,9 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # actions/checkout@v4
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       # actions/setup-go@v5
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
           cache: true
@@ -27,6 +27,8 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      - name: Dockerfile drift check
+        run: ./scripts/check-dockerfile-drift.sh
       - name: golangci-lint
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
       - name: go test with coverage
@@ -47,14 +49,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # actions/checkout@v4
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           # gitleaks needs full history for commit scanning; govulncheck
           # only needs the working tree, but a single fetch-depth: 0
           # covers both without a meaningful cost on a repo this size.
           fetch-depth: 0
       # actions/setup-go@v5
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
           cache: true
@@ -62,6 +64,6 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
       - name: gitleaks
         # gitleaks/gitleaks-action@v2
-        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

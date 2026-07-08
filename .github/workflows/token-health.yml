@@ -1,0 +1,63 @@
+name: token-health
+
+# RELEASE_PLEASE_TOKEN is a PAT with an expiry date. When it lapses,
+# release-please silently stops opening release PRs — the workflow "succeeds"
+# at doing nothing or fails quietly on a schedule nobody watches. This job
+# checks the token weekly and fails loudly (which triggers a GitHub
+# notification email to the repo owner) if the token is invalid or expires
+# within 30 days.
+#
+# How it works: any API call authenticated with an expiring token returns a
+# `github-authentication-token-expiration` response header. We read it and
+# compare against now + 30 days. Non-expiring classic PATs omit the header,
+# which we treat as healthy.
+
+on:
+  schedule:
+    # Mondays 09:00 UTC — weekly is enough lead time with a 30-day threshold.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check-release-please-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check RELEASE_PLEASE_TOKEN validity and expiry
+        env:
+          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TOKEN" ]; then
+            echo "::error::RELEASE_PLEASE_TOKEN secret is not set"
+            exit 1
+          fi
+
+          headers=$(mktemp)
+          status=$(curl -sS -o /dev/null -D "$headers" -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            https://api.github.com/user)
+
+          if [ "$status" != "200" ]; then
+            echo "::error::RELEASE_PLEASE_TOKEN is invalid or revoked (HTTP $status). release-please cannot open release PRs."
+            exit 1
+          fi
+
+          expiry=$(grep -i '^github-authentication-token-expiration:' "$headers" \
+            | sed 's/^[^:]*: *//' | tr -d '\r' || true)
+
+          if [ -z "$expiry" ]; then
+            echo "token is valid and has no expiration date"
+            exit 0
+          fi
+
+          expiry_epoch=$(date -d "$expiry" +%s)
+          threshold_epoch=$(date -d '+30 days' +%s)
+          days_left=$(( (expiry_epoch - $(date +%s)) / 86400 ))
+
+          echo "token expires: $expiry (~$days_left days)"
+          if [ "$expiry_epoch" -lt "$threshold_epoch" ]; then
+            echo "::error::RELEASE_PLEASE_TOKEN expires in $days_left days ($expiry). Rotate it: repo Settings -> Secrets -> Actions -> RELEASE_PLEASE_TOKEN. See CONTRIBUTING.md for required scopes."
+            exit 1
+          fi

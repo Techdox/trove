@@ -3,10 +3,14 @@ package alert
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,7 +48,7 @@ func Dispatchers(cfg Config) []Dispatcher {
 	client := &http.Client{Timeout: 10 * time.Second}
 	var out []Dispatcher
 	if cfg.WebhookURL != "" {
-		out = append(out, &webhookDispatcher{client: client, url: cfg.WebhookURL})
+		out = append(out, &webhookDispatcher{client: client, url: cfg.WebhookURL, secret: cfg.WebhookSecret})
 	}
 	if cfg.DiscordURL != "" {
 		out = append(out, &discordDispatcher{client: client, url: cfg.DiscordURL})
@@ -94,6 +98,7 @@ func post(ctx context.Context, client *http.Client, build func() (*http.Request,
 type webhookDispatcher struct {
 	client *http.Client
 	url    string
+	secret string
 }
 
 func (d *webhookDispatcher) Name() string { return "webhook" }
@@ -110,8 +115,21 @@ func (d *webhookDispatcher) Send(ctx context.Context, n Notification) error {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", "trove-alert")
+		if d.secret != "" {
+			timestamp := strconv.FormatInt(n.At.UTC().Unix(), 10)
+			req.Header.Set("X-Trove-Timestamp", timestamp)
+			req.Header.Set("X-Trove-Signature", signWebhookPayload(d.secret, timestamp, payload))
+		}
 		return req, nil
 	})
+}
+
+func signWebhookPayload(secret, timestamp string, payload []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
+	mac.Write(payload)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // ---- Discord ---------------------------------------------------------------

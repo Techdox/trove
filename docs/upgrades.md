@@ -75,21 +75,26 @@ Everything Trove knows is in one SQLite file:
 - **Docker:** the `trove-data` volume → `/data/trove.db` in the container.
 - **Bare metal:** `/var/lib/trove/trove.db`.
 
-Copy it with the server stopped:
+Use the built-in backup command for a consistent hot backup without stopping
+the server:
 
 ```sh
-sudo systemctl stop trove-server
-sudo cp /var/lib/trove/trove.db "/var/backups/trove-$(date +%F).db"
-sudo systemctl start trove-server
+# bare metal / systemd
+sudo TROVE_DB=/var/lib/trove/trove.db trove-server backup "/var/backups/trove-$(date +%F).db"
+
+# Docker Compose
+mkdir -p ./backups
+docker compose exec server trove-server backup /data/backups/trove-$(date +%F).db
+docker compose cp server:/data/backups/trove-$(date +%F).db ./backups/
 ```
 
-Or take a consistent hot backup without stopping:
+`trove-server backup` uses SQLite's online `VACUUM INTO` path and refuses to
+overwrite an existing destination file. If you prefer SQLite's own CLI, this is
+equivalent:
 
 ```sh
 sqlite3 /var/lib/trove/trove.db ".backup '/var/backups/trove.db'"
 ```
-
-For Docker: `docker compose cp server:/data/trove.db ./trove-backup.db`.
 
 Trove state is rebuildable anyway — agents repopulate the catalog within one
 push interval, so a lost database costs you only event history.

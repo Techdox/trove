@@ -309,9 +309,12 @@ server, set `TROVE_DB` to the server's database path (see
 | `POST /api/v1/report`   | Bearer | Agent pushes a full-state report.           |
 | `GET /api/v1/services`  | OIDC or optional API token | Services grouped by host (dashboard data).  |
 | `GET /api/v1/agents`    | OIDC or optional API token | Agents with derived heartbeat status.       |
-| `GET /api/v1/events`    | OIDC or optional API token | Recent state-change events (`?limit=`).     |
+| `GET /api/v1/events`    | OIDC or optional API token | Recent state-change events (`?limit=&offset=&kind=&since=`). |
 | `GET /api/v1/me`        | OIDC or optional API token | Current dashboard/API auth state.           |
+| `GET /metrics`          | OIDC or optional API token | Prometheus text metrics.                    |
 | `GET /healthz`          | none   | Liveness + database reachability.           |
+
+Pagination, filtering, and metrics details are in [docs/api.md](docs/api.md).
 
 The wire contract lives in [`pkg/model`](pkg/model/model.go) — the one package
 agents import. Building an agent for a new platform means implementing one

@@ -13,10 +13,11 @@ import (
 // Config is the alerting configuration, loaded from environment variables.
 type Config struct {
 	// Channels; empty URL = channel disabled.
-	WebhookURL string
-	DiscordURL string
-	NtfyURL    string
-	NtfyToken  string
+	WebhookURL    string
+	WebhookSecret string
+	DiscordURL    string
+	NtfyURL       string
+	NtfyToken     string
 
 	// Kinds enabled for instant notifications: state, health, agent, freshness.
 	Kinds map[string]bool
@@ -36,21 +37,23 @@ const (
 
 // LoadConfigFromEnv reads:
 //
-//	TROVE_ALERT_WEBHOOK_URL   generic JSON webhook
-//	TROVE_ALERT_DISCORD_URL   Discord webhook
+//	TROVE_ALERT_WEBHOOK_URL     generic JSON webhook
+//	TROVE_ALERT_WEBHOOK_SECRET  optional HMAC-SHA256 signing secret for the generic webhook
+//	TROVE_ALERT_DISCORD_URL     Discord webhook
 //	TROVE_ALERT_NTFY_URL      full ntfy topic URL (e.g. https://ntfy.sh/my-trove)
 //	TROVE_ALERT_NTFY_TOKEN    optional ntfy access token
 //	TROVE_ALERT_EVENTS        comma list of kinds (default "agent,health,state,freshness")
 //	TROVE_ALERT_COOLDOWN      per-key flap suppression window (default 5m)
 func LoadConfigFromEnv() Config {
 	cfg := Config{
-		WebhookURL: os.Getenv("TROVE_ALERT_WEBHOOK_URL"),
-		DiscordURL: os.Getenv("TROVE_ALERT_DISCORD_URL"),
-		NtfyURL:    os.Getenv("TROVE_ALERT_NTFY_URL"),
-		NtfyToken:  os.Getenv("TROVE_ALERT_NTFY_TOKEN"),
-		Kinds:      map[string]bool{},
-		Cooldown:   defaultCooldown,
-		Interval:   defaultInterval,
+		WebhookURL:    os.Getenv("TROVE_ALERT_WEBHOOK_URL"),
+		WebhookSecret: os.Getenv("TROVE_ALERT_WEBHOOK_SECRET"),
+		DiscordURL:    os.Getenv("TROVE_ALERT_DISCORD_URL"),
+		NtfyURL:       os.Getenv("TROVE_ALERT_NTFY_URL"),
+		NtfyToken:     os.Getenv("TROVE_ALERT_NTFY_TOKEN"),
+		Kinds:         map[string]bool{},
+		Cooldown:      defaultCooldown,
+		Interval:      defaultInterval,
 	}
 	kinds := os.Getenv("TROVE_ALERT_EVENTS")
 	if kinds == "" {

@@ -1,6 +1,8 @@
 # Build artifacts
 /bin/
 /dist/
+coverage.out
+coverage.txt
 # stray binaries from `go build ./cmd/<x>` in the repo root
 /trove-server
 /trove-agent-docker

@@ -8,6 +8,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/techdox/trove/internal/registry"
@@ -37,6 +38,9 @@ type Server struct {
 	// oidc, if non-nil, gates the dashboard + read APIs behind OIDC
 	// authentication. Agent ingest and /healthz are never gated.
 	oidc *oidcProvider
+
+	startTime       time.Time
+	reportsAccepted atomic.Uint64
 }
 
 // New constructs a Server and registers its routes.
@@ -49,6 +53,7 @@ func New(st *store.Store, log *slog.Logger) *Server {
 		log:               log,
 		mux:               http.NewServeMux(),
 		stalenessInterval: 10 * time.Second,
+		startTime:         time.Now().UTC(),
 	}
 	s.routes()
 	return s
@@ -92,6 +97,7 @@ func (s *Server) routes() {
 	readAPIs.HandleFunc("GET /api/v1/agents", s.handleAgents)
 	readAPIs.HandleFunc("GET /api/v1/events", s.handleEvents)
 	readAPIs.HandleFunc("GET /api/v1/me", s.handleMe)
+	readAPIs.HandleFunc("GET /metrics", s.handleMetrics)
 	// Embedded SPA. FileServerFS serves index.html for "/" and 404s cleanly
 	// for missing assets.
 	readAPIs.Handle("GET /", http.FileServerFS(web.FS()))

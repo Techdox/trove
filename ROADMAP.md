@@ -1,11 +1,11 @@
 # Trove Roadmap
 
-**Status:** `v0.11.0` is the current public release. Phases 1–4 are shipped on
+**Status:** `v0.11.3` is the current public release. Phases 1–4 are shipped on
 `main` — Docker/Kubernetes/Proxmox/bare-metal agents, per-agent token auth,
 heartbeat/staleness, image freshness, the parent/child model, configurable
 retention, and alerting (webhook/Discord/ntfy + email digest — see
 [docs/alerts.md](docs/alerts.md)). Phase 5 is partially delivered: OIDC auth
-for the dashboard and read APIs shipped in `v0.10.0`; observability/API hardening shipped in `v0.11.0`; Helm packaging remains.
+for the dashboard and read APIs shipped in an earlier release; observability/API hardening has shipped; Helm packaging remains.
 Both pinned decisions are resolved: D2 (parent/child) shipped with Phase 3, D1
 (retention) with Phase 4. Trove is MIT licensed and public. See the
 [README](README.md) for what exists today.

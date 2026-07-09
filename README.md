@@ -181,7 +181,7 @@ Static binaries for everything (including the bare-metal agent) are on the
 
 ```sh
 # pick the URL for your arch off the releases page, e.g.:
-VERSION=0.4.0        # the release you're installing
+VERSION=0.11.0       # check https://github.com/techdox/trove/releases/latest for newer releases
 curl -fLO "https://github.com/techdox/trove/releases/download/v${VERSION}/trove-server_${VERSION}_linux_amd64.tar.gz"
 tar xzf trove-server_${VERSION}_linux_amd64.tar.gz
 
@@ -238,7 +238,7 @@ Dex, etc.):
 When `TROVE_OIDC_ISSUER` is set, browser requests without a session are
 redirected to your IdP's login page. After login, a signed session cookie
 is set (8h default, no server-side session store). API requests with
-`Authorization: Bearer <your-api-token>` bypass OIDC for script access.
+`Authorization: Bearer TROVE_API_TOKEN_VALUE` bypass OIDC for script access.
 
 Logout clears Trove's local session cookie and, when the provider exposes an
 OIDC `end_session_endpoint`, redirects through provider logout so users are not
@@ -248,18 +248,18 @@ Agent ingest (`POST /api/v1/report`) and `/healthz` are never gated by OIDC.
 
 **Authentik setup:** create an OAuth2/OpenID provider with these settings:
 
-- Redirect URI: `https://trove.<your-domain>/oauth2/callback`
-- Post-logout redirect/return URI: `https://trove.<your-domain>/`
+- Redirect URI: `https://trove.example.com/oauth2/callback`
+- Post-logout redirect/return URI: `https://trove.example.com/`
 - Client type: Confidential
 - Scopes: `openid`, `profile`, `email`
 
 Then set the env vars:
 
 ```sh
-TROVE_OIDC_ISSUER=https://auth.<your-domain>/application/o/trove/
+TROVE_OIDC_ISSUER=https://auth.example.com/application/o/trove/
 TROVE_OIDC_CLIENT_ID=trove
-TROVE_OIDC_CLIENT_SECRET=<your-client-secret>
-TROVE_OIDC_REDIRECT_URL=https://trove.<your-domain>/oauth2/callback
+TROVE_OIDC_CLIENT_SECRET=OIDC_CLIENT_SECRET_VALUE
+TROVE_OIDC_REDIRECT_URL=https://trove.example.com/oauth2/callback
 ```
 
 Full setup, logout behaviour, verification commands, and troubleshooting live

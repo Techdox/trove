@@ -102,6 +102,7 @@ jobs:
           fi
           for pr in $prs; do
             echo "Marking PR #${pr} as autorelease: tagged"
-            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" \
-              --add-label "autorelease: tagged" --remove-label "autorelease: pending" || true
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/issues/${pr}/labels/autorelease%3A%20pending"
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${pr}/labels" \
+              --field labels[]="autorelease: tagged"
           done

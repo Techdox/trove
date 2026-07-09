@@ -36,7 +36,7 @@ jobs:
 
           headers=$(mktemp)
           status=$(curl -sS -o /dev/null -D "$headers" -w '%{http_code}' \
-            -H "Authorization: Bearer $TOKEN" \
+            -H "Authorization: Bearer ${TOKEN}" \
             https://api.github.com/user)
 
           if [ "$status" != "200" ]; then

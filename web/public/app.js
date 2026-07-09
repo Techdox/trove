@@ -216,7 +216,7 @@ function portsHTML(ports) {
 function freshnessCell(s) {
   switch (s.freshness) {
     case "outdated":
-      return `<span class="badge b-peach" title="A newer image is available for this tag.&#10;running: ${esc(s.image_digest || "?")}&#10;latest:  ${esc(s.latest_digest || "?")}>outdated</span>`;
+      return `<span class="badge b-peach" title="A newer image is available for this tag.&#10;running: ${esc(s.image_digest || "?")}&#10;latest:  ${esc(s.latest_digest || "?")}">outdated</span>`;
     case "current":
       return '<span class="badge b-blue">up to date</span>';
     default:

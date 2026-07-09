@@ -149,26 +149,29 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 	}
 
 	// 5. Resolve parent/child links. Both parent and child are present in the
-	// same full-state report, so all ids are known by now regardless of order.
-	// Only touch services that report a parent (leaves standalone rows' NULL
-	// parent_id untouched, avoiding needless writes).
+	// Resolve parent links after all services are upserted (parents and children
+	// may appear in any order in the report). Touch every reported service so a
+	// child that later becomes standalone has its old parent_id cleared.
 	for i := range r.Services {
 		svc := &r.Services[i]
-		if svc.ParentExternalID == "" {
-			continue
-		}
 		childID, ok := idByExtID[svc.ExternalID]
 		if !ok {
 			continue
 		}
+
 		var parentID sql.NullInt64
-		if pid, ok := idByExtID[svc.ParentExternalID]; ok {
+		if svc.ParentExternalID != "" {
+			pid, ok := idByExtID[svc.ParentExternalID]
+			if !ok {
+				// Unknown parent in this host snapshot. Leave parent_id unchanged
+				// rather than guessing across hosts/agents.
+				continue
+			}
 			parentID = sql.NullInt64{Int64: pid, Valid: true}
 		}
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE services SET parent_id = ? WHERE id = ?`, parentID, childID,
-		); err != nil {
-			return fmt.Errorf("link service %q to parent: %w", svc.ExternalID, err)
+
+		if _, err := tx.ExecContext(ctx, `UPDATE services SET parent_id = ? WHERE id = ?`, parentID, childID); err != nil {
+			return fmt.Errorf("link service %q to parent %q: %w", svc.ExternalID, svc.ParentExternalID, err)
 		}
 	}
 

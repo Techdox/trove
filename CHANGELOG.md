@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/Techdox/trove/compare/v0.11.1...v0.11.2) (2026-07-09)
+
+
+### Bug Fixes
+
+* align freshness badge label with chip and verdict ([#55](https://github.com/Techdox/trove/issues/55)) ([e8f213f](https://github.com/Techdox/trove/commit/e8f213ffa66b96e98a89bf2bbc666b69126ec40f))
+
 ## [0.11.1](https://github.com/Techdox/trove/compare/v0.11.0...v0.11.1) (2026-07-09)
 
 

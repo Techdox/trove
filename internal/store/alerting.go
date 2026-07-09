@@ -87,3 +87,39 @@ func (s *Store) SetAlertState(ctx context.Context, key string, st AlertState) er
 	}
 	return nil
 }
+
+// ChannelDelivered reports whether channel already accepted this in-progress
+// delivery. It lets the alert engine retry only channels that failed, rather
+// than duplicating a notification to channels that already succeeded.
+func (s *Store) ChannelDelivered(ctx context.Context, deliveryKey, channel string) (bool, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM alert_channel_deliveries WHERE delivery_key = ? AND channel = ?`,
+		deliveryKey, channel,
+	).Scan(&n); err != nil {
+		return false, fmt.Errorf("check alert channel delivery %q/%q: %w", deliveryKey, channel, err)
+	}
+	return n > 0, nil
+}
+
+// MarkChannelDelivered records one successful channel delivery. The caller
+// clears this short-lived state after all configured channels have succeeded.
+func (s *Store) MarkChannelDelivered(ctx context.Context, deliveryKey, channel string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO alert_channel_deliveries(delivery_key, channel, delivered_at) VALUES (?, ?, ?)
+		 ON CONFLICT(delivery_key, channel) DO NOTHING`,
+		deliveryKey, channel, s.now().Unix(),
+	); err != nil {
+		return fmt.Errorf("mark alert channel delivery %q/%q: %w", deliveryKey, channel, err)
+	}
+	return nil
+}
+
+// ClearChannelDeliveries removes retry bookkeeping after the entire fan-out
+// completed. A subsequent, distinct incident starts with a clean slate.
+func (s *Store) ClearChannelDeliveries(ctx context.Context, deliveryKey string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM alert_channel_deliveries WHERE delivery_key = ?`, deliveryKey); err != nil {
+		return fmt.Errorf("clear alert channel deliveries %q: %w", deliveryKey, err)
+	}
+	return nil
+}

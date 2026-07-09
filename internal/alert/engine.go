@@ -389,7 +389,7 @@ func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notifica
 			return true // nothing was bad; stay quiet
 		}
 		if st.Notified {
-			if !e.send(ctx, n) {
+			if !e.send(ctx, deliveryKey(key, v), n) {
 				return false
 			}
 			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", Notified: false, SentAt: now})
@@ -413,24 +413,58 @@ func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notifica
 		}
 		return true
 	}
-	if !e.send(ctx, n) {
+	if !e.send(ctx, deliveryKey(key, v), n) {
 		return false
 	}
 	_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, Notified: true, SentAt: now})
 	return true
 }
 
-func (e *Engine) send(ctx context.Context, n Notification) bool {
-	sent := false
+// deliveryKey identifies one pending incident notification. It intentionally
+// excludes the timestamp so retries of a freshness transition (which creates a
+// new Notification timestamp on each sweep) still resume the same fan-out.
+func deliveryKey(key string, v verdictT) string {
+	if v.bad == "" {
+		return key + "\x1frecovery"
+	}
+	return key + "\x1fbad\x1f" + v.bad
+}
+
+// send delivers n to every configured channel. Successful channels are
+// persisted while any sibling channel is failing, so a retry resumes only the
+// failed channels and does not duplicate notifications already accepted.
+func (e *Engine) send(ctx context.Context, key string, n Notification) bool {
+	allDelivered := true
 	for _, d := range e.dispatchers {
+		delivered, err := e.store.ChannelDelivered(ctx, key, d.Name())
+		if err != nil {
+			e.log.Error("alert: read channel delivery", "channel", d.Name(), "title", n.Title, "err", err)
+			allDelivered = false
+			continue
+		}
+		if delivered {
+			continue
+		}
 		if err := d.Send(ctx, n); err != nil {
 			e.log.Error("alert: send failed", "channel", d.Name(), "title", n.Title, "err", err)
-		} else {
-			sent = true
-			e.log.Info("alert sent", "channel", d.Name(), "level", n.Level, "title", n.Title)
+			allDelivered = false
+			continue
 		}
+		if err := e.store.MarkChannelDelivered(ctx, key, d.Name()); err != nil {
+			e.log.Error("alert: record channel delivery", "channel", d.Name(), "title", n.Title, "err", err)
+			allDelivered = false
+			continue
+		}
+		e.log.Info("alert sent", "channel", d.Name(), "level", n.Level, "title", n.Title)
 	}
-	return sent
+	if !allDelivered {
+		return false
+	}
+	if err := e.store.ClearChannelDeliveries(ctx, key); err != nil {
+		e.log.Error("alert: clear channel deliveries", "title", n.Title, "err", err)
+		return false
+	}
+	return true
 }
 
 // SendTest pushes a test notification through every configured channel and

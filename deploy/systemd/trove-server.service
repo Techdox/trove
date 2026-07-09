@@ -9,8 +9,8 @@
 # manual mkdir needed (and a manual one can mis-own it against DynamicUser).
 #
 # Override settings via a drop-in (systemctl edit trove-server) or
-# /etc/trove-server.env. The dashboard has no auth — bind to a trusted
-# interface or front with an authenticating reverse proxy.
+# /etc/trove-server.env. The dashboard is open unless you configure OIDC —
+# bind to a trusted interface, set TROVE_OIDC_*, or front it with auth.
 
 [Unit]
 Description=Trove server (read-only service catalog)

@@ -65,7 +65,7 @@ spec:
       serviceAccountName: trove-agent
       containers:
         - name: agent
-          image: ghcr.io/techdox/trove-agent-k8s:latest
+          image: ghcr.io/techdox/trove-agent-k8s:0.11.0
           env:
             - name: TROVE_SERVER_URL
               value: "http://trove-server.example.internal:8080"

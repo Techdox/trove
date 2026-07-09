@@ -2,7 +2,7 @@
 
 Trove's API is read-mostly by design. Agents push full-state reports into the server, and humans or automation read catalog state back out.
 
-If OIDC is enabled, read APIs require either an authenticated dashboard session or `Authorization: Bearer $TROVE_API_TOKEN` when `TROVE_API_TOKEN` is configured. Agent ingest always uses the agent token and is never gated by OIDC.
+If OIDC is enabled, read APIs require either an authenticated dashboard session or `Authorization: Bearer TROVE_API_TOKEN_VALUE` when `TROVE_API_TOKEN` is configured. Agent ingest always uses the agent token and is never gated by OIDC.
 
 ## Endpoints
 
@@ -31,7 +31,8 @@ Optional query parameters:
 Example:
 
 ```sh
-curl -H "Authorization: Bearer $TROVE_API_TOKEN" \
+TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \
+  curl --oauth2-bearer "$TROVE_API_TOKEN" \
   'https://trove.example/api/v1/services?limit=100&offset=0&since=2026-07-01T00:00:00Z'
 ```
 
@@ -64,7 +65,8 @@ Optional query parameters:
 Example:
 
 ```sh
-curl -H "Authorization: Bearer $TROVE_API_TOKEN" \
+TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \
+  curl --oauth2-bearer "$TROVE_API_TOKEN" \
   'https://trove.example/api/v1/events?kind=health&limit=50&offset=50'
 ```
 

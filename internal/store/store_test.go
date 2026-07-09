@@ -319,6 +319,33 @@ func TestApplyReportParentChild(t *testing.T) {
 	}
 }
 
+func TestApplyReportParentChildClearsStaleParent(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "k8s")
+
+	dep := model.ReportService{ExternalID: "deploy/default/web", Name: "web", Kind: model.KindDeployment, State: "1/1", Health: model.HealthHealthy}
+	podWithParent := model.ReportService{ExternalID: "pod/default/web-a", ParentExternalID: "deploy/default/web", Name: "web-a", Kind: model.KindPod, State: "running", Health: model.HealthHealthy}
+	if err := st.ApplyReport(ctx, agent.ID, report(dep, podWithParent)); err != nil {
+		t.Fatalf("apply with parent: %v", err)
+	}
+
+	podStandalone := podWithParent
+	podStandalone.ParentExternalID = ""
+	if err := st.ApplyReport(ctx, agent.ID, report(dep, podStandalone)); err != nil {
+		t.Fatalf("apply standalone: %v", err)
+	}
+
+	rows, _ := st.ListServices(ctx)
+	byID := map[string]ServiceRow{}
+	for _, r := range rows {
+		byID[r.ExternalID] = r
+	}
+	if got := byID["pod/default/web-a"].ParentExternalID; got.Valid {
+		t.Fatalf("stale parent link persisted as %q", got.String)
+	}
+}
+
 func TestFreshnessJoinAndDue(t *testing.T) {
 	st, clock := newTestStore(t)
 	ctx := context.Background()

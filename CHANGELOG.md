@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.11.1](https://github.com/Techdox/trove/compare/v0.11.0...v0.11.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* bump go toolchain to 1.26.5 ([ac20e8d](https://github.com/Techdox/trove/commit/ac20e8dbfbd47c0fe4d6a13e6bb00dbfd53ae106))
+* clear stale service parent links ([2e07290](https://github.com/Techdox/trove/commit/2e072903d821f2d3e01ba14da353684ca50aba3a))
+* harden oidc return paths ([29af71c](https://github.com/Techdox/trove/commit/29af71c955ca8ddf2b010e6226950750790d09a7))
+* retry alerts after failed delivery ([0f7d6ee](https://github.com/Techdox/trove/commit/0f7d6eec8c2b1feaded32ed0862c51408ec02de5))
+
 ## [0.11.0](https://github.com/Techdox/trove/compare/v0.10.0...v0.11.0) (2026-07-08)
 
 

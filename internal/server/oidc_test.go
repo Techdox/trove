@@ -11,6 +11,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 // testProvider builds an oidcProvider without doing real OIDC discovery,
@@ -18,6 +20,12 @@ import (
 func testProvider(t *testing.T) *oidcProvider {
 	t.Helper()
 	return &oidcProvider{
+		oauth2: &oauth2.Config{
+			ClientID:    "test-client",
+			RedirectURL: "https://trove.example/oauth2/callback",
+			Endpoint:    oauth2.Endpoint{AuthURL: "https://idp.example/auth", TokenURL: "https://idp.example/token"},
+			Scopes:      []string{"openid", "profile", "email"},
+		},
 		cfg: OIDCConfig{
 			Issuer:        "https://idp.example",
 			ClientID:      "test-client",
@@ -241,6 +249,71 @@ func TestIsBrowserRequest(t *testing.T) {
 		if got != c.wantBrowser {
 			t.Errorf("isBrowserRequest(accept=%q, auth=%q) = %v, want %v", c.accept, c.auth, got, c.wantBrowser)
 		}
+	}
+}
+
+func TestSafeReturnPath(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"root", "/", "/"},
+		{"path with query", "/api/v1/services?status=unhealthy", "/api/v1/services?status=unhealthy"},
+		{"relative", "api/v1/services", "/"},
+		{"absolute url", "https://evil.example/phish", "/"},
+		{"protocol relative", "//evil.example/phish", "/"},
+		{"triple slash", "///evil.example/phish", "/"},
+		{"javascript", "javascript:alert(1)", "/"},
+		{"empty", "", "/"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := safeReturnPath(c.raw); got != c.want {
+				t.Fatalf("safeReturnPath(%q) = %q, want %q", c.raw, got, c.want)
+			}
+		})
+	}
+}
+
+func TestHandleOIDCLoginCarriesSafeReturnInState(t *testing.T) {
+	p := testProvider(t)
+	ret := base64.RawURLEncoding.EncodeToString([]byte("/api/v1/services?status=unhealthy"))
+	req := httptest.NewRequest("GET", "/oauth2/login?return="+ret, nil)
+	w := httptest.NewRecorder()
+	p.handleOIDCLogin(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusSeeOther)
+	}
+	loc := w.Header().Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatalf("parse redirect: %v", err)
+	}
+	state := u.Query().Get("state")
+	if got := returnPathFromState(state); got != "/api/v1/services?status=unhealthy" {
+		t.Fatalf("state return path = %q", got)
+	}
+	cookie := w.Result().Cookies()[0]
+	if cookie.Name != stateCookieName || cookie.Value != state {
+		t.Fatalf("state cookie = %s/%q, want %s/%q", cookie.Name, cookie.Value, stateCookieName, state)
+	}
+}
+
+func TestHandleOIDCLoginSanitizesUnsafeReturnInState(t *testing.T) {
+	p := testProvider(t)
+	ret := base64.RawURLEncoding.EncodeToString([]byte("//evil.example/phish"))
+	req := httptest.NewRequest("GET", "/oauth2/login?return="+ret, nil)
+	w := httptest.NewRecorder()
+	p.handleOIDCLogin(w, req)
+
+	u, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse redirect: %v", err)
+	}
+	if got := returnPathFromState(u.Query().Get("state")); got != "/" {
+		t.Fatalf("unsafe return path = %q, want /", got)
 	}
 }
 

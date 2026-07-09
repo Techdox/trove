@@ -411,14 +411,14 @@ function renderHosts() {
       ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
 
     sections.push(`<div class="host${collapsed ? " collapsed" : ""}" data-hostkey="${esc(hostKey(h))}">
-      <div class="host-head" role="button" aria-expanded="${!collapsed}">
+      <button type="button" class="host-head" aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)}">
         <span class="chev">${collapsed ? "▸" : "▾"}</span>
         <span class="hostname">${esc(h.hostname)}</span>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
-      </div>
+      </button>
       <div class="host-body">
         <table>
           <thead><tr>
@@ -535,7 +535,7 @@ function renderDrawer() {
     ? siblings.find((x) => x.external_id === s.parent_external_id) : null;
 
   const events = (state.data.events?.events || [])
-    .filter((e) => e.service === s.name && e.hostname === host.hostname)
+    .filter((e) => e.service_id === s.id)
     .slice(0, 12);
 
   const rawLabels = s.labels && typeof s.labels === "object" ? s.labels : {};
@@ -775,6 +775,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); moveCursor(1); return; }
   if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1); return; }
   if (e.key === "Enter") {
+    if (e.target.closest?.(".host-head")) return;
     const focused = document.activeElement?.closest?.("#hosts tr[data-ext]");
     if (focused) { openDrawer(rowKey(focused)); return; }
     if (state.cursorKey) openDrawer(state.cursorKey);

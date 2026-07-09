@@ -16,6 +16,7 @@ import (
 // ---- response DTOs -------------------------------------------------------
 
 type serviceDTO struct {
+	ID               int64           `json:"id"`
 	ExternalID       string          `json:"external_id"`
 	ParentExternalID string          `json:"parent_external_id,omitempty"`
 	Name             string          `json:"name"`
@@ -73,6 +74,7 @@ type agentsResponse struct {
 
 type eventDTO struct {
 	ID        int64  `json:"id"`
+	ServiceID *int64 `json:"service_id,omitempty"`
 	Kind      string `json:"kind"` // state | health | agent
 	Service   string `json:"service,omitempty"`
 	Hostname  string `json:"hostname,omitempty"`
@@ -137,6 +139,7 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 		freshness := row.FreshnessVerdict()
 
 		hosts[idx].Services = append(hosts[idx].Services, serviceDTO{
+			ID:               row.ID,
 			ExternalID:       row.ExternalID,
 			ParentExternalID: row.ParentExternalID.String,
 			Name:             row.Name,
@@ -214,8 +217,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]eventDTO, 0, len(events))
 	for _, e := range events {
+		var serviceID *int64
+		if e.ServiceID.Valid {
+			id := e.ServiceID.Int64
+			serviceID = &id
+		}
 		out = append(out, eventDTO{
 			ID:        e.ID,
+			ServiceID: serviceID,
 			Kind:      e.Kind,
 			Service:   e.Service,
 			Hostname:  e.Hostname,

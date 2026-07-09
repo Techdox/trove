@@ -216,7 +216,7 @@ function portsHTML(ports) {
 function freshnessCell(s) {
   switch (s.freshness) {
     case "outdated":
-      return `<span class="badge b-peach" title="A newer image is available for this tag.&#10;running: ${esc(s.image_digest || "?")}&#10;latest:  ${esc(s.latest_digest || "?")}">update</span>`;
+      return `<span class="badge b-peach" title="A newer image is available for this tag.&#10;running: ${esc(s.image_digest || "?")}&#10;latest:  ${esc(s.latest_digest || "?")}>outdated</span>`;
     case "current":
       return '<span class="badge b-blue">up to date</span>';
     default:
@@ -434,7 +434,29 @@ function renderHosts() {
 
   el.innerHTML = sections.length > 0
     ? sections.join("")
-    : '<div class="host"><div class="empty">No services match the current filter.</div></div>';
+    : `<div class="host"><div class="empty">${emptyMessage()}</div></div>`;
+}
+
+function emptyMessage() {
+  const c = computeCounts();
+  // If only chip filters are active and every active chip has zero matches,
+  // the empty state is a positive: nothing is in that state.
+  const activeChips = [...state.chips];
+  if (!state.q.trim() && activeChips.length > 0) {
+    const allZero = activeChips.every((k) => {
+      const def = CHIP_DEFS.find((d) => d.key === k);
+      return def && countsForChip(k, c) === 0;
+    });
+    if (allZero) {
+      const label = activeChips.length === 1 ? activeChips[0] : "selected";
+      return `No services are currently ${label}.`;
+    }
+  }
+  return "No services match the current filter.";
+}
+
+function countsForChip(key, c) {
+  return { running: c.running, unhealthy: c.unhealthy, outdated: c.outdated, stale: c.stale }[key] ?? 0;
 }
 
 // -------------------------------------------------------------- events ----
@@ -536,7 +558,7 @@ function renderDrawer() {
     <div class="d-badges">
       ${badge(stateClass(s.state), s.state || "?")}
       ${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}
-      ${s.freshness === "outdated" ? badge("b-peach", "update available")
+      ${s.freshness === "outdated" ? badge("b-peach", "outdated")
         : s.freshness === "current" ? badge("b-blue", "up to date") : ""}
     </div>
     ${s.health_detail

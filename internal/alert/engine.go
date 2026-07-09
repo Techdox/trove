@@ -118,7 +118,11 @@ func (e *Engine) sweepEvents(ctx context.Context) {
 	for _, ev := range events {
 		if e.cfg.Kinds[ev.Kind] {
 			if key, n, verdict, ok := classify(ev); ok {
-				e.deliver(ctx, key, verdict, n)
+				if !e.deliver(ctx, key, verdict, n) {
+					// Leave this event unconsumed so the next sweep can retry the
+					// notification instead of marking a failed send as delivered.
+					break
+				}
 			}
 		}
 		cursor = ev.ID
@@ -372,32 +376,34 @@ func (e *Engine) sweepFreshness(ctx context.Context) {
 //     original cooldown anchor. One exception: an escalation — a *worse*
 //     value at critical level after an already-notified bad — bypasses
 //     cooldown once (e.g. agent stale → offline).
-func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notification) {
+func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notification) bool {
 	now := e.now().Unix()
 	st, seen, err := e.store.GetAlertState(ctx, key)
 	if err != nil {
 		e.log.Error("alert: state read", "key", key, "err", err)
-		return
+		return false
 	}
 
 	if v.bad == "" { // recovery
 		if !seen || st.Value == "" {
-			return // nothing was bad; stay quiet
+			return true // nothing was bad; stay quiet
 		}
 		if st.Notified {
-			e.send(ctx, n)
+			if !e.send(ctx, n) {
+				return false
+			}
 			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", Notified: false, SentAt: now})
 		} else {
 			// The bad state was never announced — clear silently and keep the
 			// cooldown anchor so an immediate re-flap doesn't reset the window.
 			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: "", Notified: false, SentAt: st.SentAt})
 		}
-		return
+		return true
 	}
 
 	// bad path
 	if seen && st.Value == v.bad && st.Notified {
-		return // same already-announced incident re-observed; nothing to do
+		return true // same already-announced incident re-observed; nothing to do
 	}
 	inCooldown := seen && now-st.SentAt < int64(e.cfg.Cooldown.Seconds())
 	escalation := st.Notified && st.Value != "" && st.Value != v.bad && v.level == LevelCritical
@@ -405,20 +411,26 @@ func (e *Engine) deliver(ctx context.Context, key string, v verdictT, n Notifica
 		if st.Value != v.bad || st.Notified {
 			_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, Notified: false, SentAt: st.SentAt})
 		}
-		return
+		return true
 	}
-	e.send(ctx, n)
+	if !e.send(ctx, n) {
+		return false
+	}
 	_ = e.store.SetAlertState(ctx, key, store.AlertState{Value: v.bad, Notified: true, SentAt: now})
+	return true
 }
 
-func (e *Engine) send(ctx context.Context, n Notification) {
+func (e *Engine) send(ctx context.Context, n Notification) bool {
+	sent := false
 	for _, d := range e.dispatchers {
 		if err := d.Send(ctx, n); err != nil {
 			e.log.Error("alert: send failed", "channel", d.Name(), "title", n.Title, "err", err)
 		} else {
+			sent = true
 			e.log.Info("alert sent", "channel", d.Name(), "level", n.Level, "title", n.Title)
 		}
 	}
+	return sent
 }
 
 // SendTest pushes a test notification through every configured channel and

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -183,6 +184,46 @@ func TestEngineAgentTransitions(t *testing.T) {
 	e.Sweep(ctx)
 	if s.count() != 1 || s.titles()[0] != "resolved: agent docker-a recovered" {
 		t.Fatalf("want agent recovery notice, got: %v", s.titles())
+	}
+}
+
+func TestEngineRetriesEventWhenAllDispatchersFail(t *testing.T) {
+	e, st, s, _ := newTestEngine(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx) // seed cursor
+
+	s.fail = true
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthUnhealthy)))
+	e.Sweep(ctx)
+	failedAttempts := s.count()
+	if failedAttempts == 0 {
+		t.Fatal("want at least one failed delivery attempt")
+	}
+
+	rows, err := st.ListServices(ctx)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list services: rows=%+v err=%v", rows, err)
+	}
+	key := "svc:" + strconv.FormatInt(rows[0].ID, 10) + ":health"
+	state, seen, err := st.GetAlertState(ctx, key)
+	if err != nil {
+		t.Fatalf("get alert state: %v", err)
+	}
+	if seen && state.Notified {
+		t.Fatalf("failed delivery was marked notified: %+v", state)
+	}
+
+	s.fail = false
+	e.Sweep(ctx)
+	if s.count() != failedAttempts+1 {
+		t.Fatalf("want one successful retry after dispatcher recovers, got titles: %v", s.titles())
+	}
+	state, seen, err = st.GetAlertState(ctx, key)
+	if err != nil || !seen || !state.Notified || state.Value != "unhealthy" {
+		t.Fatalf("successful retry did not mark notified: state=%+v seen=%v err=%v", state, seen, err)
 	}
 }
 

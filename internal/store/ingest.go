@@ -162,12 +162,12 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 		var parentID sql.NullInt64
 		if svc.ParentExternalID != "" {
 			pid, ok := idByExtID[svc.ParentExternalID]
-			if !ok {
-				// Unknown parent in this host snapshot. Leave parent_id unchanged
-				// rather than guessing across hosts/agents.
-				continue
+			if ok {
+				parentID = sql.NullInt64{Int64: pid, Valid: true}
 			}
-			parentID = sql.NullInt64{Int64: pid, Valid: true}
+			// A full-state report names parents within its own host snapshot.
+			// If the referenced parent is absent, clear any old link instead of
+			// preserving a relationship the agent no longer reports.
 		}
 
 		if _, err := tx.ExecContext(ctx, `UPDATE services SET parent_id = ? WHERE id = ?`, parentID, childID); err != nil {

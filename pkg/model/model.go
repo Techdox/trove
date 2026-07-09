@@ -179,6 +179,12 @@ func (r *Report) Validate() error {
 		if !s.Kind.Valid() {
 			return fmt.Errorf("services[%d].kind %q is not a recognized kind", i, s.Kind)
 		}
+		if strings.TrimSpace(s.State) == "" {
+			return fmt.Errorf("services[%d].state is required", i)
+		}
+		if s.State == StateRemoved {
+			return fmt.Errorf("services[%d].state %q is server-derived", i, s.State)
+		}
 		if !s.Health.Valid() {
 			return fmt.Errorf("services[%d].health %q is not an agent-reportable health value", i, s.Health)
 		}

@@ -346,6 +346,30 @@ func TestApplyReportParentChildClearsStaleParent(t *testing.T) {
 	}
 }
 
+func TestApplyReportParentChildClearsMissingParent(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "k8s")
+
+	dep := model.ReportService{ExternalID: "deploy/default/web", Name: "web", Kind: model.KindDeployment, State: "1/1", Health: model.HealthHealthy}
+	pod := model.ReportService{ExternalID: "pod/default/web-a", ParentExternalID: dep.ExternalID, Name: "web-a", Kind: model.KindPod, State: "running", Health: model.HealthHealthy}
+	if err := st.ApplyReport(ctx, agent.ID, report(dep, pod)); err != nil {
+		t.Fatalf("apply with parent: %v", err)
+	}
+
+	pod.ParentExternalID = "deploy/default/missing"
+	if err := st.ApplyReport(ctx, agent.ID, report(pod)); err != nil {
+		t.Fatalf("apply with missing parent: %v", err)
+	}
+
+	rows, _ := st.ListServices(ctx)
+	for _, row := range rows {
+		if row.ExternalID == pod.ExternalID && row.ParentExternalID.Valid {
+			t.Fatalf("stale parent link persisted as %q", row.ParentExternalID.String)
+		}
+	}
+}
+
 func TestFreshnessJoinAndDue(t *testing.T) {
 	st, clock := newTestStore(t)
 	ctx := context.Background()

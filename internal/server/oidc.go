@@ -275,6 +275,38 @@ func isBrowserRequest(r *http.Request) bool {
 	return strings.Contains(accept, "text/html")
 }
 
+// safeReturnPath accepts only local absolute paths. It rejects absolute URLs,
+// protocol-relative URLs (//host/path), malformed paths, and path strings that
+// do not start at the dashboard root.
+func safeReturnPath(raw string) string {
+	if raw == "" || strings.HasPrefix(raw, "//") {
+		return "/"
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" || u.Path == "" || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		return "/"
+	}
+	u.Scheme = ""
+	u.Host = ""
+	return u.RequestURI()
+}
+
+func stateWithReturn(state, returnPath string) string {
+	return state + "." + base64.RawURLEncoding.EncodeToString([]byte(safeReturnPath(returnPath)))
+}
+
+func returnPathFromState(state string) string {
+	parts := strings.SplitN(state, ".", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return "/"
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "/"
+	}
+	return safeReturnPath(string(decoded))
+}
+
 // ---- Handlers --------------------------------------------------------------
 
 // handleOIDCLogin redirects the user to the IdP's authorization endpoint.
@@ -285,6 +317,14 @@ func (p *oidcProvider) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	returnPath := "/"
+	if ret := r.URL.Query().Get("return"); ret != "" {
+		if decoded, err := base64.RawURLEncoding.DecodeString(ret); err == nil {
+			returnPath = safeReturnPath(string(decoded))
+		}
+	}
+	state = stateWithReturn(state, returnPath)
+
 	// Store state in a short-lived cookie for CSRF verification on callback.
 	http.SetCookie(w, &http.Cookie{
 		Name:     stateCookieName,
@@ -368,17 +408,8 @@ func (p *oidcProvider) handleOIDCCallback(w http.ResponseWriter, r *http.Request
 
 	p.log.Info("oidc login", "subject", idToken.Subject, "email", claims.Email)
 
-	// Redirect to the return URL or dashboard root.
-	returnURL := "/"
-	if ret := r.URL.Query().Get("return"); ret != "" {
-		if decoded, err := base64.RawURLEncoding.DecodeString(ret); err == nil {
-			returnURL = string(decoded)
-			// Basic safety: only allow paths starting with /.
-			if !strings.HasPrefix(returnURL, "/") {
-				returnURL = "/"
-			}
-		}
-	}
+	// Redirect to the return URL carried in the verified OAuth state.
+	returnURL := returnPathFromState(stateParam)
 	http.Redirect(w, r, returnURL, http.StatusSeeOther)
 }
 

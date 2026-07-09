@@ -49,9 +49,9 @@ Example:
 ```env
 TROVE_OIDC_ISSUER=https://auth.example.com/application/o/trove/
 TROVE_OIDC_CLIENT_ID=trove
-TROVE_OIDC_CLIENT_SECRET=change-me
+TROVE_OIDC_CLIENT_SECRET=OIDC_CLIENT_SECRET_VALUE
 TROVE_OIDC_REDIRECT_URL=https://trove.example.com/oauth2/callback
-TROVE_API_TOKEN=<your-api-token>
+TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE
 TROVE_OIDC_SESSION_MAX_AGE=8h
 ```
 
@@ -117,7 +117,8 @@ After the provider logout finishes, the user lands back at the dashboard root an
 If OIDC is enabled and you want scripts to query read APIs, set `TROVE_API_TOKEN` and send it as a bearer token:
 
 ```sh
-curl -H "Authorization: Bearer <your-api-token>" \
+TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \\
+  curl --oauth2-bearer "$TROVE_API_TOKEN" \\
   https://trove.example.com/api/v1/services
 ```
 
@@ -146,7 +147,8 @@ curl -i https://trove.example.com/api/v1/services
 API requests with `TROVE_API_TOKEN` should return JSON:
 
 ```sh
-curl -H "Authorization: Bearer <your-api-token>" \
+TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \\
+  curl --oauth2-bearer "$TROVE_API_TOKEN" \\
   https://trove.example.com/api/v1/services
 ```
 

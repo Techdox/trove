@@ -18,8 +18,8 @@
 #        docker compose -f docker-compose.server.yml exec server \
 #          trove-server agent create <name>
 #
-# ⚠ The dashboard has no authentication yet — keep port 8080 on a trusted
-#   network (LAN/VPN) or behind an authenticating reverse proxy.
+# ⚠ The dashboard is open unless you configure OIDC — keep port 8080 on a trusted
+#   network (LAN/VPN), enable TROVE_OIDC_*, or put it behind auth.
 
 services:
   server:

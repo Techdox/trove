@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/Techdox/trove/compare/v0.11.2...v0.11.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* restore closing quote on freshness badge title attribute ([#57](https://github.com/Techdox/trove/issues/57)) ([c52b51b](https://github.com/Techdox/trove/commit/c52b51b7a24f66294a578d3d0e713e776faaea92))
+
 ## [0.11.2](https://github.com/Techdox/trove/compare/v0.11.1...v0.11.2) (2026-07-09)
 
 

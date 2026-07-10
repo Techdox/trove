@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.4](https://github.com/Techdox/trove/compare/v0.11.3...v0.11.4) (2026-07-10)
+
+
+### Bug Fixes
+
+* harden report ingest contract ([#60](https://github.com/Techdox/trove/issues/60)) ([52673f0](https://github.com/Techdox/trove/commit/52673f03909eea4ad7bccebf4f1c5b1a0f77ce13))
+* retry only failed alert channels ([#59](https://github.com/Techdox/trove/issues/59)) ([0bbe32b](https://github.com/Techdox/trove/commit/0bbe32b5d0ae63650c2d7b8cbaaf12e20b0d2cfc))
+* use stable identities in dashboard events ([#61](https://github.com/Techdox/trove/issues/61)) ([6f6c623](https://github.com/Techdox/trove/commit/6f6c623ae9a77e9f8d305a82d7ca6154946d8ebb))
+
 ## [0.11.3](https://github.com/Techdox/trove/compare/v0.11.2...v0.11.3) (2026-07-09)
 
 

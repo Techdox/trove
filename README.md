@@ -185,7 +185,7 @@ Static binaries for everything (including the bare-metal agent) are on the
 
 ```sh
 # pick the URL for your arch off the releases page, e.g.:
-VERSION=0.12.0       # x-release-please-version; check https://github.com/techdox/trove/releases/latest for newer releases
+VERSION=0.12.1       # x-release-please-version; check https://github.com/techdox/trove/releases/latest for newer releases
 curl -fLO "https://github.com/techdox/trove/releases/download/v${VERSION}/trove-server_${VERSION}_linux_amd64.tar.gz"
 tar xzf trove-server_${VERSION}_linux_amd64.tar.gz
 

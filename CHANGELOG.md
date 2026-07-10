@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/Techdox/trove/compare/v0.12.0...v0.12.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* move recent changes below catalogue ([#66](https://github.com/Techdox/trove/issues/66)) ([6dcf57a](https://github.com/Techdox/trove/commit/6dcf57af56d471986cc798b36ced11e19b8c84ff))
+
 ## [0.12.0](https://github.com/Techdox/trove/compare/v0.11.4...v0.12.0) (2026-07-10)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/Techdox/trove/compare/v0.12.1...v0.12.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* improve dashboard mobile and keyboard usability ([#69](https://github.com/Techdox/trove/issues/69)) ([e59c1ae](https://github.com/Techdox/trove/commit/e59c1aedf2cc0dcfdc9ba41bbbcd144ac14b2d09))
+
 ## [0.12.1](https://github.com/Techdox/trove/compare/v0.12.0...v0.12.1) (2026-07-10)
 
 

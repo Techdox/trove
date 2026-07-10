@@ -11,7 +11,7 @@ everything in lockstep. Pick the section that matches how you run the server.
   `CHANGELOG.md` for the version you're moving to.
 - **Back up the database** (see [Backup](#backup)). Migrations only ever move
   forward, so a backup is your rollback path.
-- In anything you care about, pin a specific version (e.g. `0.11.3`) rather than
+- In anything you care about, pin a specific version (e.g. `0.11.3`) <!-- x-release-please-version --> rather than
   `latest`, so upgrades are a deliberate change you control.
 
 ## Docker Compose
@@ -29,7 +29,7 @@ then `... up -d`. The database lives in the `trove-data` volume and survives the
 recreate; your `.env` (agent token) is reused.
 
 **Pin a version:** set the image tag in the compose file
-(`ghcr.io/techdox/trove-server:0.11.3` instead of `:latest`), then `pull` / `up -d`.
+(`ghcr.io/techdox/trove-server:0.11.3` <!-- x-release-please-version --> instead of `:latest`), then `pull` / `up -d`.
 
 ## Bare metal (systemd)
 
@@ -37,7 +37,7 @@ Download the release archive for the version you want and swap the binary in
 place — the database at `/var/lib/trove/trove.db` is untouched:
 
 ```sh
-VERSION=0.11.3
+VERSION=0.11.3 # x-release-please-version
 curl -fLO "https://github.com/techdox/trove/releases/download/v${VERSION}/trove-server_${VERSION}_linux_amd64.tar.gz"
 tar xzf trove-server_${VERSION}_linux_amd64.tar.gz
 sudo install -m 0755 trove-server /usr/local/bin/
@@ -51,7 +51,7 @@ upgrades the same way with its own archive, then `sudo systemctl restart trove-a
 ## go install
 
 ```sh
-go install github.com/techdox/trove/cmd/trove-server@v0.11.3   # or @latest
+go install github.com/techdox/trove/cmd/trove-server@v0.11.3   # x-release-please-version; or @latest
 ```
 
 Then restart however you run it. (A `go install` build reports its version as

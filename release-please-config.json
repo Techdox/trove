@@ -3,6 +3,17 @@
   "release-type": "simple",
   "skip-github-release": true,
   "packages": {
-    ".": {}
+    ".": {
+      "extra-files": [
+        "README.md",
+        "ROADMAP.md",
+        "docs/agents/local.md",
+        "docs/upgrades.md",
+        {
+          "type": "generic",
+          "path": "deploy/kubernetes/trove-agent.yaml"
+        }
+      ]
+    }
   }
 }

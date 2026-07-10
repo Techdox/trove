@@ -27,6 +27,8 @@ func TestReportValidate(t *testing.T) {
 		{"missing hostname", func(r *Report) { r.Host.Hostname = "" }},
 		{"missing external id", func(r *Report) { r.Services[0].ExternalID = "" }},
 		{"bad kind", func(r *Report) { r.Services[0].Kind = "widget" }},
+		{"missing service state", func(r *Report) { r.Services[0].State = " 	" }},
+		{"agent may not report removed", func(r *Report) { r.Services[0].State = StateRemoved }},
 		{"agent may not report stale", func(r *Report) { r.Services[0].Health = HealthStale }},
 		{"duplicate external id", func(r *Report) {
 			r.Services = append(r.Services, r.Services[0])

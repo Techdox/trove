@@ -36,7 +36,8 @@
   --border-strong: #5b527a;
   --text: #eee8ff;
   --muted: #aaa4c6;
-  --subtle: #7e789b;
+  /* Normal-sized secondary copy must meet AA contrast on --panel (4.71:1). */
+  --subtle: #9189b0;
   --purple: #b48cff;
   --green: #9be28f;
   --amber: #f2a65a;
@@ -401,6 +402,7 @@ header h1 {
 .host-head .sub { color: var(--subtle); font-family: var(--font-mono); font-size: 11.5px; }
 .host-head .rollup { display: inline-flex; gap: 6px; }
 .host-head .count { margin-left: auto; color: var(--subtle); font-family: var(--font-mono); font-size: 11.5px; }
+.table-scroll-hint { display: none; }
 .host-body { overflow-x: auto; }
 
 table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 820px; }
@@ -680,4 +682,14 @@ footer kbd {
   .section-heading p { text-align: left; }
   .attention-card { grid-template-columns: auto minmax(0, 1fr); }
   .attention-action { grid-column: 2; }
+  .table-scroll-hint {
+    display: block;
+    margin: 0;
+    padding: 8px 14px;
+    color: var(--subtle);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(15, 14, 25, 0.35);
+  }
 }

@@ -92,8 +92,11 @@ version number and changelog computed from commit messages since the last
 release (`feat` → minor, `fix` → patch). When you want to ship, merge that
 release PR.
 
-Merging the release PR updates `CHANGELOG.md` and
-`.release-please-manifest.json` on `main`. The
+Merging the release PR updates `CHANGELOG.md`,
+`.release-please-manifest.json`, and the annotated release-facing install/docs
+surfaces listed in `release-please-config.json`. The CI release-surface check
+requires those annotations to match the manifest, so pinned examples and the
+Kubernetes manifest cannot quietly drift from the published release. The
 [release-tag.yml](.github/workflows/release-tag.yml) workflow sees that manifest
 change, creates the matching `vX.Y.Z` tag, and that tag triggers
 [release.yml](.github/workflows/release.yml) (goreleaser: cross-compiled

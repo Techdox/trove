@@ -273,10 +273,15 @@ header h1 {
 }
 .host-head {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 11px;
   padding: 13px 16px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   background: rgba(15, 14, 25, 0.5);
+  border: 0;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
   cursor: pointer;

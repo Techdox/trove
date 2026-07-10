@@ -31,7 +31,10 @@ const CHIP_DEFS = [
   { key: "stale",     cls: "c-gray",   test: (s) => s.health === "stale" },
 ];
 
-const STOPPED_STATES = new Set(["exited", "dead", "failed"]);
+// Platforms use different neutral stopped states. Proxmox reports `stopped`,
+// while Docker/systemd report `exited`, `dead`, or `failed`. Trove surfaces all
+// of them for investigation without assuming a powered-off guest is unhealthy.
+const STOPPED_STATES = new Set(["exited", "dead", "failed", "stopped"]);
 
 // A service is identified by agent + hostname + external_id (hostnames are
 // only unique per agent).
@@ -283,7 +286,7 @@ function attentionItems() {
     item("offline-agents", "critical", offline, "Offline agent", "Trove is no longer receiving reports from this source.", "Review agents"),
     item("unhealthy", "critical", c.unhealthy, "Unhealthy service", "A platform health check or readiness signal is failing.", "Show services"),
     item("stale-agents", "warning", staleAgents, "Stale agent", "This source has missed its expected reporting interval.", "Review agents"),
-    item("stopped", "warning", c.stopped, "Stopped service", "A discovered service is exited, dead, or failed.", "Show services"),
+    item("stopped", "info", c.stopped, "Stopped workload", "A discovered workload is not running. It may be intentional.", "Show services"),
     item("removed", "info", c.removed, "Recently disappeared service", "A service is absent from its latest full-state report.", "Show services"),
     item("outdated", "info", c.outdated, "Outdated image", "The running image digest is behind the current tag.", "Show services"),
   ].filter((i) => i.count > 0);
@@ -329,8 +332,11 @@ function renderSummary() {
   const agents = agentList.length;
   const items = attentionItems();
   const critical = items.some((i) => i.level === "critical");
-  const cls = items.length === 0 ? "ok" : (critical ? "crit" : "warn");
-  const text = items.length === 0 ? "Current state looks healthy" : `${items.length} area${items.length === 1 ? "" : "s"} to review`;
+  const warning = items.some((i) => i.level === "warning");
+  const cls = critical ? "crit" : (warning ? "warn" : "ok");
+  const text = critical || warning
+    ? `${items.filter((i) => i.level !== "info").length} area${items.filter((i) => i.level !== "info").length === 1 ? "" : "s"} to review`
+    : "Current state looks healthy";
   const overview =
     `${agents} agent${agents === 1 ? "" : "s"} · ` +
     `${c.hosts} host${c.hosts === 1 ? "" : "s"} · ` +
@@ -559,6 +565,7 @@ function eventTone(e) {
   if (e.kind === "state") {
     if (["dead", "failed"].includes(e.to_state)) return "critical";
     if (["exited", "removed", "restarting", "paused"].includes(e.to_state)) return "warning";
+    if (e.to_state === "stopped") return "info";
     if (e.to_state === "running") return "healthy";
   }
   return "info";

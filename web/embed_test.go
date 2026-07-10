@@ -40,7 +40,7 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 	for _, marker := range []string{
 		"function attentionItems()",
 		"function showAttention(key)",
-		"STOPPED_STATES",
+		`const STOPPED_STATES = new Set(["exited", "dead", "failed", "stopped"])`,
 	} {
 		if !strings.Contains(string(app), marker) {
 			t.Errorf("dashboard attention behaviour is missing %q", marker)

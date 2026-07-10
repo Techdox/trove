@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/Techdox/trove/compare/v0.11.4...v0.12.0) (2026-07-10)
+
+
+### Features
+
+* prioritize dashboard attention and triage ([#64](https://github.com/Techdox/trove/issues/64)) ([f89359c](https://github.com/Techdox/trove/commit/f89359cccbef76dfd32cd3cafcabb299c9bc1e86))
+
 ## [0.11.4](https://github.com/Techdox/trove/compare/v0.11.3...v0.11.4) (2026-07-10)
 
 

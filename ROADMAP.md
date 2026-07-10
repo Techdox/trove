@@ -1,6 +1,6 @@
 # Trove Roadmap
 
-**Status:** `v0.11.3` is the current public release. <!-- x-release-please-version --> Phases 1–4 are shipped on
+**Status:** `v0.11.4` is the current public release. <!-- x-release-please-version --> Phases 1–4 are shipped on
 `main` — Docker/Kubernetes/Proxmox/bare-metal agents, per-agent token auth,
 heartbeat/staleness, image freshness, the parent/child model, configurable
 retention, and alerting (webhook/Discord/ntfy + email digest — see

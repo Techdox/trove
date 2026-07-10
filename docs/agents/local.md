@@ -26,7 +26,7 @@ docker compose exec server trove-server agent create nas01
 ```sh
 # grab the archive for your arch from the latest release. Set VERSION to the
 # release you're installing (see https://github.com/techdox/trove/releases).
-VERSION=0.11.3 # x-release-please-version
+VERSION=0.11.4 # x-release-please-version
 curl -fLO "https://github.com/techdox/trove/releases/download/v${VERSION}/trove-agent-local_${VERSION}_linux_amd64.tar.gz"
 tar xzf trove-agent-local_${VERSION}_linux_amd64.tar.gz
 sudo install -m 0755 trove-agent-local /usr/local/bin/

@@ -8,7 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-# Trove
+# Trove by Techdox
 
 **An automatically discovered, read-only inventory of everything running in
 your homelab.** Small agents sit next to your workloads — Docker hosts,
@@ -20,7 +20,10 @@ Trove is the place to start an investigation, not the place to make a change.
 It links the facts across your homelab without becoming a homepage, Grafana,
 Portainer, or an infrastructure management interface.
 
-![Trove dashboard](docs/screenshot.png)
+![Trove dashboard: needs attention, infrastructure summary, service catalogue, and recent history](docs/screenshot.png)
+
+*Dashboard shown with public fixture data. It contains example services only,
+never a real homelab.*
 
 **Read-only by design.** Trove can never deploy, restart, exec into, or edit
 anything. There is no code path that mutates a workload — agents only ever
@@ -41,10 +44,11 @@ not a feature toggle, and it's the project's one hard rule.
   a host stops reporting, a service goes unhealthy or dies, or an image falls
   behind — with recovery notices, flap suppression, and a scheduled email
   digest. See [docs/alerts.md](docs/alerts.md).
-- **State-change events** — a feed of started/stopped/unhealthy/appeared/removed
-  (30-day retention, configurable).
-- **Fast, dense dashboard** — no framework, keyboard-driven (`/` filter,
-  `j`/`k` navigate, `enter` for details), auto-refreshing.
+- **Operational dashboard** — a calm needs-attention queue first, then
+  infrastructure and the full catalogue; recent changes stay available as
+  history rather than competing with current problems.
+- **Fast, keyboard-friendly UI** — no framework, auto-refreshing; use `/` to
+  filter, `j`/`k` to move, and `enter` to open details.
 - **Trivial to operate** — one static binary (or container) per role, SQLite
   storage, automatic schema migrations, push-model agents that work from
   behind NAT.
@@ -102,9 +106,12 @@ The compose files auto-register this first agent from `TROVE_TOKEN` (via
 `TROVE_BOOTSTRAP_*`), so you don't run `agent create` for it — every
 *additional* host gets its own token ([below](#adding-more-hosts-and-platforms)).
 
-Open <http://localhost:8080>. Your services appear within ~30 seconds. If an
-agent doesn't show up, watch it connect with `docker compose logs -f agent`
-(add `-f docker-compose.proxmox.yml` if you used the Proxmox file).
+Open <http://localhost:8080>. Your services appear within ~30 seconds. First,
+check **Needs attention**: a healthy first report shows a calm all-clear state;
+an unreachable server or wrong token shows the agent as stale or offline.
+
+If an agent does not show up, watch it connect with `docker compose logs -f
+agent` (add `-f docker-compose.proxmox.yml` if you used the Proxmox file).
 
 > ⚠️ By default, the dashboard and read APIs are open. Keep Trove on a trusted
 > network (LAN/VPN/tailnet), put it behind an authenticating reverse proxy, or
@@ -241,8 +248,9 @@ Dex, etc.):
 
 When `TROVE_OIDC_ISSUER` is set, browser requests without a session are
 redirected to your IdP's login page. After login, a signed session cookie
-is set (8h default, no server-side session store). API requests with
-`Authorization: Bearer TROVE_API_TOKEN_VALUE` bypass OIDC for script access.
+API requests with a bearer token matching `TROVE_API_TOKEN` bypass OIDC for
+script access. See the safe, copyable example in
+[docs/authentication.md](docs/authentication.md#programmatic-api-access).
 
 Logout clears Trove's local session cookie and, when the provider exposes an
 OIDC `end_session_endpoint`, redirects through provider logout so users are not
@@ -293,6 +301,9 @@ The name an agent appears under on the dashboard is the one you chose in
 each [agent guide](docs/agents/).
 
 ### Managing agents
+
+Deleting an agent is an intentional server-side catalogue cleanup. It does not
+stop or change anything on the infrastructure the agent used to observe.
 
 ```sh
 trove-server agent create <name>    # mint a token (shown once, stored hashed)

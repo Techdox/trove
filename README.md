@@ -10,11 +10,15 @@
 
 # Trove
 
-**One pane of glass for everything running in your homelab.** Small agents sit
-next to your workloads — Docker hosts, Kubernetes clusters, Proxmox nodes,
-plain Linux boxes — and push what they see to one server: what's running,
-where, what version, whether it's healthy, whether its image is outdated, and
-whether it's still reporting at all.
+**An automatically discovered, read-only inventory of everything running in
+your homelab.** Small agents sit next to your workloads — Docker hosts,
+Kubernetes clusters, Proxmox nodes, plain Linux boxes — and push what they see
+to one Trove service catalogue: what's running, where it lives, whether it's
+healthy, whether its image is outdated, and whether it is still reporting.
+
+Trove is the place to start an investigation, not the place to make a change.
+It links the facts across your homelab without becoming a homepage, Grafana,
+Portainer, or an infrastructure management interface.
 
 ![Trove dashboard](docs/screenshot.png)
 

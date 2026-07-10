@@ -26,9 +26,15 @@ const state = {
 const CHIP_DEFS = [
   { key: "running",   cls: "c-green",  test: (s) => s.state === "running" },
   { key: "unhealthy", cls: "c-red",    test: (s) => s.health === "unhealthy" },
+  { key: "stopped",   cls: "c-yellow", test: (s) => STOPPED_STATES.has(s.state) },
   { key: "outdated",  cls: "c-peach",  test: (s) => s.freshness === "outdated" },
   { key: "stale",     cls: "c-gray",   test: (s) => s.health === "stale" },
 ];
+
+// Platforms use different neutral stopped states. Proxmox reports `stopped`,
+// while Docker/systemd report `exited`, `dead`, or `failed`. Trove surfaces all
+// of them for investigation without assuming a powered-off guest is unhealthy.
+const STOPPED_STATES = new Set(["exited", "dead", "failed", "stopped"]);
 
 // A service is identified by agent + hostname + external_id (hostnames are
 // only unique per agent).
@@ -248,7 +254,7 @@ function filterActive() {
 
 // counts over the full dataset (independent of the active filter)
 function computeCounts() {
-  const c = { hosts: 0, services: 0, running: 0, unhealthy: 0, outdated: 0, stale: 0, removed: 0 };
+  const c = { hosts: 0, services: 0, running: 0, unhealthy: 0, stopped: 0, outdated: 0, stale: 0, removed: 0 };
   for (const h of state.data.services?.hosts || []) {
     c.hosts++;
     for (const s of h.services || []) {
@@ -256,11 +262,63 @@ function computeCounts() {
       c.services++;
       if (s.state === "running") c.running++;
       if (s.health === "unhealthy") c.unhealthy++;
+      if (STOPPED_STATES.has(s.state)) c.stopped++;
       if (s.health === "stale") c.stale++;
       if (s.freshness === "outdated") c.outdated++;
     }
   }
   return c;
+}
+
+// ----------------------------------------------------------- attention ----
+
+// The attention queue deliberately groups evidence by the next useful
+// investigation step. It is not another collection of filter chips: it gives
+// the dashboard an operational starting point, then routes into the catalogue
+// or affected-agent list when the operator chooses to investigate.
+function attentionItems() {
+  const c = computeCounts();
+  const agents = state.data.agents?.agents || [];
+  const offline = agents.filter((a) => a.status === "offline").length;
+  const staleAgents = agents.filter((a) => a.status === "stale").length;
+  const item = (key, level, count, title, detail, action) => ({ key, level, count, title, detail, action });
+  return [
+    item("offline-agents", "critical", offline, "Offline agent", "Trove is no longer receiving reports from this source.", "Review agents"),
+    item("unhealthy", "critical", c.unhealthy, "Unhealthy service", "A platform health check or readiness signal is failing.", "Show services"),
+    item("stale-agents", "warning", staleAgents, "Stale agent", "This source has missed its expected reporting interval.", "Review agents"),
+    item("stopped", "info", c.stopped, "Stopped workload", "A discovered workload is not running. It may be intentional.", "Show services"),
+    item("removed", "info", c.removed, "Recently disappeared service", "A service is absent from its latest full-state report.", "Show services"),
+    item("outdated", "info", c.outdated, "Outdated image", "The running image digest is behind the current tag.", "Show services"),
+  ].filter((i) => i.count > 0);
+}
+
+function renderAttention() {
+  const el = $("attention");
+  const items = attentionItems();
+  if (items.length === 0) {
+    el.innerHTML = `<div class="attention-healthy">
+      <span class="attention-icon" aria-hidden="true">✓</span>
+      <div><strong>Nothing needs attention right now.</strong><span>All reporting agents are online and discovered services have no current health, state, or image-freshness warnings.</span></div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = items.map((i) => `<button type="button" class="attention-card attention-${i.level}" data-attention="${i.key}">
+    <span class="attention-count">${i.count}</span>
+    <span class="attention-copy"><strong>${esc(i.title)}${i.count === 1 ? "" : "s"}</strong><span>${esc(i.detail)}</span></span>
+    <span class="attention-action">${esc(i.action)} <span aria-hidden="true">→</span></span>
+  </button>`).join("");
+}
+
+function showAttention(key) {
+  clearFilters();
+  if (key === "offline-agents" || key === "stale-agents") {
+    $("agents").scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  if (key === "removed") state.showRemoved = true;
+  else state.chips.add(key);
+  render();
+  $("hosts").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // ------------------------------------------------------------- summary ----
@@ -272,19 +330,13 @@ function renderSummary() {
   const c = computeCounts();
   const agentList = state.data.agents?.agents || [];
   const agents = agentList.length;
-  const agentsOffline = agentList.filter((a) => a.status === "offline").length;
-  const agentsStale = agentList.filter((a) => a.status === "stale").length;
-
-  // What "needs attention" — most urgent first.
-  const parts = [];
-  if (c.unhealthy) parts.push(`${c.unhealthy} unhealthy`);
-  if (agentsOffline) parts.push(`${agentsOffline} agent${agentsOffline === 1 ? "" : "s"} offline`);
-  if (c.stale) parts.push(`${c.stale} stale`);
-  if (agentsStale) parts.push(`${agentsStale} agent${agentsStale === 1 ? "" : "s"} not reporting`);
-  if (c.outdated) parts.push(`${c.outdated} outdated`);
-
-  const cls = parts.length === 0 ? "ok" : (c.unhealthy > 0 || agentsOffline > 0 ? "crit" : "warn");
-  const text = parts.length === 0 ? "All systems operational" : "Needs attention";
+  const items = attentionItems();
+  const critical = items.some((i) => i.level === "critical");
+  const warning = items.some((i) => i.level === "warning");
+  const cls = critical ? "crit" : (warning ? "warn" : "ok");
+  const text = critical || warning
+    ? `${items.filter((i) => i.level !== "info").length} area${items.filter((i) => i.level !== "info").length === 1 ? "" : "s"} to review`
+    : "Current state looks healthy";
   const overview =
     `${agents} agent${agents === 1 ? "" : "s"} · ` +
     `${c.hosts} host${c.hosts === 1 ? "" : "s"} · ` +
@@ -293,14 +345,13 @@ function renderSummary() {
   $("summary").innerHTML =
     `<div class="verdict verdict-${cls}"><span class="vdot"></span>` +
     `<span class="vtext">${text}</span>` +
-    (parts.length ? `<span class="vbreak">${esc(parts.join(" · "))}</span>` : "") +
     `</div>` +
     `<span class="overview">${esc(overview)}</span>`;
 }
 
 function renderChips() {
   const c = computeCounts();
-  const counts = { running: c.running, unhealthy: c.unhealthy, outdated: c.outdated, stale: c.stale };
+  const counts = { running: c.running, unhealthy: c.unhealthy, stopped: c.stopped, outdated: c.outdated, stale: c.stale };
   const chips = CHIP_DEFS.map((d) => {
     const active = state.chips.has(d.key) ? " active" : "";
     return `<button class="chip ${d.cls}${active}" data-chip="${d.key}" aria-pressed="${!!active}">
@@ -456,7 +507,7 @@ function emptyMessage() {
 }
 
 function countsForChip(key, c) {
-  return { running: c.running, unhealthy: c.unhealthy, outdated: c.outdated, stale: c.stale }[key] ?? 0;
+  return { running: c.running, unhealthy: c.unhealthy, stopped: c.stopped, outdated: c.outdated, stale: c.stale }[key] ?? 0;
 }
 
 // -------------------------------------------------------------- events ----
@@ -494,10 +545,30 @@ function eventRowHTML(e) {
         &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
         <span class="${stateTextClass(e.to_state)}">${esc(e.to_state)}</span>`;
   }
-  return `<div class="event-row">
+  return `<div class="event-row event-${eventTone(e)}">
     <span class="when nowrap">${esc(relTime(e.at))}</span>
     <span class="what">${what}</span>
   </div>`;
+}
+
+function eventTone(e) {
+  if (e.kind === "agent") {
+    if (e.to_state === "offline") return "critical";
+    if (e.to_state === "stale") return "warning";
+    if (e.to_state === "ok") return "healthy";
+  }
+  if (e.kind === "health") {
+    if (e.to_state === "unhealthy") return "critical";
+    if (e.to_state === "stale") return "warning";
+    if (e.to_state === "healthy") return "healthy";
+  }
+  if (e.kind === "state") {
+    if (["dead", "failed"].includes(e.to_state)) return "critical";
+    if (["exited", "removed", "restarting", "paused"].includes(e.to_state)) return "warning";
+    if (e.to_state === "stopped") return "info";
+    if (e.to_state === "running") return "healthy";
+  }
+  return "info";
 }
 
 // -------------------------------------------------------------- drawer ----
@@ -634,6 +705,7 @@ function openDrawer(key) {
 
 function render() {
   if (!state.data.services || !state.data.agents) return;
+  renderAttention();
   renderSummary();
   renderChips();
   renderAgents();
@@ -736,6 +808,9 @@ function clearFilters() {
 
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-clear]")) { clearFilters(); return; }
+
+  const attention = e.target.closest("[data-attention]");
+  if (attention) { showAttention(attention.dataset.attention); return; }
 
   const chip = e.target.closest("[data-chip]");
   if (chip) { toggleChip(chip.dataset.chip); return; }

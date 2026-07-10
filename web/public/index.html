@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#12111d" />
-  <title>Trove</title>
+  <title>Trove Homelab | Read-only Service Catalogue</title>
+  <meta name="description" content="Trove by Techdox is an automatically discovered, read-only catalogue of what is running across your homelab." />
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="trove-icon-180.png" />
@@ -15,11 +16,11 @@
 <body>
   <div class="wrap">
     <header>
-      <a class="brand" href="." aria-label="Trove">
+      <a class="brand" href="." aria-label="Trove Homelab service catalogue">
         <img class="mark" src="trove-mark.svg" alt="" width="30" height="30" />
         <h1>TROVE</h1>
       </a>
-      <span class="tagline">read-only service catalog</span>
+      <span class="tagline">read-only homelab service catalogue</span>
       <div class="status-line">
         <span id="updated">connecting…</span>
         <span class="pulse" id="pulse" title="live"></span>
@@ -29,25 +30,57 @@
 
     <div class="error-banner" id="error"></div>
 
-    <div class="summary" id="summary"></div>
+    <section class="dashboard-section attention-section" aria-labelledby="attention-title">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">Operational overview</div>
+          <h2 id="attention-title">Needs attention</h2>
+        </div>
+        <p>What needs investigation first. Trove only shows the evidence; follow the link or use your usual tool to fix it.</p>
+      </div>
+      <div class="attention" id="attention"></div>
+    </section>
 
-    <div class="filterbar">
-      <input id="q" type="search" placeholder="filter by name, image, host, label…  ( / )"
-             autocomplete="off" spellcheck="false" aria-label="Filter services" />
-      <div class="chips" id="chips"></div>
-    </div>
+    <section class="dashboard-section changes-section" aria-labelledby="changes-title">
+      <div class="section-heading compact">
+        <div>
+          <div class="eyebrow">What changed</div>
+          <h2 id="changes-title">Recent changes</h2>
+        </div>
+        <p>State, health, and agent heartbeat transitions. Quiet reports are intentionally absent.</p>
+      </div>
+      <div class="events" id="events"></div>
+    </section>
 
-    <div class="section-title">Agents</div>
-    <div class="agents" id="agents"></div>
+    <section class="dashboard-section infrastructure-section" aria-labelledby="infrastructure-title">
+      <div class="section-heading compact">
+        <div>
+          <div class="eyebrow">Discovered infrastructure</div>
+          <h2 id="infrastructure-title">Infrastructure summary</h2>
+        </div>
+      </div>
+      <div class="summary" id="summary"></div>
+      <div class="agents" id="agents"></div>
+    </section>
 
-    <div class="section-title">Services</div>
-    <div id="hosts"></div>
-
-    <div class="section-title">Recent activity</div>
-    <div class="events" id="events"></div>
+    <section class="dashboard-section inventory-section" aria-labelledby="inventory-title">
+      <div class="section-heading compact">
+        <div>
+          <div class="eyebrow">Everything reported</div>
+          <h2 id="inventory-title">Service catalogue</h2>
+        </div>
+        <p>Filter the discovered inventory. Trove never changes a workload.</p>
+      </div>
+      <div class="filterbar">
+        <input id="q" type="search" placeholder="filter by name, image, host, label…  ( / )"
+               autocomplete="off" spellcheck="false" aria-label="Filter services" />
+        <div class="chips" id="chips"></div>
+      </div>
+      <div id="hosts"></div>
+    </section>
 
     <footer>
-      Trove &middot; read-only by design &middot; auto-refresh 10s &middot;
+      Trove by Techdox &middot; read-only by design &middot; auto-refresh 10s &middot;
       click a row (or <kbd>enter</kbd>) for details &middot;
       <kbd>/</kbd> filter &middot; <kbd>j</kbd>/<kbd>k</kbd> move &middot; <kbd>esc</kbd> close
     </footer>

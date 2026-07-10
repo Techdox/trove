@@ -148,6 +148,109 @@ header h1 {
 @keyframes pulse-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 
+/* ---- dashboard hierarchy ---- */
+.dashboard-section { margin-top: 30px; }
+.section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 13px;
+}
+.section-heading.compact { margin-bottom: 12px; }
+.eyebrow {
+  color: var(--purple);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.section-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.section-heading p {
+  max-width: 540px;
+  margin: 0;
+  color: var(--subtle);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+/* ---- needs attention ---- */
+.attention {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+.attention-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 82px;
+  padding: 13px 15px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(36, 34, 56, 0.9), rgba(26, 24, 40, 0.9));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+.attention-card:hover { transform: translateY(-1px); border-color: var(--border-strong); background: var(--panel-soft); }
+.attention-count {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 14px;
+}
+.attention-copy { min-width: 0; display: grid; gap: 2px; }
+.attention-copy strong { color: var(--text); font-family: var(--font-display); font-size: 14px; }
+.attention-copy span { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.attention-action { color: var(--subtle); font-family: var(--font-mono); font-size: 10.5px; white-space: nowrap; }
+.attention-critical { border-color: rgba(255, 107, 122, 0.42); }
+.attention-critical .attention-count { color: var(--red); background: rgba(255, 107, 122, 0.12); }
+.attention-warning { border-color: rgba(242, 166, 90, 0.35); }
+.attention-warning .attention-count { color: var(--amber); background: rgba(242, 166, 90, 0.12); }
+.attention-info .attention-count { color: var(--blue); background: rgba(113, 183, 255, 0.1); }
+.attention-healthy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1px solid rgba(155, 226, 143, 0.24);
+  border-radius: 16px;
+  background: rgba(155, 226, 143, 0.055);
+}
+.attention-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--green);
+  background: rgba(155, 226, 143, 0.12);
+  font-weight: 800;
+}
+.attention-healthy div { display: grid; gap: 2px; }
+.attention-healthy strong { color: var(--green); font-family: var(--font-display); }
+.attention-healthy span { color: var(--muted); font-size: 12px; }
+
 /* ---- summary strip ---- */
 .summary {
   display: flex;
@@ -433,6 +536,10 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
   align-items: baseline;
 }
 .event-row:last-child { border-bottom: none; }
+.event-row.event-critical { box-shadow: inset 3px 0 0 var(--red); background: rgba(255, 107, 122, 0.045); }
+.event-row.event-warning { box-shadow: inset 3px 0 0 var(--amber); }
+.event-row.event-healthy { box-shadow: inset 3px 0 0 var(--green); }
+.event-row.event-info { box-shadow: inset 3px 0 0 var(--blue); }
 .event-row .when { color: var(--subtle); font-family: var(--font-mono); font-size: 11.5px; min-width: 84px; }
 .event-row .what { color: var(--muted); }
 .event-row .what strong { color: var(--text); font-weight: 600; }
@@ -565,4 +672,12 @@ footer kbd {
   padding: 1px 5px;
   color: var(--muted);
   background: var(--panel);
+}
+
+@media (max-width: 680px) {
+  .wrap { padding: 18px 14px 44px; }
+  .section-heading { align-items: start; flex-direction: column; gap: 5px; }
+  .section-heading p { text-align: left; }
+  .attention-card { grid-template-columns: auto minmax(0, 1fr); }
+  .attention-action { grid-column: 2; }
 }

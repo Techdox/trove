@@ -26,6 +26,13 @@ type sink struct {
 	fail bool
 }
 
+type namedDispatcher struct {
+	name string
+	Dispatcher
+}
+
+func (d namedDispatcher) Name() string { return d.name }
+
 func newSink(t *testing.T) *sink {
 	t.Helper()
 	s := &sink{}
@@ -224,6 +231,35 @@ func TestEngineRetriesEventWhenAllDispatchersFail(t *testing.T) {
 	state, seen, err = st.GetAlertState(ctx, key)
 	if err != nil || !seen || !state.Notified || state.Value != "unhealthy" {
 		t.Fatalf("successful retry did not mark notified: state=%+v seen=%v err=%v", state, seen, err)
+	}
+}
+
+func TestEngineRetriesOnlyFailedChannelAfterPartialFanout(t *testing.T) {
+	e, st, good, _ := newTestEngine(t)
+	ctx := context.Background()
+	flaky := newSink(t)
+	flaky.fail = true
+	e.dispatchers = []Dispatcher{
+		namedDispatcher{name: "good", Dispatcher: &webhookDispatcher{client: good.srv.Client(), url: good.srv.URL}},
+		namedDispatcher{name: "flaky", Dispatcher: &webhookDispatcher{client: flaky.srv.Client(), url: flaky.srv.URL}},
+	}
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthHealthy)))
+	e.Sweep(ctx) // seed cursor
+	_ = st.ApplyReport(ctx, agent.ID, testReport(testSvc("running", model.HealthUnhealthy)))
+	e.Sweep(ctx)
+	if good.count() != 1 || flaky.count() != 3 { // dispatcher retries each failure three times
+		t.Fatalf("first fanout good=%d flaky=%d, want 1/3", good.count(), flaky.count())
+	}
+
+	flaky.fail = false
+	e.Sweep(ctx)
+	if good.count() != 1 {
+		t.Fatalf("successful channel was duplicated during retry: %d sends", good.count())
+	}
+	if flaky.count() != 4 {
+		t.Fatalf("failed channel was not retried after recovery: %d sends", flaky.count())
 	}
 }
 

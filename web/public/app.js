@@ -312,13 +312,22 @@ function renderAttention() {
 function showAttention(key) {
   clearFilters();
   if (key === "offline-agents" || key === "stale-agents") {
-    $("agents").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("infrastructure-title").scrollIntoView({ behavior: "smooth", block: "start" });
+    focusInvestigationTarget("infrastructure-title");
     return;
   }
   if (key === "removed") state.showRemoved = true;
   else state.chips.add(key);
   render();
-  $("hosts").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("inventory-title").scrollIntoView({ behavior: "smooth", block: "start" });
+  focusInvestigationTarget("inventory-title");
+}
+
+// Attention cards are replaced by render(), so keyboard focus cannot remain on
+// the button that invoked an investigation. Move it to the visible destination
+// instead of leaving it on document.body.
+function focusInvestigationTarget(id) {
+  requestAnimationFrame(() => $(id)?.focus({ preventScroll: true }));
 }
 
 // ------------------------------------------------------------- summary ----
@@ -470,6 +479,7 @@ function renderHosts() {
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
       </button>
+      <p class="table-scroll-hint">Swipe or scroll horizontally to see all service details <span aria-hidden="true">→</span></p>
       <div class="host-body">
         <table>
           <thead><tr>

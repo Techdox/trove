@@ -18,9 +18,9 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 	last := -1
 	for _, heading := range []string{
 		"Needs attention",
-		"Recent changes",
 		"Infrastructure summary",
 		"Service catalogue",
+		"Recent changes",
 	} {
 		pos := strings.Index(string(index), heading)
 		if pos == -1 {

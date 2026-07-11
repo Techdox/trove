@@ -483,7 +483,7 @@ function renderHosts() {
       <div class="host-body">
         <table>
           <thead><tr>
-            <th class="w-service">Service</th><th>Image</th><th class="w-state">State</th>
+            <th class="w-service">Service</th><th class="w-image">Image</th><th class="w-state">State</th>
             <th class="w-health">Health</th><th class="w-fresh">Freshness</th>
             <th class="w-ports">Ports</th><th class="w-seen">Last seen</th>
           </tr></thead>
@@ -709,6 +709,14 @@ function openDrawer(key) {
   state.drawerKey = key;
   state.cursorKey = key;
   render();
+  requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
+}
+
+function closeDrawer() {
+  const key = state.drawerKey;
+  state.drawerKey = null;
+  render();
+  requestAnimationFrame(() => visibleRows().find((tr) => rowKey(tr) === key)?.focus({ preventScroll: true }));
 }
 
 // -------------------------------------------------------------- render ----
@@ -806,6 +814,7 @@ function toggleChip(key) {
     state.chips.add(key);
   }
   render();
+  requestAnimationFrame(() => document.querySelector(`[data-chip=\"${key}\"]`)?.focus({ preventScroll: true }));
 }
 
 function clearFilters() {
@@ -825,7 +834,7 @@ document.addEventListener("click", (e) => {
   const chip = e.target.closest("[data-chip]");
   if (chip) { toggleChip(chip.dataset.chip); return; }
 
-  if (e.target.closest(".d-close")) { state.drawerKey = null; render(); return; }
+  if (e.target.closest(".d-close")) { closeDrawer(); return; }
   if (e.target.closest("#drawer")) return; // clicks inside the drawer stay put
 
   const head = e.target.closest(".host-head");
@@ -851,7 +860,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
-    if (state.drawerKey) { state.drawerKey = null; render(); return; }
+    if (state.drawerKey) { closeDrawer(); return; }
     if (state.q || state.chips.size > 0 || state.showRemoved) clearFilters();
     return;
   }

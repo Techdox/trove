@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.3](https://github.com/Techdox/trove/compare/v0.12.2...v0.12.3) (2026-07-11)
+
+
+### Bug Fixes
+
+* make dashboard identifiers readable ([#72](https://github.com/Techdox/trove/issues/72)) ([fd9543b](https://github.com/Techdox/trove/commit/fd9543bdf51f87619870bbaa41bd2452a61b992a))
+
 ## [0.12.2](https://github.com/Techdox/trove/compare/v0.12.1...v0.12.2) (2026-07-10)
 
 

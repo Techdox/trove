@@ -59,7 +59,10 @@ Trove is a **server** (the dashboard + API) plus one **agent per platform** you
 want to watch. The server is the same everywhere; only the agent differs. Start
 with the compose file that matches what you're watching — each one stands up the
 server *and* the right agent together. Requires Docker with Compose on the
-machine that will host the dashboard.
+machine that will host the dashboard, and a user account that can run Docker
+without `sudo`. Check that first with `docker ps`; if it reports permission
+denied, follow Docker's post-install steps for your distribution and open a new
+shell before continuing.
 
 **Docker host** — server + an agent watching this box's containers:
 

@@ -405,7 +405,7 @@ header h1 {
 .table-scroll-hint { display: none; }
 .host-body { overflow-x: auto; }
 
-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 820px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 1154px; }
 thead th {
   text-align: left;
   font-family: var(--font-mono);
@@ -419,6 +419,7 @@ thead th {
   background: rgba(15, 14, 25, 0.35);
 }
 th.w-service { width: 22%; }
+th.w-image   { width: 280px; }
 th.w-state   { width: 116px; }
 th.w-health  { width: 112px; }
 th.w-fresh   { width: 124px; }
@@ -430,8 +431,7 @@ tbody td {
   padding: 10px 14px;
   border-bottom: 1px solid rgba(59, 54, 85, 0.5);
   vertical-align: middle;
-  white-space: nowrap;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 13px;
 }
@@ -444,7 +444,7 @@ tbody tr.open td:first-child { box-shadow: inset 3px 0 0 var(--purple); }
 tbody tr.removed { opacity: 0.5; }
 tbody tr.removed .svc-name { text-decoration: line-through; }
 
-td.svc { text-overflow: ellipsis; }
+td.svc { overflow-wrap: anywhere; }
 /* Badge-only cells (state/health/freshness): tighter padding so the column
    width goes to the badge, not wasted margin. */
 tbody td.badgecell { padding-left: 8px; padding-right: 8px; }
@@ -463,26 +463,18 @@ tbody td.badgecell { padding-left: 8px; padding-right: 8px; }
 }
 tbody tr.child .svc-name { color: var(--muted); font-family: var(--font-body); font-weight: 500; }
 
-/* image cell: prefix shrinks first, name:tag stays visible */
-.img-wrap { display: flex; min-width: 0; color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+/* Image references are operational identifiers: wrap them rather than silently
+   hiding registry, name, or tag information behind an ellipsis. */
+.img-wrap { color: var(--muted); font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
 .img-prefix {
-  flex: 0 999 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--subtle);
 }
 .img-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .img-name .tag { color: var(--blue); }
 
-.ports { color: var(--subtle); font-family: var(--font-mono); font-size: 11.5px; text-overflow: ellipsis; }
+.ports { color: var(--subtle); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
 .ports .more { color: var(--muted); }
 .muted { color: var(--subtle); }
 .nowrap { white-space: nowrap; }

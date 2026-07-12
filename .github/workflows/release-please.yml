@@ -16,6 +16,6 @@ jobs:
       # GitHub refuses to trigger other workflows (i.e. CI) on PRs opened by
       # the built-in token, which would leave the release PR permanently
       # unable to satisfy main's required "test" check. See CONTRIBUTING.md.
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

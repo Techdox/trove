@@ -66,6 +66,6 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
       - name: gitleaks
         # gitleaks/gitleaks-action@v2
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

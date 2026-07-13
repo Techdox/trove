@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.13.0](https://github.com/Techdox/trove/compare/v0.12.4...v0.13.0) (2026-07-13)
+
+
+### Features
+
+* add OIDC authentication for dashboard and read APIs ([#30](https://github.com/Techdox/trove/issues/30)) ([07400e1](https://github.com/Techdox/trove/commit/07400e1efda6596268fea9338ffcad656485e79a))
+* add Trove branding — logo, favicons, dashboard mark, social card ([#11](https://github.com/Techdox/trove/issues/11)) ([8dc2821](https://github.com/Techdox/trove/commit/8dc282154996bd892ce479bdff02bee15997567f))
+* dashboard legibility + surface why a service is unhealthy ([#16](https://github.com/Techdox/trove/issues/16)) ([7133701](https://github.com/Techdox/trove/commit/71337013e8767e40b1fd73da3768fe946b89879a))
+* harden CI and add observability APIs ([#34](https://github.com/Techdox/trove/issues/34)) ([5d69027](https://github.com/Techdox/trove/commit/5d690272e78c21c8fe632759577d50ccf6045da6))
+* **meta:** show engine/cluster version consistently across platforms ([#26](https://github.com/Techdox/trove/issues/26)) ([cc93b75](https://github.com/Techdox/trove/commit/cc93b75a913e3c97b8aff7171bc5c8fef56b997c))
+* prioritize dashboard attention and triage ([#64](https://github.com/Techdox/trove/issues/64)) ([f89359c](https://github.com/Techdox/trove/commit/f89359cccbef76dfd32cd3cafcabb299c9bc1e86))
+* **proxmox:** show guest OS in image column ([c719ec8](https://github.com/Techdox/trove/commit/c719ec8ece7f574d263fbd6bafd8868e480a3b4f))
+* restyle the dashboard in the brand design system ([#13](https://github.com/Techdox/trove/issues/13)) ([f3ed18b](https://github.com/Techdox/trove/commit/f3ed18bcfa9397a34270e255cf47fec9e9938b0a))
+* surface Proxmox health & version metadata ([#22](https://github.com/Techdox/trove/issues/22)) ([60e3a41](https://github.com/Techdox/trove/commit/60e3a414a5f525878513947434892ff7687cde45))
+
+
+### Bug Fixes
+
+* align freshness badge label with chip and verdict ([#55](https://github.com/Techdox/trove/issues/55)) ([e8f213f](https://github.com/Techdox/trove/commit/e8f213ffa66b96e98a89bf2bbc666b69126ec40f))
+* bump go toolchain to 1.26.5 ([ac20e8d](https://github.com/Techdox/trove/commit/ac20e8dbfbd47c0fe4d6a13e6bb00dbfd53ae106))
+* bundle systemd unit in the trove-server release archive ([#7](https://github.com/Techdox/trove/issues/7)) ([b93a9e9](https://github.com/Techdox/trove/commit/b93a9e91ce36718c2268dc77e0d6361eaaad987d))
+* clear stale service parent links ([2e07290](https://github.com/Techdox/trove/commit/2e072903d821f2d3e01ba14da353684ca50aba3a))
+* filter removed attention services ([#80](https://github.com/Techdox/trove/issues/80)) ([ad34b58](https://github.com/Techdox/trove/commit/ad34b58e2e664cc60512742f12be127a7510c82e))
+* harden oidc return paths ([29af71c](https://github.com/Techdox/trove/commit/29af71c955ca8ddf2b010e6226950750790d09a7))
+* harden report ingest contract ([#60](https://github.com/Techdox/trove/issues/60)) ([52673f0](https://github.com/Techdox/trove/commit/52673f03909eea4ad7bccebf4f1c5b1a0f77ce13))
+* improve dashboard mobile and keyboard usability ([#69](https://github.com/Techdox/trove/issues/69)) ([e59c1ae](https://github.com/Techdox/trove/commit/e59c1aedf2cc0dcfdc9ba41bbbcd144ac14b2d09))
+* make dashboard identifiers readable ([#72](https://github.com/Techdox/trove/issues/72)) ([fd9543b](https://github.com/Techdox/trove/commit/fd9543bdf51f87619870bbaa41bd2452a61b992a))
+* move recent changes below catalogue ([#66](https://github.com/Techdox/trove/issues/66)) ([6dcf57a](https://github.com/Techdox/trove/commit/6dcf57af56d471986cc798b36ced11e19b8c84ff))
+* restore closing quote on freshness badge title attribute ([#57](https://github.com/Techdox/trove/issues/57)) ([c52b51b](https://github.com/Techdox/trove/commit/c52b51b7a24f66294a578d3d0e713e776faaea92))
+* retry alerts after failed delivery ([0f7d6ee](https://github.com/Techdox/trove/commit/0f7d6eec8c2b1feaded32ed0862c51408ec02de5))
+* retry only failed alert channels ([#59](https://github.com/Techdox/trove/issues/59)) ([0bbe32b](https://github.com/Techdox/trove/commit/0bbe32b5d0ae63650c2d7b8cbaaf12e20b0d2cfc))
+* **server/Dockerfile:** use BUILDPLATFORM for data stage ([02ba8bd](https://github.com/Techdox/trove/commit/02ba8bdf35f2608668daf454211a27e072dc6aa0))
+* use stable identities in dashboard events ([#61](https://github.com/Techdox/trove/issues/61)) ([6f6c623](https://github.com/Techdox/trove/commit/6f6c623ae9a77e9f8d305a82d7ca6154946d8ebb))
+* warn when an agent collects zero hosts ([#6](https://github.com/Techdox/trove/issues/6)) ([8d21785](https://github.com/Techdox/trove/commit/8d217858f409640b0f3bd084c1a08000fcc0f1d0))
+
 ## [0.12.4](https://github.com/Techdox/trove/compare/v0.12.3...v0.12.4) (2026-07-13)
 
 

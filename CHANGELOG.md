@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/Techdox/trove/compare/v0.12.3...v0.12.4) (2026-07-13)
+
+
+### Bug Fixes
+
+* filter removed attention services ([#80](https://github.com/Techdox/trove/issues/80)) ([ad34b58](https://github.com/Techdox/trove/commit/ad34b58e2e664cc60512742f12be127a7510c82e))
+
 ## [0.12.3](https://github.com/Techdox/trove/compare/v0.12.2...v0.12.3) (2026-07-11)
 
 

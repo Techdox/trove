@@ -182,6 +182,9 @@ changelog:
     exclude: ["^docs:", "^chore:", "^ci:"]
 
 release:
+  # Preserve the exact tagged commit in GitHub release metadata. Release Please
+  # uses that reference to identify the latest release boundary.
+  target_commitish: "{{ .Commit }}"
   footer: |
     **Container images** (multi-arch, amd64 + arm64):
     - `ghcr.io/techdox/trove-server:{{ .Version }}`

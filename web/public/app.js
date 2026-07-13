@@ -17,6 +17,7 @@ const state = {
   q: "",                 // filter text
   chips: new Set(),      // active quick filters (keys of CHIP_DEFS)
   showRemoved: false,    // include soft-removed services
+  removedOnly: false,    // limit the catalogue to soft-removed services
   collapsed: new Set(),  // collapsed host keys
   drawerKey: null,       // key of the service open in the drawer
   cursorKey: null,       // key of the keyboard-cursor row
@@ -233,7 +234,8 @@ function freshnessCell(s) {
 // ------------------------------------------------------------ filtering ----
 
 function matchesFilters(s, host) {
-  if (!state.showRemoved && s.state === "removed") return false;
+  if (state.removedOnly && s.state !== "removed") return false;
+  if (!state.removedOnly && !state.showRemoved && s.state === "removed") return false;
   for (const key of state.chips) {
     const def = CHIP_DEFS.find((c) => c.key === key);
     if (def && !def.test(s)) return false;
@@ -249,7 +251,7 @@ function matchesFilters(s, host) {
 }
 
 function filterActive() {
-  return state.q.trim() !== "" || state.chips.size > 0;
+  return state.q.trim() !== "" || state.chips.size > 0 || state.showRemoved || state.removedOnly;
 }
 
 // counts over the full dataset (independent of the active filter)
@@ -316,7 +318,7 @@ function showAttention(key) {
     focusInvestigationTarget("infrastructure-title");
     return;
   }
-  if (key === "removed") state.showRemoved = true;
+  if (key === "removed") state.removedOnly = true;
   else state.chips.add(key);
   render();
   $("inventory-title").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -366,11 +368,12 @@ function renderChips() {
     return `<button class="chip ${d.cls}${active}" data-chip="${d.key}" aria-pressed="${!!active}">
       ${d.key} <span class="n">${counts[d.key]}</span></button>`;
   });
-  const remActive = state.showRemoved ? " active" : "";
+  const remActive = state.showRemoved || state.removedOnly ? " active" : "";
+  const remLabel = state.removedOnly ? "removed only" : "removed";
   chips.push(`<button class="chip c-gray${remActive}" data-chip="removed"
-    aria-pressed="${state.showRemoved}" title="show services no longer reported (kept 24h)">
-    removed <span class="n">${c.removed}</span></button>`);
-  if (state.q.trim() !== "" || state.chips.size > 0 || state.showRemoved) {
+    aria-pressed="${state.showRemoved || state.removedOnly}" title="${state.removedOnly ? "showing only services no longer reported" : "include services no longer reported (kept 24h)"}">
+    ${remLabel} <span class="n">${c.removed}</span></button>`);
+  if (filterActive()) {
     chips.push(`<button class="chip chip-clear" data-clear="1" title="clear all filters (esc)">✕ clear</button>`);
   }
   $("chips").innerHTML = chips.join("");
@@ -437,7 +440,9 @@ function renderHosts() {
   const sections = [];
   for (const h of hosts) {
     const all = h.services || [];
-    const total = all.filter((s) => state.showRemoved || s.state !== "removed").length;
+    const total = all.filter((s) => state.removedOnly
+      ? s.state === "removed"
+      : state.showRemoved || s.state !== "removed").length;
     const visible = all.filter((s) => matchesFilters(s, h));
     if (filterActive() && visible.length === 0) continue; // host collapses out while filtering
 
@@ -807,7 +812,8 @@ async function loadUserChip() {
 
 function toggleChip(key) {
   if (key === "removed") {
-    state.showRemoved = !state.showRemoved;
+    if (state.removedOnly) state.removedOnly = false;
+    else state.showRemoved = !state.showRemoved;
   } else if (state.chips.has(key)) {
     state.chips.delete(key);
   } else {
@@ -822,6 +828,7 @@ function clearFilters() {
   $("q").value = "";
   state.chips.clear();
   state.showRemoved = false;
+  state.removedOnly = false;
   render();
 }
 
@@ -861,7 +868,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
     if (state.drawerKey) { closeDrawer(); return; }
-    if (state.q || state.chips.size > 0 || state.showRemoved) clearFilters();
+    if (filterActive()) clearFilters();
     return;
   }
   if (typing) return;

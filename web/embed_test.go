@@ -58,3 +58,24 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardRemovedAttentionFiltersOnlyRemovedServices(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	for _, marker := range []string{
+		"removedOnly: false",
+		`if (state.removedOnly && s.state !== "removed") return false;`,
+		`if (!state.removedOnly && !state.showRemoved && s.state === "removed") return false;`,
+		`if (key === "removed") state.removedOnly = true;`,
+		`const remLabel = state.removedOnly ? "removed only" : "removed";`,
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard removed-service triage is missing %q", marker)
+		}
+	}
+}

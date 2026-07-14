@@ -1,27 +1,50 @@
-# Trove logo assets
+# Trove brand assets
 
-Files included:
+Trove's mark represents several reported catalogue layers resolving into one
+small `T`: many sources, one read-only view. The geometry is deliberately flat
+and remains recognisable in one colour and at favicon size.
 
-- `trove-logo.svg` full horizontal logo / wordmark
-- `trove-mark.svg` square app mark
-- `favicon.svg`
-- `favicon.ico`
-- `trove-icon-*.png` app/favicons in common sizes
-- `trove-social-card.png` and `.jpg` for GitHub/social previews
+## Asset map
 
-Suggested app usage:
+| File | Purpose |
+| --- | --- |
+| `trove-logo.svg` | Primary horizontal lockup for the README and project pages. |
+| `trove-wordmark.svg` | Wordmark without the symbol or background. |
+| `trove-mark.svg` | Square master mark. |
+| `trove-icon-256.png` | Raster mark for directories and integrations. |
+| `trove-social-card.svg` | Editable social-card source. |
+| `trove-social-card.png` | GitHub social preview, 1280×640, solid background, under 1 MB. |
+| `trove-social-card.jpg` | JPEG fallback of the same 1280×640 card. |
 
-```html
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/trove-icon-180.png">
-```
+Dashboard copies live in `web/public/`: `trove-mark.svg`,
+`trove-wordmark.svg`, `favicon.svg`, `favicon.ico`, and the 180/192/512 px app
+icons. The SVGs are the source of truth; raster files are exports.
 
-Suggested manifest icons:
+## Palette
 
-```json
-[
-  { "src": "/trove-icon-192.png", "sizes": "192x192", "type": "image/png" },
-  { "src": "/trove-icon-512.png", "sizes": "512x512", "type": "image/png" }
-]
-```
+| Role | Value |
+| --- | --- |
+| Canvas | `#111019` |
+| Mark tile | `#171522` |
+| Border | `#34304A` |
+| Primary mark | `#B7A1FF` |
+| Status accent | `#98E889` |
+| Wordmark | `#F3F0FF` |
+
+The lime bar is optional. For one-colour use, render it in the same colour as
+the lavender geometry. Do not add gradients, glow, drop shadows, outlines around
+the symbol, or platform logos inside the mark.
+
+## Usage
+
+- Use the horizontal lockup when the available width is at least 240 px.
+- Use the square mark below that width and for avatars, favicons, and app icons.
+- Keep clear space around the mark equal to at least half the height of its top
+  catalogue layer.
+- Do not place the transparent wordmark on a light background; use the lockup or
+  provide a sufficiently dark field.
+- The social card is for link previews, not as the README logo.
+
+To set the GitHub card, upload `trove-social-card.png` under
+**Repository settings → Social preview**. GitHub recommends 1280×640 for best
+display and requires the file to remain below 1 MB.

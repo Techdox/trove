@@ -1,5 +1,10 @@
 <p align="center">
-  <img src="docs/brand/trove-social-card.png" alt="Trove — read-only service catalog for Docker, Kubernetes, Proxmox, and bare-metal Linux" width="720">
+  <img src="docs/brand/trove-logo.svg" alt="Trove" width="720">
+</p>
+
+<p align="center">
+  <strong>Read-only service catalogue for Docker, Kubernetes, Proxmox, and Linux.</strong><br>
+  Know what's running without giving it the keys.
 </p>
 
 <p align="center">
@@ -8,10 +13,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-# Trove by Techdox
-
-**An automatically discovered, read-only inventory of everything running in
-your homelab.** Small agents sit next to your workloads — Docker hosts,
+Trove is an automatically discovered, read-only inventory of everything
+running in your homelab. Small agents sit next to your workloads — Docker hosts,
 Kubernetes clusters, Proxmox nodes, plain Linux boxes — and push what they see
 to one Trove service catalogue: what's running, where it lives, whether it's
 healthy, whether its image is outdated, and whether it is still reporting.
@@ -19,6 +22,8 @@ healthy, whether its image is outdated, and whether it is still reporting.
 Trove is the place to start an investigation, not the place to make a change.
 It links the facts across your homelab without becoming a homepage, Grafana,
 Portainer, or an infrastructure management interface.
+
+<sub>Built by <a href="https://github.com/techdox">Techdox</a>.</sub>
 
 ![Trove dashboard: needs attention, infrastructure summary, service catalogue, and recent history](docs/screenshot.png)
 

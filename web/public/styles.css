@@ -1,5 +1,5 @@
-/* Trove dashboard — brand design system: dark control-room UI with soft neon
-   status accents. Palette/type/components match the Trove website & logo pack.
+/* Trove dashboard — dark observability UI with restrained status accents.
+   Palette/type/components match the Trove logo system.
    Fonts are self-hosted (latin-subset, variable) so the dashboard stays fully
    offline — it never calls out to a font CDN. */
 
@@ -91,13 +91,10 @@ header {
 }
 .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
 .brand .mark { display: block; width: 32px; height: 32px; }
+.brand .wordmark { display: block; width: 119px; height: auto; }
 header h1 {
-  font-family: var(--font-display);
-  font-size: 19px;
   margin: 0;
-  letter-spacing: 0.14em;
-  color: var(--text);
-  font-weight: 700;
+  line-height: 0;
 }
 .tagline { color: var(--subtle); font-size: 12.5px; font-family: var(--font-mono); }
 .status-line {

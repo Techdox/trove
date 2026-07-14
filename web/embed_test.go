@@ -59,6 +59,43 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 	}
 }
 
+func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
+	t.Parallel()
+
+	assets := FS()
+	for _, name := range []string{
+		"favicon.ico",
+		"favicon.svg",
+		"trove-icon-180.png",
+		"trove-icon-192.png",
+		"trove-icon-512.png",
+		"trove-mark.svg",
+		"trove-wordmark.svg",
+	} {
+		info, err := fs.Stat(assets, name)
+		if err != nil {
+			t.Errorf("embedded brand asset %q: %v", name, err)
+			continue
+		}
+		if info.Size() == 0 {
+			t.Errorf("embedded brand asset %q is empty", name)
+		}
+	}
+
+	index, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		t.Fatalf("read embedded index: %v", err)
+	}
+	for _, marker := range []string{
+		`src="trove-mark.svg" alt=""`,
+		`src="trove-wordmark.svg" alt="Trove"`,
+	} {
+		if !strings.Contains(string(index), marker) {
+			t.Errorf("dashboard brand markup is missing %q", marker)
+		}
+	}
+}
+
 func TestDashboardRemovedAttentionFiltersOnlyRemovedServices(t *testing.T) {
 	t.Parallel()
 

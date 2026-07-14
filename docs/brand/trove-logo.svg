@@ -1,34 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="Trove wordmark">
-  <defs>
-    <linearGradient id="g" x1="30" y1="32" x2="300" y2="322" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#b48cff"/>
-      <stop offset=".64" stop-color="#9be28f"/>
-      <stop offset="1" stop-color="#f2a65a"/>
-    </linearGradient>
-  </defs>
-  <rect width="1200" height="360" fill="none"/>
-  <g transform="translate(32 32)">
-    <rect x="0" y="0" width="296" height="296" rx="62" fill="#1e1d2f"/>
-    <rect x="10" y="10" width="276" height="276" rx="52" fill="none" stroke="#3b3655" stroke-width="12"/>
-    <rect x="70" y="70" width="156" height="156" rx="24" fill="#242238" stroke="url(#g)" stroke-width="8"/>
-    <g stroke-linecap="round" stroke-width="10">
-      <line x1="98" y1="106" x2="158" y2="106" stroke="#aaa4c6"/>
-      <line x1="98" y1="148" x2="158" y2="148" stroke="#aaa4c6"/>
-      <line x1="98" y1="190" x2="158" y2="190" stroke="#aaa4c6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">Trove</title>
+  <desc id="desc">Trove logo: three catalogue layers converging into a T beside the word Trove.</desc>
+  <rect width="1200" height="320" rx="44" fill="#111019"/>
+  <rect x="1" y="1" width="1198" height="318" rx="43" fill="none" stroke="#2f2b44" stroke-width="2"/>
+
+  <g transform="translate(40 32) scale(.5)">
+    <rect x="24" y="24" width="464" height="464" rx="112" fill="#171522"/>
+    <rect x="34" y="34" width="444" height="444" rx="102" fill="none" stroke="#34304a" stroke-width="12"/>
+    <g fill="#b7a1ff">
+      <path d="M128 136 256 80l128 56-128 56z"/>
+      <path d="m128 214 128 56 128-56v42l-128 56-128-56z"/>
+      <path d="m128 294 92 40v40l-92-40zm256 0-92 40v40l92-40z"/>
+      <rect x="236" y="356" width="40" height="100" rx="12"/>
     </g>
-    <circle cx="188" cy="106" r="8" fill="#9be28f"/>
-    <circle cx="188" cy="148" r="8" fill="#f2a65a"/>
-    <circle cx="188" cy="190" r="8" fill="#9be28f"/>
-    <g stroke="#b48cff" stroke-linecap="round" stroke-linejoin="round" stroke-width="16">
-      <line x1="104" y1="70" x2="192" y2="70"/>
-      <line x1="148" y1="70" x2="148" y2="226"/>
-    </g>
+    <rect x="214" y="330" width="84" height="36" rx="10" fill="#98e889"/>
   </g>
 
-  <text x="380" y="158" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Arial, sans-serif"
-        font-size="86" font-weight="800" letter-spacing="13" fill="#eee8ff">TROVE</text>
-  <text x="385" y="222" font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace"
-        font-size="28" font-weight="500" letter-spacing="2" fill="#aaa4c6">read-only service catalog</text>
-  <text x="385" y="272" font-family="JetBrains Mono, SFMono-Regular, Consolas, monospace"
-        font-size="22" fill="#9be28f">one pane of glass for the homelab</text>
+  <g transform="translate(350 96) scale(1.35)" fill="#f3f0ff">
+    <path d="M0 0h80v15H48v73H32V15H0z"/>
+    <g transform="translate(110)">
+      <path d="M0 0h16v88H0z"/>
+      <path d="M16 0h39c21 0 34 12 34 32 0 16-8 27-23 32l25 24H69L47 65H16V50h38c12 0 19-6 19-17 0-12-7-18-19-18H16z"/>
+    </g>
+    <g transform="translate(230)">
+      <rect x="8" y="8" width="70" height="72" rx="27" fill="none" stroke="#f3f0ff" stroke-width="16"/>
+    </g>
+    <path d="M350 0h18l26 64 26-64h18l-36 88h-16z"/>
+    <path d="M470 0h80v15h-64v21h54v15h-54v22h64v15h-80z"/>
+  </g>
 </svg>

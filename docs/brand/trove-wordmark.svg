@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 550 88" role="img" aria-label="Trove">
+  <g fill="#f3f0ff">
+    <path d="M0 0h80v15H48v73H32V15H0z"/>
+    <g transform="translate(110)">
+      <path d="M0 0h16v88H0z"/>
+      <path d="M16 0h39c21 0 34 12 34 32 0 16-8 27-23 32l25 24H69L47 65H16V50h38c12 0 19-6 19-17 0-12-7-18-19-18H16z"/>
+    </g>
+    <g transform="translate(230)">
+      <rect x="8" y="8" width="70" height="72" rx="27" fill="none" stroke="#f3f0ff" stroke-width="16"/>
+    </g>
+    <path d="M350 0h18l26 64 26-64h18l-36 88h-16z"/>
+    <path d="M470 0h80v15h-64v21h54v15h-54v22h64v15h-80z"/>
+  </g>
+</svg>

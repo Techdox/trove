@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Trove social preview</title>
+  <desc id="desc">Trove, a read-only service catalogue for Docker, Kubernetes, Proxmox, and Linux.</desc>
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0v64" fill="none" stroke="#2f2b44" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="640" fill="#111019"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity=".58"/>
+  <rect x="64" y="64" width="1152" height="512" rx="44" fill="#171522" stroke="#3a3552" stroke-width="2"/>
+
+  <g transform="translate(104 140) scale(.64)">
+    <rect x="24" y="24" width="464" height="464" rx="112" fill="#111019"/>
+    <rect x="34" y="34" width="444" height="444" rx="102" fill="none" stroke="#34304a" stroke-width="12"/>
+    <g fill="#b7a1ff">
+      <path d="M128 136 256 80l128 56-128 56z"/>
+      <path d="m128 214 128 56 128-56v42l-128 56-128-56z"/>
+      <path d="m128 294 92 40v40l-92-40zm256 0-92 40v40l92-40z"/>
+      <rect x="236" y="356" width="40" height="100" rx="12"/>
+    </g>
+    <rect x="214" y="330" width="84" height="36" rx="10" fill="#98e889"/>
+  </g>
+
+  <g transform="translate(476 180) scale(1.28)" fill="#f3f0ff">
+    <path d="M0 0h80v15H48v73H32V15H0z"/>
+    <g transform="translate(110)">
+      <path d="M0 0h16v88H0z"/>
+      <path d="M16 0h39c21 0 34 12 34 32 0 16-8 27-23 32l25 24H69L47 65H16V50h38c12 0 19-6 19-17 0-12-7-18-19-18H16z"/>
+    </g>
+    <g transform="translate(230)">
+      <rect x="8" y="8" width="70" height="72" rx="27" fill="none" stroke="#f3f0ff" stroke-width="16"/>
+    </g>
+    <path d="M350 0h18l26 64 26-64h18l-36 88h-16z"/>
+    <path d="M470 0h80v15h-64v21h54v15h-54v22h64v15h-80z"/>
+  </g>
+
+  <text x="476" y="350" fill="#c0b9d8" font-family="ui-sans-serif, system-ui, sans-serif" font-size="31" font-weight="500">
+    Read-only service catalogue for the homelab
+  </text>
+  <text x="476" y="414" fill="#98e889" font-family="ui-monospace, monospace" font-size="23" font-weight="600" letter-spacing="1.5">
+    DOCKER  ·  KUBERNETES  ·  PROXMOX  ·  LINUX
+  </text>
+  <text x="476" y="480" fill="#8f88aa" font-family="ui-sans-serif, system-ui, sans-serif" font-size="24">
+    Know what's running without giving it the keys.
+  </text>
+</svg>

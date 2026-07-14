@@ -20,7 +20,9 @@ If OIDC is enabled, read APIs require either an authenticated dashboard session 
 
 ### `GET /api/v1/services`
 
-By default, Trove returns all services grouped by agent and host for the dashboard.
+By default, Trove returns all services grouped by agent and host for the dashboard. Reported hosts with no services are included with an empty `services` array so their liveness remains visible.
+
+Each host group includes its own derived `status` (`ok`, `stale`, `offline`, or `unknown`) and `last_seen_at`, plus `agent_status` for the owning agent. Host and agent status can differ when a multi-host agent continues reporting some hosts after another disappears.
 
 Optional query parameters:
 

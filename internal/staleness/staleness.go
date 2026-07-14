@@ -1,7 +1,7 @@
 // Package staleness holds the pure heartbeat-evaluation logic: given when an
-// agent was last seen and its push interval, decide whether it is ok, stale,
-// or offline. It has no I/O so it is trivially testable; the server runs a
-// ticker that applies these verdicts to the store.
+// agent or host was last seen and its push interval, decide whether it is ok,
+// stale, or offline. It has no I/O so it is trivially testable; the server runs
+// a ticker that applies these verdicts to the store.
 package staleness
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/techdox/trove/pkg/model"
 )
 
-// Status is an agent's heartbeat verdict.
+// Status is an agent or host heartbeat verdict.
 type Status string
 
 const (
@@ -33,9 +33,9 @@ func Interval(agentIntervalSeconds int) time.Duration {
 	return model.DefaultReportInterval()
 }
 
-// Evaluate returns the heartbeat status for an agent. lastSeen is nil if the
-// agent has never reported. Thresholds are multiples of the agent's own
-// interval, so a slow-polling agent is judged on its own cadence.
+// Evaluate returns a heartbeat status. lastSeen is nil if the subject has
+// never reported. Thresholds are multiples of the owning agent's interval, so
+// slow-polling agents and their hosts are judged on their own cadence.
 func Evaluate(lastSeen *time.Time, agentIntervalSeconds int, now time.Time) Status {
 	if lastSeen == nil {
 		return StatusUnknown
@@ -52,7 +52,7 @@ func Evaluate(lastSeen *time.Time, agentIntervalSeconds int, now time.Time) Stat
 	}
 }
 
-// StaleOrWorse reports whether a status means the agent's services should be
+// StaleOrWorse reports whether a status means the subject's services should be
 // shown as stale (i.e. stale or offline).
 func StaleOrWorse(s Status) bool {
 	return s == StatusStale || s == StatusOffline

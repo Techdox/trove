@@ -230,7 +230,10 @@ func TestPruneRetentionWindows(t *testing.T) {
 
 	// Removed-retention (24h) has elapsed but event-retention (30d) has not:
 	// the removed service goes, the events stay.
-	stats, err := st.Prune(ctx, int64((30 * 24 * time.Hour).Seconds()), int64((24 * time.Hour).Seconds()))
+	stats, err := st.Prune(ctx,
+		int64((30 * 24 * time.Hour).Seconds()),
+		int64((24 * time.Hour).Seconds()),
+		int64((365 * 24 * time.Hour).Seconds()))
 	if err != nil {
 		t.Fatalf("prune: %v", err)
 	}
@@ -246,7 +249,10 @@ func TestPruneRetentionWindows(t *testing.T) {
 
 	// Now advance past event retention: events prune too.
 	*clock = clock.Add(31 * 24 * time.Hour)
-	stats, err = st.Prune(ctx, int64((30 * 24 * time.Hour).Seconds()), int64((24 * time.Hour).Seconds()))
+	stats, err = st.Prune(ctx,
+		int64((30 * 24 * time.Hour).Seconds()),
+		int64((24 * time.Hour).Seconds()),
+		int64((365 * 24 * time.Hour).Seconds()))
 	if err != nil {
 		t.Fatalf("prune 2: %v", err)
 	}
@@ -258,7 +264,7 @@ func TestPruneRetentionWindows(t *testing.T) {
 	}
 }
 
-func TestMarkServicesStale(t *testing.T) {
+func TestMarkServicesStaleForHosts(t *testing.T) {
 	st, _ := newTestStore(t)
 	ctx := context.Background()
 	_, agent, _ := st.CreateAgent(ctx, "docker-a")
@@ -267,7 +273,11 @@ func TestMarkServicesStale(t *testing.T) {
 		svc("c2", "exited", model.HealthUnhealthy),
 	))
 
-	n, err := st.MarkServicesStaleForAgents(ctx, []int64{agent.ID})
+	hosts, err := st.ListHosts(ctx)
+	if err != nil || len(hosts) != 1 {
+		t.Fatalf("list hosts: hosts=%+v err=%v", hosts, err)
+	}
+	n, err := st.MarkServicesStaleForHosts(ctx, []int64{hosts[0].ID})
 	if err != nil {
 		t.Fatalf("mark stale: %v", err)
 	}
@@ -282,8 +292,112 @@ func TestMarkServicesStale(t *testing.T) {
 	}
 
 	// Re-marking is a no-op (already stale) => 0 rows changed.
-	if n, _ := st.MarkServicesStaleForAgents(ctx, []int64{agent.ID}); n != 0 {
+	if n, _ := st.MarkServicesStaleForHosts(ctx, []int64{hosts[0].ID}); n != 0 {
 		t.Fatalf("re-mark should change 0 rows, got %d", n)
+	}
+}
+
+func TestHostHeartbeatIsIndependentWithinAgent(t *testing.T) {
+	st, clock := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "proxmox-a")
+
+	hostA := report(svc("vm-a", "running", model.HealthHealthy))
+	hostA.Agent.Platform = model.PlatformProxmox
+	hostA.Agent.IntervalSeconds = 30
+	hostA.Host.Hostname = "node-a"
+	if err := st.ApplyReport(ctx, agent.ID, hostA); err != nil {
+		t.Fatalf("apply node-a: %v", err)
+	}
+
+	*clock = clock.Add(30 * time.Second)
+	hostB := report(svc("vm-b", "running", model.HealthHealthy))
+	hostB.Agent.Platform = model.PlatformProxmox
+	hostB.Agent.IntervalSeconds = 30
+	hostB.Host.Hostname = "node-b"
+	if err := st.ApplyReport(ctx, agent.ID, hostB); err != nil {
+		t.Fatalf("apply node-b: %v", err)
+	}
+
+	hosts, err := st.ListHosts(ctx)
+	if err != nil {
+		t.Fatalf("list hosts: %v", err)
+	}
+	if len(hosts) != 2 {
+		t.Fatalf("hosts = %+v, want node-a and node-b", hosts)
+	}
+	byName := map[string]Host{}
+	for _, host := range hosts {
+		byName[host.Hostname] = host
+	}
+	if got := byName["node-a"].LastSeenAt.Int64; got != clock.Add(-30*time.Second).Unix() {
+		t.Fatalf("node-a last_seen_at = %d, want independent original heartbeat", got)
+	}
+	if got := byName["node-b"].LastSeenAt.Int64; got != clock.Unix() {
+		t.Fatalf("node-b last_seen_at = %d, want latest heartbeat", got)
+	}
+
+	// node-a crosses the stale threshold while node-b and the shared agent are
+	// still healthy. Only node-a's inventory must become stale.
+	*clock = clock.Add(61 * time.Second)
+	n, err := st.MarkServicesStaleForHosts(ctx, []int64{byName["node-a"].ID})
+	if err != nil {
+		t.Fatalf("mark node-a stale: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("stale rows = %d, want 1", n)
+	}
+	rows, err := st.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("list services: %v", err)
+	}
+	healthByHost := map[string]string{}
+	for _, row := range rows {
+		healthByHost[row.Hostname] = row.Health
+	}
+	if healthByHost["node-a"] != string(model.HealthStale) {
+		t.Fatalf("node-a health = %q, want stale", healthByHost["node-a"])
+	}
+	if healthByHost["node-b"] != string(model.HealthHealthy) {
+		t.Fatalf("node-b health = %q, want healthy", healthByHost["node-b"])
+	}
+}
+
+func TestPruneLongSilentHosts(t *testing.T) {
+	st, clock := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "proxmox-a")
+	nodeA := report(svc("vm-a", "running", model.HealthHealthy))
+	nodeA.Host.Hostname = "node-a"
+	if err := st.ApplyReport(ctx, agent.ID, nodeA); err != nil {
+		t.Fatalf("apply node-a: %v", err)
+	}
+
+	*clock = clock.Add(31 * 24 * time.Hour)
+	nodeB := report(svc("vm-b", "running", model.HealthHealthy))
+	nodeB.Host.Hostname = "node-b"
+	if err := st.ApplyReport(ctx, agent.ID, nodeB); err != nil {
+		t.Fatalf("apply node-b: %v", err)
+	}
+	stats, err := st.Prune(ctx,
+		int64((60 * 24 * time.Hour).Seconds()),
+		int64((60 * 24 * time.Hour).Seconds()),
+		int64((30 * 24 * time.Hour).Seconds()))
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if stats.Hosts != 1 {
+		t.Fatalf("pruned hosts = %d, want 1", stats.Hosts)
+	}
+	rows, err := st.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("list services: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Hostname != "node-b" {
+		t.Fatalf("prune removed the active host or retained the silent host: %+v", rows)
+	}
+	if events, _ := st.RecentEvents(ctx, 10); len(events) != 2 {
+		t.Fatalf("host pruning should preserve event history, got %d events", len(events))
 	}
 }
 

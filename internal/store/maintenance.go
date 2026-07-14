@@ -11,20 +11,24 @@ import (
 type PruneStats struct {
 	Events          int64
 	RemovedServices int64
+	Hosts           int64
 }
 
 // Prune deletes events older than eventRetention and hard-deletes services
-// that have been soft-removed for longer than removedRetention (both given in
-// seconds). It nulls any child's parent_id pointing at a to-be-pruned parent
-// first, so no dangling references are left (referential integrity here is
-// managed in code, not FKs — see migration 0003).
+// that have been soft-removed for longer than removedRetention. Hosts that
+// have not reported within hostRetention are deleted with their remaining
+// services. All retention values are given in seconds. It nulls any child's
+// parent_id pointing at a to-be-pruned parent first, so no dangling references
+// are left (referential integrity here is managed in code, not FKs — see
+// migration 0003).
 //
 // Pruning runs on the server's maintenance ticker, deliberately off the
 // report-ingest write path (ROADMAP decision D1).
-func (s *Store) Prune(ctx context.Context, eventRetentionSecs, removedRetentionSecs int64) (PruneStats, error) {
+func (s *Store) Prune(ctx context.Context, eventRetentionSecs, removedRetentionSecs, hostRetentionSecs int64) (PruneStats, error) {
 	now := s.now().Unix()
 	eventCutoff := now - eventRetentionSecs
 	removedCutoff := now - removedRetentionSecs
+	hostCutoff := now - hostRetentionSecs
 
 	var stats PruneStats
 
@@ -53,6 +57,13 @@ func (s *Store) Prune(ctx context.Context, eventRetentionSecs, removedRetentionS
 		return stats, fmt.Errorf("prune removed services: %w", err)
 	}
 	stats.RemovedServices, _ = res.RowsAffected()
+
+	res, err = tx.ExecContext(ctx,
+		`DELETE FROM hosts WHERE last_seen_at IS NOT NULL AND last_seen_at < ?`, hostCutoff)
+	if err != nil {
+		return stats, fmt.Errorf("prune stale hosts: %w", err)
+	}
+	stats.Hosts, _ = res.RowsAffected()
 
 	return stats, tx.Commit()
 }

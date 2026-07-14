@@ -264,10 +264,11 @@ func TestEngineRetriesOnlyFailedChannelAfterPartialFanout(t *testing.T) {
 }
 
 // TestEngineReconnectAfterMassStaleDoesNotDropNotifiedBit reproduces a
-// specific pre-fix bug: when an agent goes stale, MarkServicesStaleForAgents
+// specific pre-fix bug: when a host goes stale, MarkServicesStaleForHosts
 // mass-flips every live service's health to "stale" directly in SQL (no
-// event, by design — one agent alert instead of an alert per service). When
-// the agent reconnects and reports the SAME still-unhealthy service,
+// event, by design — staleness is surfaced at host level instead of emitting
+// an event per service).
+// When the host reconnects and reports the SAME still-unhealthy service,
 // ApplyReport diffs against that clobbered "stale" baseline and synthesizes a
 // fresh stale->unhealthy event, even though nothing actually changed from the
 // operator's perspective. Before the fix, deliver() treated that replay as a
@@ -292,9 +293,13 @@ func TestEngineReconnectAfterMassStaleDoesNotDropNotifiedBit(t *testing.T) {
 		t.Fatalf("want 1 unhealthy alert, got: %v", s.titles())
 	}
 
-	// Agent goes stale shortly after (well within cooldown): mass-flip, no event.
+	// Host goes stale shortly after (well within cooldown): mass-flip, no event.
 	*clock = clock.Add(time.Second)
-	if _, err := st.MarkServicesStaleForAgents(ctx, []int64{agent.ID}); err != nil {
+	hosts, err := st.ListHosts(ctx)
+	if err != nil || len(hosts) != 1 {
+		t.Fatalf("list hosts: hosts=%+v err=%v", hosts, err)
+	}
+	if _, err := st.MarkServicesStaleForHosts(ctx, []int64{hosts[0].ID}); err != nil {
 		t.Fatalf("mark stale: %v", err)
 	}
 	s.reset()

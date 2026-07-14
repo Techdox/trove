@@ -179,8 +179,10 @@ Static binaries for everything (including the bare-metal agent) are on the
   every node in its cluster. On the dashboard, services are grouped by host.
 - **Push model**: agents POST full-state snapshots on an interval. The server
   never reaches into your infrastructure — homelab/NAT friendly.
-- **Heartbeats**: miss 3 intervals → agent (and its services) marked *stale*;
-  miss 10 → *offline*. Thresholds scale with each agent's own interval.
+- **Heartbeats**: agents and hosts are tracked independently. Miss 3 intervals
+  → *stale*; miss 10 → *offline*. Services follow their host's status, so one
+  healthy host cannot hide another missing host from the same agent. Thresholds
+  scale with each agent's own interval.
 - **Full-state reports** are idempotent and tolerate lost pushes. Services
   that disappear are soft-removed and pruned after 24h (configurable,
   `TROVE_REMOVED_RETENTION`).
@@ -229,6 +231,7 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 | `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
 | `TROVE_EVENT_RETENTION`    | `720h` (30d) | How long events (activity feed / alert stream) are kept.             |
 | `TROVE_REMOVED_RETENTION`  | `24h`      | How long removed services linger before being purged.                  |
+| `TROVE_HOST_RETENTION`     | `720h` (30d) | How long a silent host and its remaining inventory are retained.     |
 | `TROVE_ALERT_*` / `TROVE_SMTP_*` | _(unset)_ | Notification channels & SMTP — see [docs/alerts.md](docs/alerts.md). |
 | `TROVE_DIGEST`             | `daily@08:00`* | Digest schedule; *only takes effect once `TROVE_SMTP_*` is set — see [docs/alerts.md](docs/alerts.md). |
 | `TROVE_BOOTSTRAP_AGENT` / `TROVE_BOOTSTRAP_TOKEN` | _(unset)_ | Seed one agent at startup (used by the quickstart compose). |
@@ -249,10 +252,16 @@ Dex, etc.):
 | `TROVE_API_TOKEN` | _(optional)_ Bearer token for programmatic API access (bypasses OIDC) |
 | `TROVE_OIDC_SESSION_MAX_AGE` | _(optional)_ Session duration (default `8h`) |
 
-When `TROVE_OIDC_ISSUER` is set, browser requests without a session are
-redirected to your IdP's login page. After login, a signed session cookie
-API requests with a bearer token matching `TROVE_API_TOKEN` bypass OIDC for
-script access. See the safe, copyable example in
+OIDC is enabled only when all four required `TROVE_OIDC_*` settings are
+present. If any required setting is present while another is missing, the
+server fails startup and names the missing variables instead of leaving the
+dashboard open. `TROVE_API_TOKEN` is valid only alongside a complete OIDC
+configuration.
+
+When OIDC is enabled, browser requests without a session are redirected to
+your IdP's login page. After login, Trove sets a signed session cookie. API
+requests with a bearer token matching `TROVE_API_TOKEN` bypass OIDC for script
+access. See the safe, copyable example in
 [docs/authentication.md](docs/authentication.md#programmatic-api-access).
 
 Logout clears Trove's local session cookie and, when the provider exposes an
@@ -343,9 +352,10 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Agent ingest is authenticated with per-agent bearer tokens (256-bit random,
   stored only as SHA-256 hashes). Revoke by deleting the agent.
 - **The dashboard and read APIs support optional OIDC authentication.** When
-  `TROVE_OIDC_ISSUER` is set, the dashboard and all read APIs require a valid
-  OIDC session. When unset, the dashboard is open — bind to a trusted network
-  (LAN/VPN/tailnet) or front it with an authenticating reverse proxy. See
+  all four required OIDC settings are set, the dashboard and all read APIs
+  require a valid OIDC session. Partial configuration fails startup. When all
+  authentication settings are unset, the dashboard is open — bind to a trusted
+  network or front it with an authenticating reverse proxy. See
   [Dashboard authentication](#dashboard-authentication-oidc).
 - Agents cannot change anything on the platforms they watch — read-only is
   enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).

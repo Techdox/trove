@@ -12,18 +12,26 @@ type RetentionConfig struct {
 	Events time.Duration
 	// Removed: how long soft-removed services linger before hard deletion.
 	Removed time.Duration
+	// Hosts: how long a host can remain silent before its inventory is deleted.
+	Hosts time.Duration
 }
 
 const (
 	defaultEventRetention   = 30 * 24 * time.Hour // 30 days
 	defaultRemovedRetention = 24 * time.Hour
+	defaultHostRetention    = 30 * 24 * time.Hour
 	maintenanceInterval     = time.Hour
 )
 
 // LoadRetentionConfigFromEnv reads TROVE_EVENT_RETENTION and
-// TROVE_REMOVED_RETENTION (Go durations, e.g. "720h"), with safe defaults.
+// TROVE_REMOVED_RETENTION and TROVE_HOST_RETENTION (Go durations, e.g.
+// "720h"), with safe defaults.
 func LoadRetentionConfigFromEnv() RetentionConfig {
-	cfg := RetentionConfig{Events: defaultEventRetention, Removed: defaultRemovedRetention}
+	cfg := RetentionConfig{
+		Events:  defaultEventRetention,
+		Removed: defaultRemovedRetention,
+		Hosts:   defaultHostRetention,
+	}
 	if v := os.Getenv("TROVE_EVENT_RETENTION"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.Events = d
@@ -32,6 +40,11 @@ func LoadRetentionConfigFromEnv() RetentionConfig {
 	if v := os.Getenv("TROVE_REMOVED_RETENTION"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.Removed = d
+		}
+	}
+	if v := os.Getenv("TROVE_HOST_RETENTION"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.Hosts = d
 		}
 	}
 	return cfg
@@ -54,6 +67,9 @@ func (s *Server) RunMaintenanceLoop(ctx context.Context) {
 	if s.retention.Removed <= 0 {
 		s.retention.Removed = defaultRemovedRetention
 	}
+	if s.retention.Hosts <= 0 {
+		s.retention.Hosts = defaultHostRetention
+	}
 	t := time.NewTicker(maintenanceInterval)
 	defer t.Stop()
 	s.runMaintenance(ctx)
@@ -69,13 +85,17 @@ func (s *Server) RunMaintenanceLoop(ctx context.Context) {
 
 func (s *Server) runMaintenance(ctx context.Context) {
 	stats, err := s.store.Prune(ctx,
-		int64(s.retention.Events.Seconds()), int64(s.retention.Removed.Seconds()))
+		int64(s.retention.Events.Seconds()),
+		int64(s.retention.Removed.Seconds()),
+		int64(s.retention.Hosts.Seconds()))
 	if err != nil {
 		s.log.Error("maintenance: prune", "err", err)
 		return
 	}
-	if stats.Events > 0 || stats.RemovedServices > 0 {
+	if stats.Events > 0 || stats.RemovedServices > 0 || stats.Hosts > 0 {
 		s.log.Info("maintenance: pruned",
-			"events", stats.Events, "removed_services", stats.RemovedServices)
+			"events", stats.Events,
+			"removed_services", stats.RemovedServices,
+			"hosts", stats.Hosts)
 	}
 }

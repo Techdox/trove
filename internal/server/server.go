@@ -24,7 +24,7 @@ type Server struct {
 	mux   *http.ServeMux
 
 	// stalenessInterval is how often the background ticker re-evaluates agent
-	// heartbeats and flags stale services.
+	// and host heartbeats and flags services on stale hosts.
 	stalenessInterval time.Duration
 
 	// freshness holds the image-freshness checker config; registry is nil
@@ -60,13 +60,19 @@ func New(st *store.Store, log *slog.Logger) *Server {
 }
 
 // ConfigureOIDC enables OIDC authentication on the dashboard and read APIs.
-// Must be called before the server starts listening. Returns an error if
-// OIDC discovery fails (e.g. the issuer is unreachable).
+// Must be called before the server starts listening. Returns an error if the
+// configuration is partial or OIDC discovery fails (e.g. the issuer is
+// unreachable).
 func (s *Server) ConfigureOIDC(cfg OIDCConfig) error {
+	if err := cfg.validate(); err != nil {
+		return err
+	}
 	if !cfg.Enabled() {
 		return nil
 	}
-	provider, err := newOIDCProvider(cfg, s.log)
+	ctx, cancel := context.WithTimeout(context.Background(), oidcDiscoveryTimeout)
+	defer cancel()
+	provider, err := newOIDCProvider(ctx, cfg, s.log)
 	if err != nil {
 		return err
 	}
@@ -116,8 +122,9 @@ func (s *Server) routes() {
 }
 
 // RunStalenessLoop runs the background ticker until ctx is cancelled. It marks
-// services belonging to stale/offline agents as health="stale". It evaluates
-// once immediately so a freshly started server converges quickly.
+// services belonging to stale/offline hosts as health="stale". Agent status is
+// still evaluated independently for the infrastructure summary and events. It
+// evaluates once immediately so a freshly started server converges quickly.
 func (s *Server) RunStalenessLoop(ctx context.Context) {
 	t := time.NewTicker(s.stalenessInterval)
 	defer t.Stop()
@@ -139,7 +146,6 @@ func (s *Server) evaluateStaleness(ctx context.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	var staleIDs []int64
 	for _, a := range agents {
 		var lastSeen *time.Time
 		if a.LastSeenAt.Valid {
@@ -157,16 +163,30 @@ func (s *Server) evaluateStaleness(ctx context.Context) {
 				s.log.Info("agent status changed", "agent", a.Name, "status", status)
 			}
 		}
-		if staleness.StaleOrWorse(status) {
-			staleIDs = append(staleIDs, a.ID)
+	}
+
+	hosts, err := s.store.ListHosts(ctx)
+	if err != nil {
+		s.log.Error("staleness: list hosts", "err", err)
+		return
+	}
+	var staleHostIDs []int64
+	for _, h := range hosts {
+		var lastSeen *time.Time
+		if h.LastSeenAt.Valid {
+			t := time.Unix(h.LastSeenAt.Int64, 0).UTC()
+			lastSeen = &t
+		}
+		if status := staleness.Evaluate(lastSeen, h.AgentIntervalSeconds, now); staleness.StaleOrWorse(status) {
+			staleHostIDs = append(staleHostIDs, h.ID)
 		}
 	}
-	n, err := s.store.MarkServicesStaleForAgents(ctx, staleIDs)
+	n, err := s.store.MarkServicesStaleForHosts(ctx, staleHostIDs)
 	if err != nil {
 		s.log.Error("staleness: mark services", "err", err)
 		return
 	}
 	if n > 0 {
-		s.log.Info("staleness: flagged services stale", "count", n, "agents", len(staleIDs))
+		s.log.Info("staleness: flagged services stale", "count", n, "hosts", len(staleHostIDs))
 	}
 }

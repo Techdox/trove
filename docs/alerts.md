@@ -161,7 +161,8 @@ slot, the digest is sent once on the next check (no double-sends).
 Alerting reads the same event stream the dashboard's activity feed shows.
 Retention is configurable:
 
-| Variable                  | Default | Purpose                                        |
-| ------------------------- | ------- | ---------------------------------------------- |
-| `TROVE_EVENT_RETENTION`   | `720h`  | How long state/health/agent events are kept.   |
-| `TROVE_REMOVED_RETENTION` | `24h`   | How long removed services linger before purge. |
+| Variable                  | Default | Purpose                                                   |
+| ------------------------- | ------- | --------------------------------------------------------- |
+| `TROVE_EVENT_RETENTION`   | `720h`  | How long state/health/agent events are kept.              |
+| `TROVE_REMOVED_RETENTION` | `24h`   | How long removed services linger before purge.            |
+| `TROVE_HOST_RETENTION`    | `720h`  | How long silent hosts and their inventory are retained.   |

@@ -9,7 +9,7 @@ import (
 
 // ServiceRow is a fully-joined service record: the service plus its host and
 // owning agent. The dashboard groups these by host; the API layer overlays
-// derived staleness using the agent heartbeat fields.
+// independently derived host and agent staleness using their heartbeat fields.
 type ServiceRow struct {
 	ID           int64
 	ExternalID   string
@@ -26,9 +26,10 @@ type ServiceRow struct {
 	LastSeenAt   int64
 	UpdatedAt    int64
 
-	HostID       int64
-	Hostname     string
-	HostMetaJSON string
+	HostID         int64
+	Hostname       string
+	HostMetaJSON   string
+	HostLastSeenAt sql.NullInt64
 
 	AgentID              int64
 	AgentName            string
@@ -100,7 +101,7 @@ func (s *Store) ListServicesPage(ctx context.Context, opts ServiceListOptions) (
 		SELECT s.id, s.external_id, s.name, s.kind, s.image, s.image_digest, s.state, s.health,
 		       s.health_detail,
 		       s.ports_json, s.labels_json, s.first_seen_at, s.last_seen_at, s.updated_at,
-		       h.id, h.hostname, h.platform_meta_json,
+		       h.id, h.hostname, h.platform_meta_json, h.last_seen_at,
 		       a.id, a.name, a.platform, a.report_interval_seconds, a.last_seen_at,
 		       p.external_id AS parent_external_id,
 		       c.latest_digest, c.status, c.checked_at
@@ -139,7 +140,7 @@ func (s *Store) ListServicesPage(ctx context.Context, opts ServiceListOptions) (
 			&r.ID, &r.ExternalID, &r.Name, &r.Kind, &r.Image, &r.ImageDigest, &r.State, &r.Health,
 			&r.HealthDetail,
 			&r.PortsJSON, &r.LabelsJSON, &r.FirstSeenAt, &r.LastSeenAt, &r.UpdatedAt,
-			&r.HostID, &r.Hostname, &r.HostMetaJSON,
+			&r.HostID, &r.Hostname, &r.HostMetaJSON, &r.HostLastSeenAt,
 			&r.AgentID, &r.AgentName, &r.AgentPlatform, &r.AgentIntervalSeconds, &r.AgentLastSeenAt,
 			&r.ParentExternalID,
 			&r.LatestDigest, &r.FreshnessStatus, &r.FreshnessCheckedAt,

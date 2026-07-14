@@ -39,6 +39,8 @@ type hostGroupDTO struct {
 	Agent       string          `json:"agent"`
 	Hostname    string          `json:"hostname"`
 	Platform    string          `json:"platform"`
+	Status      string          `json:"status"`
+	LastSeenAt  *string         `json:"last_seen_at"`
 	AgentStatus string          `json:"agent_status"`
 	Meta        json.RawMessage `json:"meta"`
 	Services    []serviceDTO    `json:"services"`
@@ -118,6 +120,30 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 	// Rows are ordered (agent, host, name); group consecutively by host id.
 	var hosts []hostGroupDTO
 	byHost := map[int64]int{} // host id -> index in hosts
+	// The unpaginated dashboard view includes hosts with no services. This is
+	// important for Proxmox nodes, which are reported even when they have no
+	// guests, and lets their heartbeat remain visible independently.
+	if limit == 0 && offset == 0 && since == 0 {
+		knownHosts, err := s.store.ListHosts(r.Context())
+		if err != nil {
+			s.log.Error("list hosts", "err", err)
+			writeError(w, http.StatusInternalServerError, "failed to load hosts")
+			return
+		}
+		for _, host := range knownHosts {
+			hosts = append(hosts, hostGroupDTO{
+				Agent:       host.AgentName,
+				Hostname:    host.Hostname,
+				Platform:    host.AgentPlatform,
+				Status:      string(heartbeatStatus(host.LastSeenAt, host.AgentIntervalSeconds, now)),
+				LastSeenAt:  rfc3339Ptr(host.LastSeenAt),
+				AgentStatus: string(heartbeatStatus(host.AgentLastSeenAt, host.AgentIntervalSeconds, now)),
+				Meta:        rawJSON(host.MetaJSON, "{}"),
+				Services:    []serviceDTO{},
+			})
+			byHost[host.ID] = len(hosts) - 1
+		}
+	}
 	for _, row := range rows {
 		idx, ok := byHost[row.HostID]
 		if !ok {
@@ -125,7 +151,9 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 				Agent:       row.AgentName,
 				Hostname:    row.Hostname,
 				Platform:    row.AgentPlatform,
-				AgentStatus: string(agentStatus(row.AgentLastSeenAt, row.AgentIntervalSeconds, now)),
+				Status:      string(heartbeatStatus(row.HostLastSeenAt, row.AgentIntervalSeconds, now)),
+				LastSeenAt:  rfc3339Ptr(row.HostLastSeenAt),
+				AgentStatus: string(heartbeatStatus(row.AgentLastSeenAt, row.AgentIntervalSeconds, now)),
 				Meta:        rawJSON(row.HostMetaJSON, "{}"),
 				Services:    []serviceDTO{},
 			})
@@ -181,7 +209,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 			Platform:        a.Platform,
 			Version:         a.Version,
 			IntervalSeconds: a.IntervalSeconds,
-			Status:          string(agentStatus(a.LastSeenAt, a.IntervalSeconds, now)),
+			Status:          string(heartbeatStatus(a.LastSeenAt, a.IntervalSeconds, now)),
 			CreatedAt:       rfc3339(a.CreatedAt),
 			LastSeenAt:      rfc3339Ptr(a.LastSeenAt),
 		})
@@ -251,10 +279,10 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 // ---- helpers -------------------------------------------------------------
 
-// agentStatus computes the heartbeat verdict for the /agents strip and the
-// per-host badge. It mirrors what the background ticker uses to flag services,
-// but is evaluated fresh on every read so the dashboard is always accurate.
-func agentStatus(lastSeen sql.NullInt64, intervalSeconds int, now time.Time) staleness.Status {
+// heartbeatStatus computes an agent or host heartbeat verdict. It mirrors what
+// the background ticker uses to flag services, but is evaluated fresh on every
+// read so the dashboard is always accurate.
+func heartbeatStatus(lastSeen sql.NullInt64, intervalSeconds int, now time.Time) staleness.Status {
 	var ls *time.Time
 	if lastSeen.Valid {
 		t := time.Unix(lastSeen.Int64, 0).UTC()

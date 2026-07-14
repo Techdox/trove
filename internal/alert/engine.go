@@ -179,6 +179,33 @@ func classify(ev store.EventRow) (string, Notification, verdictT, bool) {
 		}
 		return "", n, verdictT{}, false
 
+	case store.EventKindHost:
+		// Host IDs are never reused, so a retained alert state cannot suppress a
+		// later outage after an old host is pruned and the same name reappears.
+		key := "host:" + strconv.FormatInt(ev.HostID.Int64, 10)
+		source := ev.Hostname
+		if ev.Agent != "" {
+			source += " (agent " + ev.Agent + ")"
+		}
+		switch ev.ToState {
+		case "offline":
+			n.Level = LevelCritical
+			n.Title = fmt.Sprintf("host %s offline", ev.Hostname)
+			n.Body = fmt.Sprintf("host %s stopped reporting (%s → offline)", source, ev.FromState)
+			return key, n, verdictT{bad: "offline", level: n.Level}, true
+		case "stale":
+			n.Level = LevelWarning
+			n.Title = fmt.Sprintf("host %s stale", ev.Hostname)
+			n.Body = fmt.Sprintf("host %s has missed several reports (%s → stale)", source, ev.FromState)
+			return key, n, verdictT{bad: "stale", level: n.Level}, true
+		case "ok":
+			n.Level = LevelResolved
+			n.Title = fmt.Sprintf("host %s recovered", ev.Hostname)
+			n.Body = fmt.Sprintf("host %s is reporting again (%s → ok)", source, ev.FromState)
+			return key, n, verdictT{bad: "", level: n.Level}, true
+		}
+		return "", n, verdictT{}, false
+
 	case store.EventKindHealth:
 		key := "svc:" + strconv.FormatInt(ev.ServiceID.Int64, 10) + ":health"
 		switch ev.ToState {

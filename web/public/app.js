@@ -562,6 +562,12 @@ function eventRowHTML(e) {
         &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
         <span class="${AGENT_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
       break;
+    case "host":
+      what = `<span class="kind">host</span> <strong>${esc(e.hostname)}</strong>
+        <span class="muted">@ ${esc(e.agent)}</span>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${AGENT_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
+      break;
     case "health":
       what = `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
         <span class="kind">health</span>
@@ -580,7 +586,7 @@ function eventRowHTML(e) {
 }
 
 function eventTone(e) {
-  if (e.kind === "agent") {
+  if (e.kind === "agent" || e.kind === "host") {
     if (e.to_state === "offline") return "critical";
     if (e.to_state === "stale") return "warning";
     if (e.to_state === "ok") return "healthy";

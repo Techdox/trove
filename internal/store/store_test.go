@@ -184,6 +184,47 @@ func TestUpdateAgentStatusEvents(t *testing.T) {
 	}
 }
 
+func TestUpdateHostStatusEvents(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "proxmox-a")
+	rep := report()
+	rep.Agent.Platform = model.PlatformProxmox
+	rep.Host.Hostname = "node-a"
+	if err := st.ApplyReport(ctx, agent.ID, rep); err != nil {
+		t.Fatalf("apply report: %v", err)
+	}
+	hosts, err := st.ListHosts(ctx)
+	if err != nil || len(hosts) != 1 {
+		t.Fatalf("list hosts: hosts=%+v err=%v", hosts, err)
+	}
+	host := hosts[0]
+
+	changed, err := st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "ok")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if changed {
+		t.Fatal("first status must seed silently, not emit an event")
+	}
+	if changed, _ = st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "ok"); changed {
+		t.Fatal("unchanged status must not emit an event")
+	}
+	if changed, err = st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "stale"); err != nil || !changed {
+		t.Fatalf("ok->stale: changed=%v err=%v", changed, err)
+	}
+
+	events, err := st.ListEvents(ctx, EventListOptions{Kind: EventKindHost})
+	if err != nil {
+		t.Fatalf("list host events: %v", err)
+	}
+	if len(events) != 1 || events[0].HostID.Int64 != host.ID || events[0].AgentID.Int64 != agent.ID ||
+		events[0].Hostname != "node-a" || events[0].Agent != "proxmox-a" ||
+		events[0].FromState != "ok" || events[0].ToState != "stale" {
+		t.Fatalf("unexpected host event: %+v", events)
+	}
+}
+
 func TestApplyReportSoftRemove(t *testing.T) {
 	st, clock := newTestStore(t)
 	ctx := context.Background()

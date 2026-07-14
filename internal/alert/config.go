@@ -19,7 +19,7 @@ type Config struct {
 	NtfyURL       string
 	NtfyToken     string
 
-	// Kinds enabled for instant notifications: state, health, agent, freshness.
+	// Kinds enabled for instant notifications: state, health, agent, host, freshness.
 	Kinds map[string]bool
 
 	// Cooldown is the minimum interval between notifications for the same key
@@ -42,7 +42,7 @@ const (
 //	TROVE_ALERT_DISCORD_URL     Discord webhook
 //	TROVE_ALERT_NTFY_URL      full ntfy topic URL (e.g. https://ntfy.sh/my-trove)
 //	TROVE_ALERT_NTFY_TOKEN    optional ntfy access token
-//	TROVE_ALERT_EVENTS        comma list of kinds (default "agent,health,state,freshness")
+//	TROVE_ALERT_EVENTS        comma list of kinds (default "agent,host,health,state,freshness")
 //	TROVE_ALERT_COOLDOWN      per-key flap suppression window (default 5m)
 func LoadConfigFromEnv() Config {
 	cfg := Config{
@@ -57,7 +57,7 @@ func LoadConfigFromEnv() Config {
 	}
 	kinds := os.Getenv("TROVE_ALERT_EVENTS")
 	if kinds == "" {
-		kinds = "agent,health,state,freshness"
+		kinds = "agent,host,health,state,freshness"
 	}
 	for _, k := range strings.Split(kinds, ",") {
 		if k = strings.TrimSpace(strings.ToLower(k)); k != "" {

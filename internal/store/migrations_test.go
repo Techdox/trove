@@ -44,8 +44,8 @@ func TestHostLivenessMigrationBackfillsExistingHosts(t *testing.T) {
 	}
 	const lastSeen = int64(1_767_225_600)
 	res, err := db.ExecContext(ctx, `
-		INSERT INTO agents(name, token_hash, created_at, last_seen_at)
-		VALUES ('proxmox-a', 'hash', 0, ?)`, lastSeen)
+		INSERT INTO agents(name, token_hash, created_at, last_seen_at, last_status)
+		VALUES ('proxmox-a', 'hash', 0, ?, 'ok')`, lastSeen)
 	if err != nil {
 		t.Fatalf("insert agent: %v", err)
 	}
@@ -65,11 +65,15 @@ func TestHostLivenessMigrationBackfillsExistingHosts(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 
 	var got sql.NullInt64
+	var status string
 	if err := st.DB().QueryRowContext(ctx,
-		`SELECT last_seen_at FROM hosts WHERE hostname = 'node-a'`).Scan(&got); err != nil {
+		`SELECT last_seen_at, last_status FROM hosts WHERE hostname = 'node-a'`).Scan(&got, &status); err != nil {
 		t.Fatalf("read migrated host heartbeat: %v", err)
 	}
 	if !got.Valid || got.Int64 != lastSeen {
 		t.Fatalf("migrated last_seen_at = %+v, want %d", got, lastSeen)
+	}
+	if status != "ok" {
+		t.Fatalf("migrated last_status = %q, want ok", status)
 	}
 }

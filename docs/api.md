@@ -61,8 +61,11 @@ Optional query parameters:
 
 - `limit`: positive integer, capped at `500`.
 - `offset`: non-negative integer.
-- `kind`: exact event kind, for example `state`, `health`, `agent`, or `freshness`.
+- `kind`: exact event kind, for example `state`, `health`, `agent`, `host`, or `freshness`.
 - `since`: Unix timestamp or RFC3339 time. Filters events by `at >= since`.
+
+Service events include `service_id`; host events include `host_id`. These are
+soft historical references and remain in the feed after their subject is pruned.
 
 Example:
 

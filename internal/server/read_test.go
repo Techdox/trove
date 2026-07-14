@@ -128,6 +128,17 @@ func TestEvaluateStalenessUsesHostHeartbeat(t *testing.T) {
 
 	now := time.Now().UTC().Unix()
 	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE hosts SET last_seen_at = ?`, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE agents SET last_seen_at = ? WHERE id = ?`, now, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, slog.Default())
+	srv.evaluateStaleness(ctx) // silently seed agent and host transition state
+
+	if _, err := st.DB().ExecContext(ctx,
 		`UPDATE hosts SET last_seen_at = ? WHERE hostname = 'node-a'`, now-4*60); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +151,6 @@ func TestEvaluateStalenessUsesHostHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := New(st, slog.Default())
 	srv.evaluateStaleness(ctx)
 	rows, err := st.ListServices(ctx)
 	if err != nil {
@@ -182,6 +192,90 @@ func TestEvaluateStalenessUsesHostHeartbeat(t *testing.T) {
 	}
 	if statusByHost["node-a"] != "stale" || statusByHost["node-b"] != "ok" {
 		t.Fatalf("host statuses = %+v, want node-a stale and node-b ok", statusByHost)
+	}
+	events, err := st.ListEvents(ctx, store.EventListOptions{Kind: store.EventKindHost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Hostname != "node-a" ||
+		events[0].FromState != "ok" || events[0].ToState != "stale" {
+		t.Fatalf("host events = %+v, want node-a ok->stale", events)
+	}
+}
+
+func TestEvaluateStalenessSuppressesHostEventsDuringAgentOutage(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	_, agent, err := st.CreateAgent(ctx, "proxmox-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ApplyReport(ctx, agent.ID, &model.Report{
+		Agent: model.ReportAgent{
+			Name:            "proxmox-a",
+			Platform:        model.PlatformProxmox,
+			IntervalSeconds: 30,
+		},
+		Host: model.ReportHost{Hostname: "node-a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC().Unix()
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE agents SET last_seen_at = ? WHERE id = ?`, now, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE hosts SET last_seen_at = ? WHERE agent_id = ?`, now, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, slog.Default())
+	srv.evaluateStaleness(ctx) // silent ok seed
+
+	// The entire source goes stale: emit one agent transition and suppress the
+	// equivalent host transition.
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE agents SET last_seen_at = ? WHERE id = ?`, now-4*60, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE hosts SET last_seen_at = ? WHERE agent_id = ?`, now-4*60, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	srv.evaluateStaleness(ctx)
+	hostEvents, err := st.ListEvents(ctx, store.EventListOptions{Kind: store.EventKindHost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hostEvents) != 0 {
+		t.Fatalf("whole-agent outage emitted duplicate host events: %+v", hostEvents)
+	}
+	agentEvents, err := st.ListEvents(ctx, store.EventListOptions{Kind: store.EventKindAgent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(agentEvents) != 1 || agentEvents[0].ToState != "stale" {
+		t.Fatalf("agent events = %+v, want one stale event", agentEvents)
+	}
+
+	// The agent comes back but its host does not. The held host transition now
+	// becomes independently actionable.
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE agents SET last_seen_at = ? WHERE id = ?`, now, agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	srv.evaluateStaleness(ctx)
+	hostEvents, err = st.ListEvents(ctx, store.EventListOptions{Kind: store.EventKindHost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hostEvents) != 1 || hostEvents[0].FromState != "ok" || hostEvents[0].ToState != "stale" {
+		t.Fatalf("post-recovery host events = %+v, want ok->stale", hostEvents)
 	}
 }
 

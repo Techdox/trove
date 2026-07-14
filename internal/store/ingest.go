@@ -204,12 +204,13 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 	return tx.Commit()
 }
 
-// Event kinds. The events table carries three streams that the dashboard feed
+// Event kinds. The events table carries four streams that the dashboard feed
 // and the alert engine both consume.
 const (
 	EventKindState  = "state"  // service platform-state transition
 	EventKindHealth = "health" // service health transition
 	EventKindAgent  = "agent"  // agent heartbeat-status transition
+	EventKindHost   = "host"   // host heartbeat-status transition
 )
 
 // insertEvent records a service-scoped event with its display context

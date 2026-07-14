@@ -146,6 +146,7 @@ func (s *Server) evaluateStaleness(ctx context.Context) {
 		return
 	}
 	now := time.Now().UTC()
+	agentStatusByID := make(map[int64]staleness.Status, len(agents))
 	for _, a := range agents {
 		var lastSeen *time.Time
 		if a.LastSeenAt.Valid {
@@ -153,6 +154,7 @@ func (s *Server) evaluateStaleness(ctx context.Context) {
 			lastSeen = &t
 		}
 		status := staleness.Evaluate(lastSeen, a.IntervalSeconds, now)
+		agentStatusByID[a.ID] = status
 		// Record heartbeat transitions (ok<->stale<->offline) as agent events
 		// for the feed and the alert engine. Never-seen agents are skipped so
 		// a freshly minted token doesn't sit in the feed as "unknown".
@@ -177,8 +179,23 @@ func (s *Server) evaluateStaleness(ctx context.Context) {
 			t := time.Unix(h.LastSeenAt.Int64, 0).UTC()
 			lastSeen = &t
 		}
-		if status := staleness.Evaluate(lastSeen, h.AgentIntervalSeconds, now); staleness.StaleOrWorse(status) {
+		status := staleness.Evaluate(lastSeen, h.AgentIntervalSeconds, now)
+		if staleness.StaleOrWorse(status) {
 			staleHostIDs = append(staleHostIDs, h.ID)
+		}
+		// Host alerts are useful only when the parent agent is healthy. During a
+		// whole-agent outage the agent event is the root-cause notification; not
+		// advancing host transition state lets a still-missing host alert as soon
+		// as the agent recovers or a sibling keeps it healthy.
+		if status != staleness.StatusUnknown && agentStatusByID[h.AgentID] == staleness.StatusOK {
+			changed, err := s.store.UpdateHostStatus(
+				ctx, h.ID, h.AgentID, h.Hostname, h.AgentName, string(status),
+			)
+			if err != nil {
+				s.log.Error("staleness: record host status", "host", h.Hostname, "agent", h.AgentName, "err", err)
+			} else if changed {
+				s.log.Info("host status changed", "host", h.Hostname, "agent", h.AgentName, "status", status)
+			}
 		}
 	}
 	n, err := s.store.MarkServicesStaleForHosts(ctx, staleHostIDs)

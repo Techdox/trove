@@ -25,7 +25,7 @@ const (
 
 // Notification is one outbound message, channel-agnostic.
 type Notification struct {
-	Kind    string    `json:"kind"`  // state | health | agent | freshness | test
+	Kind    string    `json:"kind"`  // state | health | agent | host | freshness | test
 	Level   string    `json:"level"` // info | warning | critical | resolved
 	Title   string    `json:"title"`
 	Body    string    `json:"body"`

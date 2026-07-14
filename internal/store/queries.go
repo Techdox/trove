@@ -157,8 +157,9 @@ func (s *Store) ListServicesPage(ctx context.Context, opts ServiceListOptions) (
 // outlive their subjects.
 type EventRow struct {
 	ID        int64
-	Kind      string // state | health | agent
+	Kind      string // state | health | agent | host
 	ServiceID sql.NullInt64
+	HostID    sql.NullInt64
 	AgentID   sql.NullInt64
 	Service   string
 	Hostname  string
@@ -181,7 +182,7 @@ func (s *Store) ListEvents(ctx context.Context, opts EventListOptions) ([]EventR
 	}
 	var b strings.Builder
 	b.WriteString(`
-		SELECT id, kind, service_id, agent_id, service, hostname, agent, from_state, to_state, at
+		SELECT id, kind, service_id, host_id, agent_id, service, hostname, agent, from_state, to_state, at
 		  FROM events`)
 	var where []string
 	var args []any
@@ -214,7 +215,7 @@ func (s *Store) ListEvents(ctx context.Context, opts EventListOptions) ([]EventR
 	var out []EventRow
 	for rows.Next() {
 		var e EventRow
-		if err := rows.Scan(&e.ID, &e.Kind, &e.ServiceID, &e.AgentID,
+		if err := rows.Scan(&e.ID, &e.Kind, &e.ServiceID, &e.HostID, &e.AgentID,
 			&e.Service, &e.Hostname, &e.Agent, &e.FromState, &e.ToState, &e.At); err != nil {
 			return nil, err
 		}
@@ -230,7 +231,7 @@ func (s *Store) EventsAfter(ctx context.Context, cursor int64, limit int) ([]Eve
 		limit = 500
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, kind, service_id, agent_id, service, hostname, agent, from_state, to_state, at
+		SELECT id, kind, service_id, host_id, agent_id, service, hostname, agent, from_state, to_state, at
 		  FROM events
 		 WHERE id > ?
 		 ORDER BY id ASC
@@ -243,7 +244,7 @@ func (s *Store) EventsAfter(ctx context.Context, cursor int64, limit int) ([]Eve
 	var out []EventRow
 	for rows.Next() {
 		var e EventRow
-		if err := rows.Scan(&e.ID, &e.Kind, &e.ServiceID, &e.AgentID,
+		if err := rows.Scan(&e.ID, &e.Kind, &e.ServiceID, &e.HostID, &e.AgentID,
 			&e.Service, &e.Hostname, &e.Agent, &e.FromState, &e.ToState, &e.At); err != nil {
 			return nil, err
 		}

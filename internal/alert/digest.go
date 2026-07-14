@@ -300,8 +300,11 @@ func (d *Digester) build(ctx context.Context, since time.Time) (subject, text, h
 		}
 		for _, e := range recent[:max] {
 			subjectName := e.Service
-			if e.Kind == store.EventKindAgent {
+			switch e.Kind {
+			case store.EventKindAgent:
 				subjectName = "agent " + e.Agent
+			case store.EventKindHost:
+				subjectName = "host " + e.Hostname
 			}
 			fmt.Fprintf(&b, "  - %s  %s %s → %s\n",
 				time.Unix(e.At, 0).Format("2 Jan 15:04"), subjectName, orNone(e.FromState), e.ToState)

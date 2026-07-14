@@ -77,7 +77,8 @@ type agentsResponse struct {
 type eventDTO struct {
 	ID        int64  `json:"id"`
 	ServiceID *int64 `json:"service_id,omitempty"`
-	Kind      string `json:"kind"` // state | health | agent
+	HostID    *int64 `json:"host_id,omitempty"`
+	Kind      string `json:"kind"` // state | health | agent | host
 	Service   string `json:"service,omitempty"`
 	Hostname  string `json:"hostname,omitempty"`
 	Agent     string `json:"agent,omitempty"`
@@ -250,9 +251,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			id := e.ServiceID.Int64
 			serviceID = &id
 		}
+		var hostID *int64
+		if e.HostID.Valid {
+			id := e.HostID.Int64
+			hostID = &id
+		}
 		out = append(out, eventDTO{
 			ID:        e.ID,
 			ServiceID: serviceID,
+			HostID:    hostID,
 			Kind:      e.Kind,
 			Service:   e.Service,
 			Hostname:  e.Hostname,

@@ -2,7 +2,7 @@
 
 Watches a cluster's Deployments, StatefulSets, and DaemonSets (as parent
 services) and their Pods (as child instances, nested under the parent on the
-dashboard). Read-only: the agent's RBAC grants only `get`/`list`/`watch`.
+dashboard). Read-only: the agent's RBAC grants only `get`/`list`.
 
 Run **one agent per cluster**. It runs in-cluster as a Deployment.
 
@@ -49,7 +49,7 @@ kubectl apply -f trove-agent.yaml
 ```
 
 The manifest contains the ServiceAccount, a read-only ClusterRole
-(deployments/statefulsets/daemonsets/replicasets/pods; get/list/watch only),
+(deployments/statefulsets/daemonsets/replicasets/pods; get/list only),
 the binding, and the Deployment running
 `ghcr.io/techdox/trove-agent-k8s` as nonroot with a read-only filesystem. It
 also declares the `trove` namespace (harmless that step 2 created it too — we

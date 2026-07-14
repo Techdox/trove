@@ -1,6 +1,6 @@
 # Trove Kubernetes agent — in-cluster, strictly read-only.
 #
-# The ClusterRole grants only list/get/watch on the workload and pod resources
+# The ClusterRole grants only get/list on the workload and pod resources
 # the agent reads; it can never mutate anything. Trove is read-only by design.
 #
 # Before applying:
@@ -31,10 +31,10 @@ metadata:
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

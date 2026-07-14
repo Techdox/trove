@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0](https://github.com/Techdox/trove/compare/v0.12.4...v0.13.0) (2026-07-14)
+
+
+### Features
+
+* secure auth and track per-host liveness ([#85](https://github.com/Techdox/trove/issues/85)) ([52b623f](https://github.com/Techdox/trove/commit/52b623fae05745d48a04bf3e8649366a179bc97d))
+
+
+### Bug Fixes
+
+* finish v0.13 release readiness ([#86](https://github.com/Techdox/trove/issues/86)) ([a32e0a4](https://github.com/Techdox/trove/commit/a32e0a4b576b3cf2d8637bbfa82b2ba663b90d55))
+* **release:** preserve release commit metadata ([#83](https://github.com/Techdox/trove/issues/83)) ([4bc0862](https://github.com/Techdox/trove/commit/4bc08627a63c0253ef1177088b1df3cc49cf3f86))
+
 ## [0.12.4](https://github.com/Techdox/trove/compare/v0.12.3...v0.12.4) (2026-07-13)
 
 

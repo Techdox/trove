@@ -82,9 +82,6 @@ TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \
 Current metrics are intentionally non-sensitive:
 
 - `trove_uptime_seconds`
-- `trove_goroutines`
-- `trove_alloc_bytes`
-- `trove_sys_bytes`
 - `trove_reports_accepted_total`
 - `trove_sqlite_database_size_bytes`
 - `trove_agents{status=...}`

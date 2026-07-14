@@ -365,9 +365,12 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 Upgrades are a `pull` (or binary swap) and restart away: schema migrations apply
 automatically on startup and are additive, and the server and agents tolerate
 version skew within a minor version. Everything is one SQLite file (`trove.db` /
-the `trove-data` volume) — back it up by copying it with the server stopped or
-via `sqlite3 ... ".backup"`; state is rebuildable anyway, since agents repopulate
-the catalog within one interval (a lost database costs only event history).
+the `trove-data` volume) — treat it as durable and back it up with
+`trove-server backup` or `sqlite3 ... ".backup"`. It contains agent token hashes,
+inventory and event history, and alert cursor/delivery state. If it is lost,
+production agents must be recreated and configured with newly issued tokens
+before current inventory can repopulate; event history and prior alert state
+cannot be rebuilt.
 
 See **[docs/upgrades.md](docs/upgrades.md)** for per-method upgrade steps (Docker
 Compose, bare metal, `go install`, agents), version pinning, backup commands,

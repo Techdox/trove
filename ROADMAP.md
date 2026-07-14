@@ -14,7 +14,8 @@ Both pinned decisions are resolved: D2 (parent/child) shipped with Phase 3, D1
 
 The path to `v1.0.0` is now a confidence pass, not a large feature push:
 
-- Dogfood OIDC behind a real provider (Authentik is the reference setup).
+- Repeat the production Authentik OIDC setup in Dev and verify browser and API
+  token access there as a release gate.
 - Validate the public docs, wiki, example config, and upgrade notes against that
   deployment.
 - Keep the read-only contract intact: no deploy/restart/exec/edit paths.
@@ -124,9 +125,10 @@ design (targets, SNI, self-signed policy); slated after `v1.0.0`.
 
 **Remaining:**
 
-- **Dogfood and documentation pass** before `v1.0.0`: run Trove behind a real
-  OIDC provider, confirm the API-token path, and keep the repo docs/wiki/example
-  config aligned with the tested setup.
+- **Dev OIDC and documentation confidence pass** before `v1.0.0`: Authentik has
+  been exercised on the production deployment; reproduce that setup in Dev,
+  confirm the API-token path, and keep the repo docs/wiki/example config aligned
+  with the tested setup.
 - **Helm chart** for Kubernetes deployment (natural companion to the Phase 3 K8s
   agent), planned after `v1.0.0`.
 - **Certificate-expiry monitoring** for HTTPS targets, including target config,

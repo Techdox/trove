@@ -104,14 +104,15 @@ override quiet hours if you configure ntfy that way.
 | Kind        | Fires on                                                     | Level    |
 | ----------- | ------------------------------------------------------------ | -------- |
 | `agent`     | agent stale (missed 3 pushes) / offline (missed 10) / recovery | warning / critical / resolved |
+| `host`      | host stale / offline / recovery while its agent is reporting | warning / critical / resolved |
 | `health`    | service health → unhealthy, and recovery                     | critical / resolved |
 | `state`     | service stopped/failed/removed/degraded, and recovery        | warning / resolved |
 | `freshness` | a running image falls behind its registry tag                 | warning / resolved |
 
-All four are on by default. Trim with:
+All five are on by default. Trim with:
 
 ```sh
-TROVE_ALERT_EVENTS=agent,health     # e.g. quiet mode for chatty clusters
+TROVE_ALERT_EVENTS=agent,host,health     # e.g. quiet mode for chatty clusters
 ```
 
 Built-in noise control (not configurable, by design):
@@ -119,16 +120,17 @@ Built-in noise control (not configurable, by design):
 - **Transitions only** — an ongoing bad state never re-alerts by itself.
 - **New services don't alert on appearance** (feed-only) — a deploy isn't an
   incident. On Kubernetes, note that pod churn from deploys still produces
-  `state: removed` alerts; set `TROVE_ALERT_EVENTS=agent,health` if that's
+  `state: removed` alerts; set `TROVE_ALERT_EVENTS=agent,host,health` if that's
   too chatty for your cluster.
-- **Cooldown** (`TROVE_ALERT_COOLDOWN`, default `5m`) — per service/agent,
+- **Cooldown** (`TROVE_ALERT_COOLDOWN`, default `5m`) — per service/agent/host,
   repeated flapping inside the window is suppressed, and a "resolved" notice
   is only sent for alerts that were actually delivered. Escalations (e.g.
   agent stale → offline) bypass the cooldown once.
 - **No alarm floods at boot** — the engine starts from the current state; it
   never replays history or announces fifteen already-outdated images.
 - When an agent goes offline, you get **one** agent alert, not one per
-  service on that host.
+  service or host. If the agent recovers while one of its hosts remains
+  missing, that host then alerts independently.
 
 ## Email digest
 
@@ -161,7 +163,8 @@ slot, the digest is sent once on the next check (no double-sends).
 Alerting reads the same event stream the dashboard's activity feed shows.
 Retention is configurable:
 
-| Variable                  | Default | Purpose                                        |
-| ------------------------- | ------- | ---------------------------------------------- |
-| `TROVE_EVENT_RETENTION`   | `720h`  | How long state/health/agent events are kept.   |
-| `TROVE_REMOVED_RETENTION` | `24h`   | How long removed services linger before purge. |
+| Variable                  | Default | Purpose                                                   |
+| ------------------------- | ------- | --------------------------------------------------------- |
+| `TROVE_EVENT_RETENTION`   | `720h`  | How long state/health/agent events are kept.              |
+| `TROVE_REMOVED_RETENTION` | `24h`   | How long removed services linger before purge.            |
+| `TROVE_HOST_RETENTION`    | `720h`  | How long silent hosts and their inventory are retained.   |

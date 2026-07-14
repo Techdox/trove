@@ -42,9 +42,41 @@ type OIDCConfig struct {
 	SessionMaxAge time.Duration
 }
 
+const oidcDiscoveryTimeout = 10 * time.Second
+
 // Enabled reports whether OIDC authentication is active.
 func (c OIDCConfig) Enabled() bool {
 	return c.Issuer != "" && c.ClientID != "" && c.ClientSecret != "" && c.RedirectURL != ""
+}
+
+// validate rejects partial authentication configuration. APIToken is included
+// in the intent check because it is only a bypass for a complete OIDC setup;
+// setting it alone must not leave the dashboard open unexpectedly.
+func (c OIDCConfig) validate() error {
+	configured := c.Issuer != "" || c.ClientID != "" || c.ClientSecret != "" || c.RedirectURL != "" || c.APIToken != ""
+	if !configured {
+		return nil
+	}
+
+	required := []struct {
+		name  string
+		value string
+	}{
+		{"TROVE_OIDC_ISSUER", c.Issuer},
+		{"TROVE_OIDC_CLIENT_ID", c.ClientID},
+		{"TROVE_OIDC_CLIENT_SECRET", c.ClientSecret},
+		{"TROVE_OIDC_REDIRECT_URL", c.RedirectURL},
+	}
+	missing := make([]string, 0, len(required))
+	for _, setting := range required {
+		if setting.value == "" {
+			missing = append(missing, setting.name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("incomplete OIDC configuration: missing %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // LoadOIDCConfigFromEnv reads OIDC configuration from the environment.
@@ -84,8 +116,8 @@ type oidcProvider struct {
 }
 
 // newOIDCProvider discovers the issuer and builds the OAuth2 config + verifier.
-func newOIDCProvider(cfg OIDCConfig, log *slog.Logger) (*oidcProvider, error) {
-	provider, err := oidc.NewProvider(context.Background(), cfg.Issuer)
+func newOIDCProvider(ctx context.Context, cfg OIDCConfig, log *slog.Logger) (*oidcProvider, error) {
+	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery for %q: %w", cfg.Issuer, err)
 	}

@@ -79,3 +79,28 @@ func TestDashboardRemovedAttentionFiltersOnlyRemovedServices(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardShowsIndependentHostLiveness(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	for _, marker := range []string{
+		`if (h.status === "stale" && h.agent_status !== "stale" && h.agent_status !== "offline") c.staleHosts++;`,
+		`if (h.status === "offline" && h.agent_status !== "offline") c.offlineHosts++;`,
+		`item("offline-hosts"`,
+		`item("stale-hosts"`,
+		`if (key === "offline-hosts" || key === "stale-hosts") {`,
+		"last report ${esc(relTime(h.last_seen_at))}",
+		"`host ${st}`",
+		`case "host":`,
+		`e.kind === "agent" || e.kind === "host"`,
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard host liveness is missing %q", marker)
+		}
+	}
+}

@@ -256,9 +256,14 @@ function filterActive() {
 
 // counts over the full dataset (independent of the active filter)
 function computeCounts() {
-  const c = { hosts: 0, services: 0, running: 0, unhealthy: 0, stopped: 0, outdated: 0, stale: 0, removed: 0 };
+  const c = {
+    hosts: 0, staleHosts: 0, offlineHosts: 0,
+    services: 0, running: 0, unhealthy: 0, stopped: 0, outdated: 0, stale: 0, removed: 0,
+  };
   for (const h of state.data.services?.hosts || []) {
     c.hosts++;
+    if (h.status === "stale" && h.agent_status !== "stale" && h.agent_status !== "offline") c.staleHosts++;
+    if (h.status === "offline" && h.agent_status !== "offline") c.offlineHosts++;
     for (const s of h.services || []) {
       if (s.state === "removed") { c.removed++; continue; }
       c.services++;
@@ -286,8 +291,10 @@ function attentionItems() {
   const item = (key, level, count, title, detail, action) => ({ key, level, count, title, detail, action });
   return [
     item("offline-agents", "critical", offline, "Offline agent", "Trove is no longer receiving reports from this source.", "Review agents"),
+    item("offline-hosts", "critical", c.offlineHosts, "Offline host", "This host has missed its own reporting window and its inventory is stale.", "Review hosts"),
     item("unhealthy", "critical", c.unhealthy, "Unhealthy service", "A platform health check or readiness signal is failing.", "Show services"),
     item("stale-agents", "warning", staleAgents, "Stale agent", "This source has missed its expected reporting interval.", "Review agents"),
+    item("stale-hosts", "warning", c.staleHosts, "Stale host", "This host has stopped reporting even if another host from the same agent is still active.", "Review hosts"),
     item("stopped", "info", c.stopped, "Stopped workload", "A discovered workload is not running. It may be intentional.", "Show services"),
     item("removed", "info", c.removed, "Recently disappeared service", "A service is absent from its latest full-state report.", "Show services"),
     item("outdated", "info", c.outdated, "Outdated image", "The running image digest is behind the current tag.", "Show services"),
@@ -316,6 +323,11 @@ function showAttention(key) {
   if (key === "offline-agents" || key === "stale-agents") {
     $("infrastructure-title").scrollIntoView({ behavior: "smooth", block: "start" });
     focusInvestigationTarget("infrastructure-title");
+    return;
+  }
+  if (key === "offline-hosts" || key === "stale-hosts") {
+    $("inventory-title").scrollIntoView({ behavior: "smooth", block: "start" });
+    focusInvestigationTarget("inventory-title");
     return;
   }
   if (key === "removed") state.removedOnly = true;
@@ -470,7 +482,7 @@ function renderHosts() {
       (nUnhealthy ? badge("b-red", `${nUnhealthy} unhealthy`, "mini") : "") +
       (nOutdated ? badge("b-peach", `${nOutdated} outdated`, "mini") : "");
 
-    const st = h.agent_status || "unknown";
+    const st = h.status || "unknown";
     const collapsed = state.collapsed.has(hostKey(h));
     const countLabel = filterActive() && visible.length !== total
       ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
@@ -480,7 +492,8 @@ function renderHosts() {
         <span class="chev">${collapsed ? "▸" : "▾"}</span>
         <span class="hostname">${esc(h.hostname)}</span>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
-        ${badge(AGENT_CLASS[st] || "b-gray", st)}
+        <span class="sub">last report ${esc(relTime(h.last_seen_at))}</span>
+        ${badge(AGENT_CLASS[st] || "b-gray", `host ${st}`)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
       </button>
@@ -549,6 +562,12 @@ function eventRowHTML(e) {
         &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
         <span class="${AGENT_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
       break;
+    case "host":
+      what = `<span class="kind">host</span> <strong>${esc(e.hostname)}</strong>
+        <span class="muted">@ ${esc(e.agent)}</span>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${AGENT_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
+      break;
     case "health":
       what = `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
         <span class="kind">health</span>
@@ -567,7 +586,7 @@ function eventRowHTML(e) {
 }
 
 function eventTone(e) {
-  if (e.kind === "agent") {
+  if (e.kind === "agent" || e.kind === "host") {
     if (e.to_state === "offline") return "critical";
     if (e.to_state === "stale") return "warning";
     if (e.to_state === "ok") return "healthy";

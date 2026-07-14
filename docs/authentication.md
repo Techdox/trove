@@ -4,6 +4,8 @@ Trove is still read-only, but the dashboard and read APIs can be protected with 
 
 When OIDC is not configured, Trove keeps the original behaviour: the dashboard and read APIs are open. In that mode, keep the server on a trusted network, VPN, tailnet, or behind an authenticating reverse proxy.
 
+Open mode requires all OIDC authentication settings to be absent. If any required `TROVE_OIDC_*` setting is present while another is missing, Trove fails startup and lists the missing variables. `TROVE_API_TOKEN` cannot be used without a complete OIDC configuration.
+
 ## What OIDC protects
 
 When `TROVE_OIDC_ISSUER` and the other required OIDC settings are present, Trove protects:
@@ -36,6 +38,8 @@ Set these on the `trove-server` process:
 | `TROVE_OIDC_CLIENT_ID` | OAuth2/OIDC client ID from the provider. |
 | `TROVE_OIDC_CLIENT_SECRET` | OAuth2/OIDC client secret from the provider. |
 | `TROVE_OIDC_REDIRECT_URL` | Trove callback URL. Example: `https://trove.example.com/oauth2/callback` |
+
+All four settings are required together. Trove performs OIDC discovery during startup with a ten-second timeout; invalid, unreachable, or incomplete configuration prevents the server from listening.
 
 Optional:
 

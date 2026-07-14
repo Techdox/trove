@@ -15,6 +15,7 @@ import (
 //
 // Semantics:
 //   - the agent's last_seen/platform/version/interval are refreshed;
+//   - only the reported host's last_seen and metadata are refreshed;
 //   - each reported service is upserted (correlated by host + external_id);
 //   - a service whose state changed since last report records an event;
 //   - services previously seen but absent from this report are soft-removed
@@ -54,9 +55,11 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 	// 2. Upsert host, resolve host_id.
 	metaJSON := mustJSONObject(r.Host.Meta)
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO hosts(agent_id, hostname, platform_meta_json) VALUES (?, ?, ?)
-		 ON CONFLICT(agent_id, hostname) DO UPDATE SET platform_meta_json = excluded.platform_meta_json`,
-		agentID, r.Host.Hostname, metaJSON,
+		`INSERT INTO hosts(agent_id, hostname, platform_meta_json, last_seen_at) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(agent_id, hostname) DO UPDATE SET
+		     platform_meta_json = excluded.platform_meta_json,
+		     last_seen_at = excluded.last_seen_at`,
+		agentID, r.Host.Hostname, metaJSON, now,
 	); err != nil {
 		return fmt.Errorf("upsert host: %w", err)
 	}
@@ -201,12 +204,13 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 	return tx.Commit()
 }
 
-// Event kinds. The events table carries three streams that the dashboard feed
+// Event kinds. The events table carries four streams that the dashboard feed
 // and the alert engine both consume.
 const (
 	EventKindState  = "state"  // service platform-state transition
 	EventKindHealth = "health" // service health transition
 	EventKindAgent  = "agent"  // agent heartbeat-status transition
+	EventKindHost   = "host"   // host heartbeat-status transition
 )
 
 // insertEvent records a service-scoped event with its display context

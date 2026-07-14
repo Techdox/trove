@@ -20,7 +20,9 @@ If OIDC is enabled, read APIs require either an authenticated dashboard session 
 
 ### `GET /api/v1/services`
 
-By default, Trove returns all services grouped by agent and host for the dashboard.
+By default, Trove returns all services grouped by agent and host for the dashboard. Reported hosts with no services are included with an empty `services` array so their liveness remains visible.
+
+Each host group includes its own derived `status` (`ok`, `stale`, `offline`, or `unknown`) and `last_seen_at`, plus `agent_status` for the owning agent. Host and agent status can differ when a multi-host agent continues reporting some hosts after another disappears.
 
 Optional query parameters:
 
@@ -59,8 +61,11 @@ Optional query parameters:
 
 - `limit`: positive integer, capped at `500`.
 - `offset`: non-negative integer.
-- `kind`: exact event kind, for example `state`, `health`, `agent`, or `freshness`.
+- `kind`: exact event kind, for example `state`, `health`, `agent`, `host`, or `freshness`.
 - `since`: Unix timestamp or RFC3339 time. Filters events by `at >= since`.
+
+Service events include `service_id`; host events include `host_id`. These are
+soft historical references and remain in the feed after their subject is pruned.
 
 Example:
 

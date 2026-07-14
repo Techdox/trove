@@ -1,14 +1,18 @@
 package server
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -372,6 +376,146 @@ func TestOIDCConfigEnabledValidation(t *testing.T) {
 				t.Errorf("Enabled() = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestConfigureOIDCAllowsAllAuthenticationSettingsUnset(t *testing.T) {
+	srv := New(nil, nil)
+	if err := srv.ConfigureOIDC(OIDCConfig{}); err != nil {
+		t.Fatalf("ConfigureOIDC: %v", err)
+	}
+	if srv.oidc != nil {
+		t.Fatal("OIDC provider configured for empty settings")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("open-mode /api/v1/me status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestConfigureOIDCRejectsEveryPartialRequiredCombination(t *testing.T) {
+	settings := []struct {
+		name  string
+		value string
+		set   func(*OIDCConfig, string)
+	}{
+		{"TROVE_OIDC_ISSUER", "https://idp.example", func(cfg *OIDCConfig, value string) { cfg.Issuer = value }},
+		{"TROVE_OIDC_CLIENT_ID", "client", func(cfg *OIDCConfig, value string) { cfg.ClientID = value }},
+		{"TROVE_OIDC_CLIENT_SECRET", "secret", func(cfg *OIDCConfig, value string) { cfg.ClientSecret = value }},
+		{"TROVE_OIDC_REDIRECT_URL", "https://trove.example/oauth2/callback", func(cfg *OIDCConfig, value string) { cfg.RedirectURL = value }},
+	}
+
+	for mask := 1; mask < (1<<len(settings))-1; mask++ {
+		t.Run(fmt.Sprintf("set_%04b", mask), func(t *testing.T) {
+			cfg := OIDCConfig{}
+			var missing []string
+			for i, setting := range settings {
+				if mask&(1<<i) != 0 {
+					setting.set(&cfg, setting.value)
+				} else {
+					missing = append(missing, setting.name)
+				}
+			}
+
+			srv := New(nil, nil)
+			err := srv.ConfigureOIDC(cfg)
+			if err == nil {
+				t.Fatal("ConfigureOIDC accepted partial configuration")
+			}
+			for _, name := range missing {
+				if !strings.Contains(err.Error(), name) {
+					t.Errorf("error %q does not name missing setting %s", err, name)
+				}
+			}
+			if srv.oidc != nil {
+				t.Fatal("OIDC provider configured after validation failure")
+			}
+		})
+	}
+}
+
+func TestConfigureOIDCRejectsAPITokenWithoutOIDC(t *testing.T) {
+	srv := New(nil, nil)
+	err := srv.ConfigureOIDC(OIDCConfig{APIToken: "api-token"})
+	if err == nil {
+		t.Fatal("ConfigureOIDC accepted API token without OIDC")
+	}
+	for _, name := range []string{
+		"TROVE_OIDC_ISSUER",
+		"TROVE_OIDC_CLIENT_ID",
+		"TROVE_OIDC_CLIENT_SECRET",
+		"TROVE_OIDC_REDIRECT_URL",
+	} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("error %q does not name missing setting %s", err, name)
+		}
+	}
+}
+
+func TestConfigureOIDCAcceptsCompleteConfiguration(t *testing.T) {
+	var issuer string
+	discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                 issuer,
+			"authorization_endpoint": issuer + "/authorize",
+			"token_endpoint":         issuer + "/token",
+			"jwks_uri":               issuer + "/keys",
+		}); err != nil {
+			t.Errorf("encode discovery response: %v", err)
+		}
+	}))
+	issuer = discovery.URL
+	t.Cleanup(discovery.Close)
+
+	srv := New(nil, nil)
+	err := srv.ConfigureOIDC(OIDCConfig{
+		Issuer:       issuer,
+		ClientID:     "client",
+		ClientSecret: "secret",
+		RedirectURL:  "https://trove.example/oauth2/callback",
+	})
+	if err != nil {
+		t.Fatalf("ConfigureOIDC: %v", err)
+	}
+	if srv.oidc == nil {
+		t.Fatal("OIDC provider not configured")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
+	req.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("protected API status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestOIDCDiscoveryHonorsContextDeadline(t *testing.T) {
+	release := make(chan struct{})
+	discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		discovery.Close()
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := newOIDCProvider(ctx, OIDCConfig{Issuer: discovery.URL}, nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("newOIDCProvider error = %v, want context deadline exceeded", err)
 	}
 }
 

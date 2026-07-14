@@ -8,10 +8,12 @@ Trove's security posture is deliberately simple in the current phase:
   minted by `trove-server agent create`. Tokens are 256-bit random values and
   are stored server-side only as SHA-256 hashes.
 - **The dashboard and read APIs support optional OIDC authentication.** When
-  `TROVE_OIDC_ISSUER` is set, the dashboard and all read APIs require a valid
-  OIDC session (any standard OIDC provider — Authentik, Keycloak, Auth0, Google,
-  Dex). When unset, the dashboard is open — bind to a trusted network (LAN/VPN/
-  tailnet) or front it with an authenticating reverse proxy. Agent ingest
+  all four required OIDC settings are set, the dashboard and all read APIs
+  require a valid OIDC session (any standard OIDC provider — Authentik,
+  Keycloak, Auth0, Google, Dex). Partial configuration fails startup and names
+  the missing variables. When all authentication settings are unset, the
+  dashboard is open — bind to a trusted network (LAN/VPN/tailnet) or front it
+  with an authenticating reverse proxy. Agent ingest
   (`POST /api/v1/report`) and `/healthz` are never gated by OIDC. An optional
   `TROVE_API_TOKEN` allows Bearer-token access for programmatic API clients
   that can't do a browser-based OAuth flow. Logout uses the provider's OIDC

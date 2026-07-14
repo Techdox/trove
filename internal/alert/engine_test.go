@@ -79,7 +79,7 @@ func newTestEngine(t *testing.T) (*Engine, *store.Store, *sink, *time.Time) {
 	s := newSink(t)
 	cfg := Config{
 		WebhookURL: s.srv.URL,
-		Kinds:      map[string]bool{"agent": true, "health": true, "state": true, "freshness": true},
+		Kinds:      map[string]bool{"agent": true, "host": true, "health": true, "state": true, "freshness": true},
 		Cooldown:   5 * time.Minute,
 		Interval:   time.Hour, // sweeps are driven manually in tests
 	}
@@ -101,6 +101,14 @@ func testSvc(state string, health model.Health) model.ReportService {
 	return model.ReportService{
 		ExternalID: "c1", Name: "web", Kind: model.KindContainer,
 		Image: "nginx:alpine", State: state, Health: health,
+	}
+}
+
+func TestDefaultAlertKindsIncludeHostLiveness(t *testing.T) {
+	t.Setenv("TROVE_ALERT_EVENTS", "")
+	cfg := LoadConfigFromEnv()
+	if !cfg.Kinds[store.EventKindHost] {
+		t.Fatalf("default alert kinds = %+v, want host liveness enabled", cfg.Kinds)
 	}
 }
 
@@ -159,6 +167,54 @@ func TestEngineLifecycle(t *testing.T) {
 	e.Sweep(ctx)
 	if s.count() != 2 {
 		t.Fatalf("post-cooldown incident must alert, got: %v", s.titles())
+	}
+}
+
+func TestEngineHostLifecycle(t *testing.T) {
+	e, st, s, _ := newTestEngine(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "proxmox-a")
+	rep := testReport()
+	rep.Agent.Name = "proxmox-a"
+	rep.Agent.Platform = model.PlatformProxmox
+	rep.Host.Hostname = "node-a"
+	if err := st.ApplyReport(ctx, agent.ID, rep); err != nil {
+		t.Fatalf("apply report: %v", err)
+	}
+	hosts, err := st.ListHosts(ctx)
+	if err != nil || len(hosts) != 1 {
+		t.Fatalf("list hosts: hosts=%+v err=%v", hosts, err)
+	}
+	host := hosts[0]
+	if _, err := st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "ok"); err != nil {
+		t.Fatalf("seed host status: %v", err)
+	}
+	e.Sweep(ctx) // seed event cursor
+
+	if _, err := st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "stale"); err != nil {
+		t.Fatalf("mark host stale: %v", err)
+	}
+	e.Sweep(ctx)
+	if got := s.titles(); len(got) != 1 || got[0] != "warning: host node-a stale" {
+		t.Fatalf("stale alert = %v, want host warning", got)
+	}
+
+	s.reset()
+	if _, err := st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "offline"); err != nil {
+		t.Fatalf("mark host offline: %v", err)
+	}
+	e.Sweep(ctx)
+	if got := s.titles(); len(got) != 1 || got[0] != "critical: host node-a offline" {
+		t.Fatalf("offline alert = %v, want host critical escalation", got)
+	}
+
+	s.reset()
+	if _, err := st.UpdateHostStatus(ctx, host.ID, agent.ID, host.Hostname, agent.Name, "ok"); err != nil {
+		t.Fatalf("recover host: %v", err)
+	}
+	e.Sweep(ctx)
+	if got := s.titles(); len(got) != 1 || got[0] != "resolved: host node-a recovered" {
+		t.Fatalf("recovery alert = %v, want host resolution", got)
 	}
 }
 
@@ -264,10 +320,11 @@ func TestEngineRetriesOnlyFailedChannelAfterPartialFanout(t *testing.T) {
 }
 
 // TestEngineReconnectAfterMassStaleDoesNotDropNotifiedBit reproduces a
-// specific pre-fix bug: when an agent goes stale, MarkServicesStaleForAgents
+// specific pre-fix bug: when a host goes stale, MarkServicesStaleForHosts
 // mass-flips every live service's health to "stale" directly in SQL (no
-// event, by design — one agent alert instead of an alert per service). When
-// the agent reconnects and reports the SAME still-unhealthy service,
+// event, by design — staleness is surfaced at host level instead of emitting
+// an event per service).
+// When the host reconnects and reports the SAME still-unhealthy service,
 // ApplyReport diffs against that clobbered "stale" baseline and synthesizes a
 // fresh stale->unhealthy event, even though nothing actually changed from the
 // operator's perspective. Before the fix, deliver() treated that replay as a
@@ -292,9 +349,13 @@ func TestEngineReconnectAfterMassStaleDoesNotDropNotifiedBit(t *testing.T) {
 		t.Fatalf("want 1 unhealthy alert, got: %v", s.titles())
 	}
 
-	// Agent goes stale shortly after (well within cooldown): mass-flip, no event.
+	// Host goes stale shortly after (well within cooldown): mass-flip, no event.
 	*clock = clock.Add(time.Second)
-	if _, err := st.MarkServicesStaleForAgents(ctx, []int64{agent.ID}); err != nil {
+	hosts, err := st.ListHosts(ctx)
+	if err != nil || len(hosts) != 1 {
+		t.Fatalf("list hosts: hosts=%+v err=%v", hosts, err)
+	}
+	if _, err := st.MarkServicesStaleForHosts(ctx, []int64{hosts[0].ID}); err != nil {
 		t.Fatalf("mark stale: %v", err)
 	}
 	s.reset()
@@ -438,6 +499,7 @@ func TestEngineKindFiltering(t *testing.T) {
 
 func TestClassifyTable(t *testing.T) {
 	sid := sql.NullInt64{Int64: 7, Valid: true}
+	hid := sql.NullInt64{Int64: 5, Valid: true}
 	aid := sql.NullInt64{Int64: 3, Valid: true}
 	cases := []struct {
 		name      string
@@ -457,6 +519,9 @@ func TestClassifyTable(t *testing.T) {
 		{"agent stale", store.EventRow{Kind: "agent", AgentID: aid, FromState: "ok", ToState: "stale"}, true, LevelWarning},
 		{"agent offline", store.EventRow{Kind: "agent", AgentID: aid, FromState: "stale", ToState: "offline"}, true, LevelCritical},
 		{"agent recovered", store.EventRow{Kind: "agent", AgentID: aid, FromState: "offline", ToState: "ok"}, true, LevelResolved},
+		{"host stale", store.EventRow{Kind: "host", HostID: hid, AgentID: aid, Hostname: "node-a", FromState: "ok", ToState: "stale"}, true, LevelWarning},
+		{"host offline", store.EventRow{Kind: "host", HostID: hid, AgentID: aid, Hostname: "node-a", FromState: "stale", ToState: "offline"}, true, LevelCritical},
+		{"host recovered", store.EventRow{Kind: "host", HostID: hid, AgentID: aid, Hostname: "node-a", FromState: "offline", ToState: "ok"}, true, LevelResolved},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -468,6 +533,29 @@ func TestClassifyTable(t *testing.T) {
 				t.Fatalf("level = %q, want %q", n.Level, tc.wantLevel)
 			}
 		})
+	}
+}
+
+func TestClassifyHostKeyUsesImmutableID(t *testing.T) {
+	event := store.EventRow{
+		Kind:      store.EventKindHost,
+		HostID:    sql.NullInt64{Int64: 5, Valid: true},
+		AgentID:   sql.NullInt64{Int64: 3, Valid: true},
+		Hostname:  "node-a",
+		FromState: "ok",
+		ToState:   "stale",
+	}
+	first, _, _, ok := classify(event)
+	if !ok {
+		t.Fatal("first host event was not classified")
+	}
+	event.HostID.Int64 = 6 // same agent/name after retention pruning and rediscovery
+	second, _, _, ok := classify(event)
+	if !ok {
+		t.Fatal("second host event was not classified")
+	}
+	if first == second {
+		t.Fatalf("host alert keys collided across immutable IDs: %q", first)
 	}
 }
 

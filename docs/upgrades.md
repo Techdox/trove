@@ -96,8 +96,24 @@ equivalent:
 sqlite3 /var/lib/trove/trove.db ".backup '/var/backups/trove.db'"
 ```
 
-Trove state is rebuildable anyway — agents repopulate the catalog within one
-push interval, so a lost database costs you only event history.
+Do not treat the database as disposable. In addition to current inventory and
+event history, it contains agent token hashes, image-freshness cache state, and
+alert cursor, cooldown, and per-channel delivery state. If the database is lost,
+manually registered agents receive `401` responses because the new server no
+longer recognises their tokens.
+
+Restore a backup whenever possible. If no backup exists:
+
+1. Recreate each production agent with `trove-server agent create <name>`.
+2. Replace that agent's `TROVE_TOKEN` value (or Kubernetes Secret) with the newly
+   issued token and restart the agent.
+3. Wait for successful reports; current inventory repopulates after the agents
+   authenticate and push again.
+
+Historical events and previous alert cursor/delivery state cannot be rebuilt.
+The quickstart's development-only bootstrap agent is recreated automatically
+only when its existing `TROVE_BOOTSTRAP_AGENT` and `TROVE_BOOTSTRAP_TOKEN`
+settings are still present.
 
 ## Rolling back
 

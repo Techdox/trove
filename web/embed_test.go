@@ -59,6 +59,65 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 	}
 }
 
+func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
+	t.Parallel()
+
+	assets := FS()
+	for _, name := range []string{
+		"favicon.ico",
+		"favicon.svg",
+		"trove-icon-180.png",
+		"trove-icon-192.png",
+		"trove-icon-512.png",
+		"trove-mark.svg",
+		"trove-wordmark.svg",
+	} {
+		info, err := fs.Stat(assets, name)
+		if err != nil {
+			t.Errorf("embedded brand asset %q: %v", name, err)
+			continue
+		}
+		if info.Size() == 0 {
+			t.Errorf("embedded brand asset %q is empty", name)
+		}
+	}
+
+	index, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		t.Fatalf("read embedded index: %v", err)
+	}
+	for _, marker := range []string{
+		`src="trove-mark.svg" alt=""`,
+		`src="trove-wordmark.svg" alt="Trove"`,
+	} {
+		if !strings.Contains(string(index), marker) {
+			t.Errorf("dashboard brand markup is missing %q", marker)
+		}
+	}
+
+	mark, err := fs.ReadFile(assets, "trove-mark.svg")
+	if err != nil {
+		t.Fatalf("read embedded mark: %v", err)
+	}
+	for _, marker := range []string{
+		`fill="#7657f6"`,
+		`fill-rule="evenodd"`,
+		`indexed catalogue card`,
+	} {
+		if !strings.Contains(string(mark), marker) {
+			t.Errorf("dashboard mark is missing Open Index marker %q", marker)
+		}
+	}
+
+	wordmark, err := fs.ReadFile(assets, "trove-wordmark.svg")
+	if err != nil {
+		t.Fatalf("read embedded wordmark: %v", err)
+	}
+	if strings.Contains(string(wordmark), "<text") {
+		t.Error("dashboard wordmark must remain path-based, not runtime text")
+	}
+}
+
 func TestDashboardRemovedAttentionFiltersOnlyRemovedServices(t *testing.T) {
 	t.Parallel()
 

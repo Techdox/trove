@@ -1,13 +1,13 @@
 {
   "name": "Trove",
   "short_name": "Trove",
-  "description": "Read-only service catalog for the homelab — one pane of glass across Docker, Kubernetes, Proxmox, and bare-metal Linux.",
+  "description": "Read-only service catalogue for the homelab — one pane of glass across Docker, Kubernetes, Proxmox, and bare-metal Linux.",
   "icons": [
     { "src": "trove-icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "trove-icon-512.png", "sizes": "512x512", "type": "image/png" }
   ],
-  "theme_color": "#12111d",
-  "background_color": "#12111d",
+  "theme_color": "#191621",
+  "background_color": "#14121c",
   "display": "standalone",
   "start_url": "."
 }

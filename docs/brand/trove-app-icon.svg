@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Trove app icon</title>
+  <desc id="desc">The violet Trove indexed-card mark on warm paper.</desc>
+  <rect width="512" height="512" fill="#f6f0e5"/>
+  <g transform="translate(51.2 51.2) scale(.8)">
+    <path fill="#7657f6" fill-rule="evenodd" d="M72 112h56V80q0-16 16-16h128q16 0 16 16v32h152q16 0 16 16v304q0 16-16 16H72q-16 0-16-16V128q0-16 16-16Zm88 64v56h64v136h64V232h64v-56Z"/>
+  </g>
+</svg>

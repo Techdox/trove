@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Trove social preview</title>
+  <desc id="desc">Trove, the read-only service catalogue for Docker, Kubernetes, Proxmox, and Linux.</desc>
+  <defs>
+    <pattern id="rules" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M0 31.5h32" stroke="#ded6c9" stroke-width="1"/>
+    </pattern>
+    <g id="wordmark">
+      <path d="M233.95 0V590.85H24.7V700H563.3V590.85H354.05V0Z"/>
+      <path transform="translate(510)" d="M73.15 0V494.25H185.6V437.38H202.55Q214.08 467.9 239.93 482.08Q265.78 496.25 302.4 496.25H361.88V394.05H299.53Q250.3 394.05 218.95 367.59Q187.6 341.12 187.6 285.85V0Z"/>
+      <path transform="translate(835)" d="M306.7-14Q232.7-14 174.31 16.26Q115.92 46.52 82.54 103.44Q49.15 160.35 49.15 239.48V254.78Q49.15 333.9 82.54 390.81Q115.92 447.73 174.31 477.99Q232.7 508.25 306.7 508.25Q380.7 508.25 439.09 477.99Q497.48 447.73 530.86 390.81Q564.25 333.9 564.25 254.78V239.48Q564.25 160.35 530.86 103.44Q497.48 46.52 439.09 16.26Q380.7-14 306.7-14Zm0 101.85q62.9 0 103 40.48 40.1 40.47 40.1 113.97v9.65q0 73.5-39.69 113.97-39.69 40.48-103.41 40.48-62.72 0-102.91-40.48-40.19-40.47-40.19-113.97v-9.65q0-73.5 40.19-113.97 40.19-40.48 102.91-40.48Z"/>
+      <path transform="translate(1390)" d="M182.05 0 19.85 494.25H141.6L264.48 83.95h16.95L404.3 494.25h121.75L363.85 0Z"/>
+      <path transform="translate(1880)" d="M298.8-14Q224.62-14 168.3 17.5 111.97 49 80.56 106.41 49.15 163.83 49.15 241.13v12q0 77.47 31 134.8 31 57.32 86.74 88.82 55.73 31.5 129.03 31.5 72.13 0 125.87-31.8 53.73-31.8 83.73-88.6 30-56.8 30-132.45v-41.08H165.25q2.18-57.99 41.06-93.06 38.89-35.06 95.79-35.06 55.62 0 82.81 24.4 27.19 24.4 41.41 55.38l94.43-48.76Q506.57 90 480.07 59.33 453.57 28.65 409.92 7.33 366.27-14 298.8-14ZM166.25 300.98h253q-4 49.29-37.39 78.18-33.39 28.89-86.76 28.89-54.85 0-88-28.89-33.15-28.89-40.85-78.18Z"/>
+    </g>
+  </defs>
+  <rect width="1280" height="640" fill="#f6f0e5"/>
+  <rect width="1280" height="640" fill="url(#rules)" opacity=".7"/>
+  <path d="M76 48h218v22h72V48h838q28 0 28 28v488q0 28-28 28H76q-28 0-28-28V76q0-28 28-28Z" fill="#fbf7ef" stroke="#cfc5b7" stroke-width="2"/>
+  <path d="M82 96h396v448H82Z" fill="#7657f6" opacity=".07"/>
+  <g transform="translate(105 120) scale(.68)">
+    <path fill="#7657f6" fill-rule="evenodd" d="M72 112h56V80q0-16 16-16h128q16 0 16 16v32h152q16 0 16 16v304q0 16-16 16H72q-16 0-16-16V128q0-16 16-16Zm88 64v56h64v136h64V232h64v-56Z"/>
+  </g>
+  <text x="526" y="108" fill="#7657f6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" letter-spacing="2.4">OPEN SOURCE / HOMELAB</text>
+  <g fill="#191621" transform="translate(520 144) scale(.265)">
+    <g transform="translate(0 700) scale(1 -1)"><use href="#wordmark"/></g>
+  </g>
+  <text x="526" y="370" fill="#191621" font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, sans-serif" font-size="32" font-weight="600">Know what's running.</text>
+  <text x="526" y="410" fill="#191621" font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, sans-serif" font-size="32" font-weight="600">Without giving it the keys.</text>
+  <path d="M526 450h642" stroke="#cfc5b7" stroke-width="2"/>
+  <text x="526" y="493" fill="#4e475d" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="600" letter-spacing=".7">DOCKER  ·  KUBERNETES  ·  PROXMOX  ·  LINUX</text>
+  <circle cx="532" cy="536" r="6" fill="#5bcf73"/>
+  <text x="552" y="542" fill="#4e475d" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="600" letter-spacing="1.2">READ-ONLY SERVICE CATALOGUE</text>
+</svg>

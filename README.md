@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://github.com/techdox/trove/actions/workflows/ci.yml"><img src="https://github.com/techdox/trove/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/techdox/trove/releases"><img src="https://img.shields.io/github/v/release/techdox/trove?sort=semver" alt="Release"></a>
+  <a href="https://github.com/Techdox/trove/wiki"><img src="https://img.shields.io/badge/docs-wiki-7657F6.svg" alt="Trove Wiki"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 

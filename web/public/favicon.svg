@@ -1,13 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">Trove mark</title>
-  <desc id="desc">Three catalogue layers converge into a compact letter T.</desc>
-  <rect x="24" y="24" width="464" height="464" rx="112" fill="#171522"/>
-  <rect x="34" y="34" width="444" height="444" rx="102" fill="none" stroke="#34304a" stroke-width="12"/>
-  <g fill="#b7a1ff">
-    <path d="M128 136 256 80l128 56-128 56z"/>
-    <path d="m128 214 128 56 128-56v42l-128 56-128-56z"/>
-    <path d="m128 294 92 40v40l-92-40zm256 0-92 40v40l92-40z"/>
-    <rect x="236" y="356" width="40" height="100" rx="12"/>
-  </g>
-  <rect x="214" y="330" width="84" height="36" rx="10" fill="#98e889"/>
+  <desc id="desc">An indexed catalogue card with a capital T cut from its centre.</desc>
+  <path fill="#7657f6" fill-rule="evenodd" d="M72 112h56V80q0-16 16-16h128q16 0 16 16v32h152q16 0 16 16v304q0 16-16 16H72q-16 0-16-16V128q0-16 16-16Zm88 64v56h64v136h64V232h64v-56Z"/>
 </svg>

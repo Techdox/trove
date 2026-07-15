@@ -94,6 +94,28 @@ func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
 			t.Errorf("dashboard brand markup is missing %q", marker)
 		}
 	}
+
+	mark, err := fs.ReadFile(assets, "trove-mark.svg")
+	if err != nil {
+		t.Fatalf("read embedded mark: %v", err)
+	}
+	for _, marker := range []string{
+		`fill="#7657f6"`,
+		`fill-rule="evenodd"`,
+		`indexed catalogue card`,
+	} {
+		if !strings.Contains(string(mark), marker) {
+			t.Errorf("dashboard mark is missing Open Index marker %q", marker)
+		}
+	}
+
+	wordmark, err := fs.ReadFile(assets, "trove-wordmark.svg")
+	if err != nil {
+		t.Fatalf("read embedded wordmark: %v", err)
+	}
+	if strings.Contains(string(wordmark), "<text") {
+		t.Error("dashboard wordmark must remain path-based, not runtime text")
+	}
 }
 
 func TestDashboardRemovedAttentionFiltersOnlyRemovedServices(t *testing.T) {

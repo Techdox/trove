@@ -12,10 +12,41 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # release-tag.yml and release.yml own the manifest-bump push. Running
+      # release-please in parallel races the GitHub Release publication: it can
+      # see the new manifest version before the release exists, then replay the
+      # full commit history into a bogus next-version PR.
+      # actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+
+      - name: Detect merged release PR
+        id: release_merge
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --name-only "$BEFORE" "$AFTER" \
+            | grep -Fxq '.release-please-manifest.json'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release manifest changed; tag and publish workflows own this push."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Needs a real PAT (RELEASE_PLEASE_TOKEN), not the default GITHUB_TOKEN:
       # GitHub refuses to trigger other workflows (i.e. CI) on PRs opened by
       # the built-in token, which would leave the release PR permanently
       # unable to satisfy main's required "test" check. See CONTRIBUTING.md.
       - uses: googleapis/release-please-action@v5
+        if: steps.release_merge.outputs.skip != 'true'
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

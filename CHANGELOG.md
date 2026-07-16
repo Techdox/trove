@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/Techdox/trove/compare/v0.14.0...v0.15.0) (2026-07-16)
+
+
+### Features
+
+* add Proxmox host health metrics ([#91](https://github.com/Techdox/trove/issues/91)) ([9bf7b11](https://github.com/Techdox/trove/commit/9bf7b1152e051b3fa85a5a26f01d82dbb2f2b621))
+
 ## [0.14.0](https://github.com/Techdox/trove/compare/v0.13.0...v0.14.0) (2026-07-15)
 
 

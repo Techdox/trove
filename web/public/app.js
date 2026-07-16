@@ -21,6 +21,7 @@ const state = {
   collapsed: new Set(),  // collapsed host keys
   drawerKey: null,       // key of the service open in the drawer
   hostDrawerKey: null,   // key of the host open in the drawer
+  hostDrawerReturnAgent: null, // agent card to refocus when it opened a host
   cursorKey: null,       // key of the keyboard-cursor row
   data: { services: null, agents: null, events: null },
 };
@@ -80,6 +81,45 @@ function absTime(iso) {
 function agentVersionLabel(version) {
   if (!version) return "";
   return /^\d/.test(version) ? `v${version}` : version;
+}
+
+function platformIdentity(platform) {
+  switch (String(platform || "").toLowerCase()) {
+    case "docker": return { key: "docker", label: "Docker" };
+    case "proxmox":
+    case "pve": return { key: "proxmox", label: "Proxmox VE" };
+    case "kubernetes":
+    case "k8s": return { key: "kubernetes", label: "Kubernetes" };
+    case "local":
+    case "linux":
+    case "systemd": return { key: "linux", label: "Linux" };
+    default: return { key: "unknown", label: platform || "Unknown platform" };
+  }
+}
+
+// Small inline marks keep the dashboard self-contained while making each
+// platform immediately scannable. The SVGs are decorative because the nearby
+// platform text and host/agent name carry the accessible label.
+function platformIconHTML(platform) {
+  const identity = platformIdentity(platform);
+  let art;
+  switch (identity.key) {
+    case "docker":
+      art = `<path d="M3 9h3v3H3zm4 0h3v3H7zm4 0h3v3h-3zM7 5h3v3H7zm4 0h3v3h-3zm4 4h3v3h-3z"/><path d="M2 13h15.3c.9 0 1.7-.2 2.3-.5-.2-1.1.1-2 .9-2.8.4-.4.8-.6 1.3-.8.5 1 .6 2.1.2 3.1.7.1 1.4.3 2 .8-.7.9-1.7 1.3-2.9 1.3h-.7C19.2 18 16 20 10.9 20 6.3 20 3.3 17.7 2 13z"/>`;
+      break;
+    case "proxmox":
+      art = `<path d="M1.5 5.2h4.2l6.3 6.7-6.3 6.9H1.5l6.4-6.9z"/><path d="M22.5 5.2h-4.2L12 11.9l6.3 6.9h4.2l-6.4-6.9z" opacity=".72"/>`;
+      break;
+    case "kubernetes":
+      art = `<path d="M12 2.2 20.4 7v10L12 21.8 3.6 17V7z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 5.8v3.7m0 5v3.7M5.8 12h3.7m5 0h3.7M7.6 7.6l2.6 2.6m3.6 3.6 2.6 2.6m0-8.8-2.6 2.6m-3.6 3.6-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>`;
+      break;
+    case "linux":
+      art = `<rect x="2.5" y="4" width="19" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m6.5 9 3 3-3 3m6 0h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      break;
+    default:
+      art = `<rect x="3" y="4" width="18" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="18" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="7" cy="7" r="1"/><circle cx="7" cy="17" r="1"/>`;
+  }
+  return `<span class="platform-mark platform-${identity.key}" title="${esc(identity.label)}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${art}</svg></span>`;
 }
 
 // ---------------------------------------------------------- badge maps ----
@@ -526,14 +566,19 @@ function renderAgents() {
   }
   el.innerHTML = agents.map((a) => {
     const st = a.status || "unknown";
-    return `<div class="agent-card ${esc(st)}">
+    const hosts = (state.data.services?.hosts || []).filter((host) => host.agent === a.name);
+    const destination = hosts.length === 1 ? "Open host"
+      : (hosts.length > 1 ? `Filter ${hosts.length} hosts` : "Filter catalogue");
+    const ariaLabel = hosts.length === 1 ? `View host ${hosts[0].hostname} reported by ${a.name}`
+      : (hosts.length > 1 ? `Show ${hosts.length} hosts reported by ${a.name}` : `Filter catalogue by agent ${a.name}`);
+    return `<button type="button" class="agent-card ${esc(st)}" data-agent-destination="${esc(a.name)}" aria-label="${esc(ariaLabel)}">
       <div class="row">
-        <span class="name">${esc(a.name)}</span>
+        <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name">${esc(a.name)}</span></span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
       </div>
       <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>
-      <div class="meta">last push: ${esc(relTime(a.last_seen_at))}</div>
-    </div>`;
+      <div class="agent-foot"><span class="meta">last push: ${esc(relTime(a.last_seen_at))}</span><span class="agent-action">${esc(destination)} <span aria-hidden="true">→</span></span></div>
+    </button>`;
   }).join("");
 }
 
@@ -616,9 +661,11 @@ function renderHosts() {
 
     sections.push(`<div class="host${collapsed ? " collapsed" : ""}" data-hostkey="${esc(hostKey(h))}">
       <div class="host-head">
-        <button type="button" class="host-toggle" data-host-toggle aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)} services">
+        <button type="button" class="host-toggle" data-host-toggle aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)} services" title="${collapsed ? "Expand" : "Collapse"} services">
           <span class="chev" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
-          <span class="hostname">${esc(h.hostname)}</span>
+        </button>
+        <button type="button" class="host-name" data-host-details data-hostkey="${esc(hostKey(h))}" aria-label="View ${esc(h.hostname)} host stats">
+          ${platformIconHTML(h.platform)}<span class="hostname">${esc(h.hostname)}</span>
         </button>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
         <span class="sub">last report ${esc(relTime(h.last_seen_at))}</span>
@@ -872,6 +919,7 @@ function renderDrawer() {
       return;
     }
     state.hostDrawerKey = null;
+    state.hostDrawerReturnAgent = null;
   }
   if (!state.drawerKey) {
     el.hidden = true;
@@ -982,6 +1030,7 @@ function moveCursor(delta) {
 
 function openDrawer(key) {
   state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
   state.drawerKey = key;
   state.cursorKey = key;
   render();
@@ -989,19 +1038,53 @@ function openDrawer(key) {
 }
 
 function openHostDrawer(key) {
+  openHostDrawerFromAgent(key, null);
+}
+
+function openHostDrawerFromAgent(key, returnAgent) {
   state.drawerKey = null;
   state.hostDrawerKey = key;
+  state.hostDrawerReturnAgent = returnAgent;
   render();
   requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
+}
+
+function openAgentDestination(name) {
+  const hosts = (state.data.services?.hosts || []).filter((host) => host.agent === name);
+  if (hosts.length === 1) {
+    openHostDrawerFromAgent(hostKey(hosts[0]), name);
+    return;
+  }
+
+  state.q = name;
+  $("q").value = name;
+  state.chips.clear();
+  state.showRemoved = false;
+  state.removedOnly = false;
+  state.drawerKey = null;
+  state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
+  render();
+  requestAnimationFrame(() => {
+    $("inventory-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    focusInvestigationTarget("inventory-title");
+  });
 }
 
 function closeDrawer() {
   const serviceKey = state.drawerKey;
   const hostKeyToRestore = state.hostDrawerKey;
+  const agentToRestore = state.hostDrawerReturnAgent;
   state.drawerKey = null;
   state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
   render();
   requestAnimationFrame(() => {
+    if (agentToRestore) {
+      Array.from(document.querySelectorAll("[data-agent-destination]"))
+        .find((button) => button.dataset.agentDestination === agentToRestore)?.focus({ preventScroll: true });
+      return;
+    }
     if (hostKeyToRestore) {
       Array.from(document.querySelectorAll("[data-host-details]"))
         .find((button) => button.dataset.hostkey === hostKeyToRestore)?.focus({ preventScroll: true });
@@ -1127,6 +1210,9 @@ document.addEventListener("click", (e) => {
 
   const chip = e.target.closest("[data-chip]");
   if (chip) { toggleChip(chip.dataset.chip); return; }
+
+  const agentDestination = e.target.closest("[data-agent-destination]");
+  if (agentDestination) { openAgentDestination(agentDestination.dataset.agentDestination); return; }
 
   if (e.target.closest(".d-close")) { closeDrawer(); return; }
   if (e.target.closest("#drawer")) return; // clicks inside the drawer stay put

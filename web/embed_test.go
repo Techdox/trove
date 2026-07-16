@@ -211,3 +211,31 @@ func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardHostNavigationAndPlatformMarks(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	for _, marker := range []string{
+		"function platformIdentity(platform)",
+		"function platformIconHTML(platform)",
+		"function openAgentDestination(name)",
+		"function openHostDrawerFromAgent(key, returnAgent)",
+		`data-agent-destination="${esc(a.name)}"`,
+		`class="host-name" data-host-details`,
+		`openHostDrawerFromAgent(hostKey(hosts[0]), name)`,
+		`state.q = name;`,
+		`case "docker":`,
+		`case "proxmox":`,
+		`case "kubernetes":`,
+		`case "linux":`,
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard host navigation is missing %q", marker)
+		}
+	}
+}

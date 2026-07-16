@@ -239,3 +239,30 @@ func TestDashboardHostNavigationAndPlatformMarks(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardEnterShortcutDefersToNativeControls(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	source := string(app)
+	enter := strings.Index(source, `if (e.key === "Enter") {`)
+	if enter == -1 {
+		t.Fatal("dashboard Enter shortcut is missing")
+	}
+	shortcut := source[enter:]
+	guard := strings.Index(shortcut, `if (e.target.closest?.("button, a, [role='button'], [role='link']")) return;`)
+	fallback := strings.Index(shortcut, `if (state.cursorKey) openDrawer(state.cursorKey);`)
+	if guard == -1 {
+		t.Fatal("dashboard Enter shortcut does not defer to native controls")
+	}
+	if fallback == -1 {
+		t.Fatal("dashboard Enter shortcut cursor fallback is missing")
+	}
+	if guard > fallback {
+		t.Fatal("dashboard Enter shortcut checks the stale row cursor before native controls")
+	}
+}

@@ -1252,7 +1252,9 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); moveCursor(1); return; }
   if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1); return; }
   if (e.key === "Enter") {
-    if (e.target.closest?.(".host-toggle, .host-details")) return;
+    // Native controls own Enter. Let their click behavior run instead of
+    // opening a service left behind by the j/k row cursor.
+    if (e.target.closest?.("button, a, [role='button'], [role='link']")) return;
     const focused = document.activeElement?.closest?.("#hosts tr[data-ext]");
     if (focused) { openDrawer(rowKey(focused)); return; }
     if (state.cursorKey) openDrawer(state.cursorKey);

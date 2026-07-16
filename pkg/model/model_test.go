@@ -52,6 +52,12 @@ func TestReportValidate(t *testing.T) {
 			r.Host.Metrics = &HostMetrics{Memory: &HostResourceUsage{UsedBytes: 11, TotalBytes: 10}}
 		}},
 		{"missing external id", func(r *Report) { r.Services[0].ExternalID = "" }},
+		{"service name control character", func(r *Report) { r.Services[0].Name = "api\nX-Header: injected" }},
+		{"service name too long", func(r *Report) { r.Services[0].Name = strings.Repeat("a", maxIdentityLength+1) }},
+		{"hostname control character", func(r *Report) { r.Host.Hostname = "host\r\nmalicious" }},
+		{"external id too long", func(r *Report) { r.Services[0].ExternalID = strings.Repeat("a", maxExternalIDLength+1) }},
+		{"image control character", func(r *Report) { r.Services[0].Image = "registry.example/image\nnext" }},
+		{"health detail too long", func(r *Report) { r.Services[0].HealthDetail = strings.Repeat("a", maxHealthDetailLength+1) }},
 		{"bad kind", func(r *Report) { r.Services[0].Kind = "widget" }},
 		{"missing service state", func(r *Report) { r.Services[0].State = " 	" }},
 		{"agent may not report removed", func(r *Report) { r.Services[0].State = StateRemoved }},

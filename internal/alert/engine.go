@@ -473,6 +473,18 @@ func (e *Engine) send(ctx context.Context, key string, n Notification) bool {
 			continue
 		}
 		if err := d.Send(ctx, n); err != nil {
+			if isPermanentDelivery(err) {
+				e.log.Error("alert: permanent channel rejection; dropping for this channel", "channel", d.Name(), "title", n.Title, "err", err)
+				// Treat a channel-specific permanent rejection as consumed. Healthy
+				// channels have already received the event, and retrying this exact
+				// payload can never succeed; pinning the global event cursor here
+				// would suppress every later notification.
+				if markErr := e.store.MarkChannelDelivered(ctx, key, d.Name()); markErr != nil {
+					e.log.Error("alert: record permanent channel rejection", "channel", d.Name(), "title", n.Title, "err", markErr)
+					allDelivered = false
+				}
+				continue
+			}
 			e.log.Error("alert: send failed", "channel", d.Name(), "title", n.Title, "err", err)
 			allDelivered = false
 			continue

@@ -455,6 +455,48 @@ func TestConfigureOIDCRejectsAPITokenWithoutOIDC(t *testing.T) {
 	}
 }
 
+func TestOIDCConfigRejectsWeakAPITokens(t *testing.T) {
+	base := OIDCConfig{
+		Issuer:       "https://idp.example",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		RedirectURL:  "https://trove.example/oauth2/callback",
+	}
+	tests := []struct {
+		name  string
+		token string
+		want  string
+	}{
+		{"short", "api-token", "at least 32 characters"},
+		{"documented placeholder", "TROVE_API_TOKEN_VALUE", "public example value"},
+		{"leading whitespace", " " + strings.Repeat("a", minAPITokenLength), "leading or trailing whitespace"},
+		{"trailing whitespace", strings.Repeat("a", minAPITokenLength) + " ", "leading or trailing whitespace"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := base
+			cfg.APIToken = tt.token
+			err := cfg.validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("validate() error = %v, want text %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestOIDCConfigAcceptsGeneratedLengthAPIToken(t *testing.T) {
+	cfg := OIDCConfig{
+		Issuer:       "https://idp.example",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		RedirectURL:  "https://trove.example/oauth2/callback",
+		APIToken:     strings.Repeat("a", minAPITokenLength),
+	}
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("validate() rejected API token at minimum length: %v", err)
+	}
+}
+
 func TestConfigureOIDCAcceptsCompleteConfiguration(t *testing.T) {
 	var issuer string
 	discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

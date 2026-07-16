@@ -5,8 +5,10 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
+  # Mutations use the explicitly supplied, narrowly scoped PAT below. Keep the
+  # ambient GITHUB_TOKEN read-only so a compromised step does not gain a second
+  # write credential.
+  contents: read
 
 jobs:
   release-please:
@@ -46,7 +48,8 @@ jobs:
       # GitHub refuses to trigger other workflows (i.e. CI) on PRs opened by
       # the built-in token, which would leave the release PR permanently
       # unable to satisfy main's required "test" check. See CONTRIBUTING.md.
-      - uses: googleapis/release-please-action@v5
+      # googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@0dfd8538845b8e92600d271a895a5372865d4062
         if: steps.release_merge.outputs.skip != 'true'
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

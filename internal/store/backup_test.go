@@ -20,6 +20,9 @@ func TestBackupWritesDatabaseAndRefusesOverwrite(t *testing.T) {
 	if info.Size() == 0 {
 		t.Fatal("backup is empty")
 	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("backup mode = %04o, want 0600", got)
+	}
 	if err := st.Backup(context.Background(), dst); err == nil {
 		t.Fatal("second backup unexpectedly overwrote existing file")
 	}

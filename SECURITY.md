@@ -29,19 +29,28 @@ Trove's security posture is deliberately simple in the current phase:
 - The Docker agent needs the Docker socket mounted read-only; note that socket
   access is inherently sensitive — the agent's own API usage is GET-only, and
   the code is small enough to audit quickly (`cmd/trove-agent-docker`).
-- **Image-freshness requests are guarded against SSRF, with an intentional
-  carve-out for LAN registries.** The `Image` field in an agent's report
+- **Image-freshness requests are guarded against SSRF, with an explicit
+  allowlist for LAN registries.** The `Image` field in an agent's report
   drives an outbound registry request (`internal/registry`); a malicious
   agent token or an image pulled from an attacker-run registry could
   otherwise steer that request anywhere. The server refuses to connect to
   loopback, link-local (which covers every cloud metadata endpoint —
   169.254.169.254 on AWS/GCP/Azure alike), and unspecified/multicast
-  addresses, including through the bearer-auth token endpoint's
-  attacker-influenced redirect. **RFC1918 private ranges are deliberately
-  still reachable** — self-hosted registries on your LAN are a supported,
-  documented use case (`TROVE_REGISTRY_AUTHS`) — so a compromised token can
-  still cause the server to probe other hosts on its own local network.
-  Treat agent tokens accordingly: they are not fully untrusted input.
+  addresses, including through the bearer-auth token endpoint and redirects.
+  RFC1918 and IPv6 ULA destinations are denied unless their exact
+  `host[:port]` is configured in `TROVE_REGISTRY_AUTHS` or
+  `TROVE_REGISTRY_PRIVATE_HOSTS`; loopback and link-local destinations cannot
+  be allowlisted. DNS answers are checked and then dialled directly to prevent
+  rebinding between validation and connection. Registry credentials are not
+  forwarded to an attacker-selected bearer realm; cross-host realms require an
+  explicit `auth_realm_hosts` entry, except for Docker Hub's standard auth
+  endpoint.
+- **Free-form platform health messages are opt-in.** By default the server
+  discards `health_detail` values before persistence and omits historical
+  values from the services API. Setting `TROVE_HEALTH_DETAILS_ENABLED=true`
+  retains the diagnostic feature, but Trove still collapses control/whitespace,
+  redacts common bearer token and named-secret forms, and caps the stored value.
+  Structured health/state/exit-code fields remain available without this flag.
 
 ## Reporting a vulnerability
 

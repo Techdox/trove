@@ -28,7 +28,9 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: Dockerfile drift check
-        run: ./scripts/check-dockerfile-drift.sh
+        run: |
+          ./scripts/check-dockerfile-drift_test.sh
+          ./scripts/check-dockerfile-drift.sh
       - name: GitHub Actions lint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.10
       - name: Release surface check

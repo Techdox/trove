@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Health is the normalized health enum. Agents map platform-specific status
@@ -89,6 +91,14 @@ func (p Platform) Valid() bool {
 // previously reported but is absent from the latest full-state report. Agents
 // never send this value.
 const StateRemoved = "removed"
+
+const (
+	maxIdentityLength     = 255
+	maxExternalIDLength   = 512
+	maxStateLength        = 128
+	maxImageLength        = 2048
+	maxHealthDetailLength = 4096
+)
 
 // Report is the full-state payload an agent POSTs to /api/v1/report. Reports
 // are full snapshots, not deltas: the server replaces its view of the host's
@@ -205,8 +215,8 @@ type Port struct {
 // ingest handler can reject malformed pushes with a 400 before touching the
 // store. It does not enforce business rules beyond the wire contract.
 func (r *Report) Validate() error {
-	if strings.TrimSpace(r.Agent.Name) == "" {
-		return errors.New("agent.name is required")
+	if err := validateTextField("agent.name", r.Agent.Name, maxIdentityLength, true); err != nil {
+		return err
 	}
 	if strings.TrimSpace(string(r.Agent.Platform)) == "" {
 		return errors.New("agent.platform is required")
@@ -214,8 +224,11 @@ func (r *Report) Validate() error {
 	if !r.Agent.Platform.Valid() {
 		return fmt.Errorf("agent.platform %q is not a recognized platform", r.Agent.Platform)
 	}
-	if strings.TrimSpace(r.Host.Hostname) == "" {
-		return errors.New("host.hostname is required")
+	if err := validateTextField("agent.version", r.Agent.Version, maxIdentityLength, false); err != nil {
+		return err
+	}
+	if err := validateTextField("host.hostname", r.Host.Hostname, maxIdentityLength, true); err != nil {
+		return err
 	}
 	if r.Host.Condition != "" && !r.Host.Condition.Valid() {
 		return fmt.Errorf("host.condition %q is not a recognized condition", r.Host.Condition)
@@ -224,9 +237,16 @@ func (r *Report) Validate() error {
 		return err
 	}
 	seen := make(map[string]struct{}, len(r.Services))
-	for i, s := range r.Services {
-		if strings.TrimSpace(s.ExternalID) == "" {
-			return fmt.Errorf("services[%d].external_id is required", i)
+	for i := range r.Services {
+		s := &r.Services[i]
+		if err := validateTextField(fmt.Sprintf("services[%d].external_id", i), s.ExternalID, maxExternalIDLength, true); err != nil {
+			return err
+		}
+		if err := validateTextField(fmt.Sprintf("services[%d].parent_external_id", i), s.ParentExternalID, maxExternalIDLength, false); err != nil {
+			return err
+		}
+		if err := validateTextField(fmt.Sprintf("services[%d].name", i), s.Name, maxIdentityLength, false); err != nil {
+			return err
 		}
 		if _, dup := seen[s.ExternalID]; dup {
 			return fmt.Errorf("services[%d].external_id %q is duplicated within the report", i, s.ExternalID)
@@ -235,14 +255,39 @@ func (r *Report) Validate() error {
 		if !s.Kind.Valid() {
 			return fmt.Errorf("services[%d].kind %q is not a recognized kind", i, s.Kind)
 		}
-		if strings.TrimSpace(s.State) == "" {
-			return fmt.Errorf("services[%d].state is required", i)
+		if err := validateTextField(fmt.Sprintf("services[%d].state", i), s.State, maxStateLength, true); err != nil {
+			return err
 		}
 		if s.State == StateRemoved {
 			return fmt.Errorf("services[%d].state %q is server-derived", i, s.State)
 		}
 		if !s.Health.Valid() {
 			return fmt.Errorf("services[%d].health %q is not an agent-reportable health value", i, s.Health)
+		}
+		if err := validateTextField(fmt.Sprintf("services[%d].image", i), s.Image, maxImageLength, false); err != nil {
+			return err
+		}
+		if utf8.RuneCountInString(s.HealthDetail) > maxHealthDetailLength {
+			return fmt.Errorf("services[%d].health_detail exceeds %d characters", i, maxHealthDetailLength)
+		}
+	}
+	return nil
+}
+
+// validateTextField constrains attacker-influenced identifiers before they
+// enter storage, alert titles, HTTP headers, or channel payloads. Human-facing
+// identity fields never need control characters; rejecting them here avoids
+// channel-specific header injection and poison-message failures.
+func validateTextField(field, value string, maxLength int, required bool) error {
+	if required && strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s is required", field)
+	}
+	if utf8.RuneCountInString(value) > maxLength {
+		return fmt.Errorf("%s exceeds %d characters", field, maxLength)
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("%s contains a control character", field)
 		}
 	}
 	return nil

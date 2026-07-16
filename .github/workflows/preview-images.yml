@@ -12,9 +12,11 @@ name: Preview images
 # contract is older. The local/systemd agent has no container image. Docs-only
 # branches/changes deliberately do not publish preview images.
 #
-# Images are tagged with a sanitized branch name. On main, the tag is
-# "main" (overwritten on every push). Tags are never published to
-# "latest" — that stays on goreleaser's release flow.
+# Images are tagged with a sanitized branch name plus a hash of the original
+# branch, preventing distinct names from collapsing to the same Docker tag.
+# Every build also gets an immutable sha-<commit> tag. On main, the moving tag
+# remains "main". Tags are never published to "latest" — that stays on
+# goreleaser's release flow.
 #
 # Package visibility note: the first push of a NEW package to GHCR
 # inherits the repo's visibility at push time. If the package doesn't
@@ -56,20 +58,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      sha_tag: ${{ steps.tag.outputs.sha_tag }}
       version: ${{ steps.tag.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      # actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Derive image tag and runtime version
         id: tag
         shell: bash
         run: |
+          set -euo pipefail
           raw="${GITHUB_REF#refs/heads/}"
-          tag=$(echo "$raw" | sed 's|/|-|g' | tr -cd '[:alnum:]._-')
-          short_sha="${GITHUB_SHA:0:7}"
+          short_sha="${GITHUB_SHA:0:12}"
+          sha_tag="sha-${short_sha}"
+          if [ "$raw" = "main" ]; then
+            tag=main
+          else
+            slug=$(printf '%s' "$raw" | sed 's|/|-|g' | tr -cd '[:alnum:]._-')
+            branch_hash=$(printf '%s' "$raw" | sha256sum | cut -c1-12)
+            if [[ -z "$slug" || ! "$slug" =~ ^[[:alnum:]_] ]]; then
+              slug="branch-${slug}"
+            fi
+            slug=${slug:0:100}
+            tag="${slug}-${branch_hash}"
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$sha_tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag}-${short_sha}" >> "$GITHUB_OUTPUT"
-          echo "Building preview tag $tag from $short_sha"
+          printf 'Building preview tags %s and %s\n' "$tag" "$sha_tag"
 
   build-preview:
     name: Build ${{ matrix.image }} preview image
@@ -92,21 +109,26 @@ jobs:
             dockerfile: Dockerfile.agents
             extra_build_args: CMD=trove-agent-proxmox
     steps:
-      - uses: actions/checkout@v7
+      # actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
-      - uses: docker/setup-qemu-action@v4
+      # docker/setup-qemu-action@v4
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
 
-      - uses: docker/setup-buildx-action@v4
+      # docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        # docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push (multi-arch)
-        uses: docker/build-push-action@v7
+        # docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -114,6 +136,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/techdox/${{ matrix.image }}:${{ needs.metadata.outputs.tag }}
+            ghcr.io/techdox/${{ matrix.image }}:${{ needs.metadata.outputs.sha_tag }}
           build-args: |
             VERSION=${{ needs.metadata.outputs.version }}
             ${{ matrix.extra_build_args }}

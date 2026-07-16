@@ -58,32 +58,40 @@ jobs:
 
       - name: Existing release is already complete
         if: steps.existing_release.outputs.skip == 'true'
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          echo "${{ github.ref_name }} is already published; no duplicate release work needed."
+          printf '%s\n' "$TAG is already published; no duplicate release work needed."
 
-      - uses: actions/checkout@v7
+      # actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         if: steps.existing_release.outputs.skip != 'true'
         with:
           fetch-depth: 0 # goreleaser needs tags/history for the changelog
-      - uses: actions/setup-go@v6
+      # actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         if: steps.existing_release.outputs.skip != 'true'
         with:
           go-version-file: go.mod
           cache: true
-      - uses: docker/setup-qemu-action@v4
+      # docker/setup-qemu-action@v4
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
         if: steps.existing_release.outputs.skip != 'true'
-      - uses: docker/setup-buildx-action@v4
+      # docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
         if: steps.existing_release.outputs.skip != 'true'
       - name: Log in to GHCR
         if: steps.existing_release.outputs.skip != 'true'
-        uses: docker/login-action@v4
+        # docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run goreleaser
         if: steps.existing_release.outputs.skip != 'true'
-        uses: goreleaser/goreleaser-action@v7
+        # goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
         with:
           version: "~> v2"
           args: release --clean

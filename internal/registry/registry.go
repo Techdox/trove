@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -27,8 +26,17 @@ var ErrRateLimited = errors.New("registry rate limited")
 
 // Cred is a username/password for a registry host.
 type Cred struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username       string   `json:"username"`
+	Password       string   `json:"password"`
+	AuthRealmHosts []string `json:"auth_realm_hosts,omitempty"`
+}
+
+// Options controls the registry client's outbound network boundary.
+type Options struct {
+	// AllowedPrivateRegistries contains exact host[:port] endpoints that may
+	// resolve to RFC1918 or IPv6 ULA addresses. Loopback, link-local,
+	// unspecified, and multicast addresses are always rejected.
+	AllowedPrivateRegistries []string
 }
 
 // Client resolves image digests. Safe for concurrent use.
@@ -38,61 +46,144 @@ type Client struct {
 }
 
 // New builds a client with optional per-host credentials.
-func New(creds map[string]Cred) *Client {
+func New(creds map[string]Cred, options ...Options) *Client {
+	privateEndpoints := make(map[string]struct{})
+	for host, cred := range creds {
+		if endpoint, ok := canonicalEndpoint(host); ok {
+			privateEndpoints[endpoint] = struct{}{}
+		}
+		for _, realmHost := range cred.AuthRealmHosts {
+			if endpoint, ok := canonicalEndpoint(realmHost); ok {
+				privateEndpoints[endpoint] = struct{}{}
+			}
+		}
+	}
+	for _, option := range options {
+		for _, host := range option.AllowedPrivateRegistries {
+			if endpoint, ok := canonicalEndpoint(host); ok {
+				privateEndpoints[endpoint] = struct{}{}
+			}
+		}
+	}
+	transport := &http.Transport{
+		DialContext:           newSSRFGuardedDialer(privateEndpoints),
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
 	return &Client{
-		http:  &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{DialContext: dialSSRFGuard}},
+		http: &http.Client{
+			Timeout:       20 * time.Second,
+			Transport:     transport,
+			CheckRedirect: checkRegistryRedirect,
+		},
 		creds: normalizeCreds(creds),
 	}
 }
 
-// registryDialer rejects connections to network ranges no legitimate
-// registry (or its WWW-Authenticate token endpoint) has any business being
-// on. Both the image reference and the bearer-challenge "realm" URL that
-// drive these requests are attacker-influenced — an agent token or a
-// maliciously published image can set either — so the guard sits at the dial
-// layer, where it also covers HTTP redirects (the stdlib client reuses this
-// same Transport when following one).
-//
-// Control receives the address net/dial has already resolved DNS for, right
-// before connecting — checking here (rather than resolving and checking
-// separately beforehand) means there's no TOCTOU gap for a DNS answer to
-// change between the check and the actual connection.
-//
-// RFC1918 private ranges are deliberately NOT blocked: this project's
-// homelab audience runs self-hosted registries on the LAN
-// (TROVE_REGISTRY_AUTHS exists specifically for that), so blocking private
-// space would break a documented, legitimate use case. What IS blocked —
-// loopback, link-local (which also covers every cloud metadata endpoint;
-// AWS/GCP/Azure all serve theirs from 169.254.169.254), and
-// unspecified/multicast — has no legitimate registry use under any
-// deployment this project supports.
-var registryDialer = &net.Dialer{
-	Timeout: 20 * time.Second,
-	Control: func(_, address string, _ syscall.RawConn) error {
-		host, _, err := net.SplitHostPort(address)
+// newSSRFGuardedDialer resolves a target once, validates every answer, then
+// dials the validated IP directly. This closes the DNS-rebinding/TOCTOU gap
+// between a separate safety lookup and net.Dialer's own resolution. Both
+// registry URLs and attacker-controlled bearer realms/redirects pass through
+// this function.
+func newSSRFGuardedDialer(allowedPrivateEndpoints map[string]struct{}) func(context.Context, string, string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: 20 * time.Second, KeepAlive: 30 * time.Second}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("registry: parse destination %q: %w", addr, err)
 		}
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return fmt.Errorf("registry: could not parse resolved address %q", host)
+		_, allowPrivate := allowedPrivateEndpoints[endpointKey(host, port)]
+
+		var resolved []net.IPAddr
+		if ip := net.ParseIP(host); ip != nil {
+			resolved = []net.IPAddr{{IP: ip}}
+		} else {
+			resolved, err = net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, fmt.Errorf("registry: resolve %q: %w", host, err)
+			}
 		}
-		if isBlockedDestination(ip) {
-			return fmt.Errorf("registry: refusing to connect to %s (loopback/link-local/unspecified)", host)
+		if len(resolved) == 0 {
+			return nil, fmt.Errorf("registry: %q resolved to no addresses", host)
 		}
-		return nil
-	},
+		for _, candidate := range resolved {
+			if err := validateDestination(candidate.IP, allowPrivate); err != nil {
+				return nil, fmt.Errorf("registry: refusing destination %q (%s): %w", host, candidate.IP, err)
+			}
+		}
+
+		var dialErrors []error
+		for _, candidate := range resolved {
+			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
+			if dialErr == nil {
+				return conn, nil
+			}
+			dialErrors = append(dialErrors, dialErr)
+		}
+		return nil, fmt.Errorf("registry: connect to %q: %w", host, errors.Join(dialErrors...))
+	}
 }
 
-func dialSSRFGuard(ctx context.Context, network, addr string) (net.Conn, error) {
-	return registryDialer.DialContext(ctx, network, addr)
+func validateDestination(ip net.IP, allowPrivate bool) error {
+	if ip == nil {
+		return errors.New("invalid IP address")
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast() {
+		return errors.New("loopback, link-local, unspecified, and multicast addresses are forbidden")
+	}
+	if ip.IsPrivate() && !allowPrivate {
+		return errors.New("private addresses require an explicitly configured registry host")
+	}
+	return nil
 }
 
-// isBlockedDestination reports whether ip is a class of address no
-// legitimate container registry (self-hosted or public) is ever reached at.
-func isBlockedDestination(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() || ip.IsMulticast()
+func endpointKey(host, port string) string {
+	host = strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
+	return net.JoinHostPort(host, port)
+}
+
+// canonicalEndpoint converts a configured registry host[:port] into the same
+// exact key used by the dialer. Registries without a port use HTTPS/443.
+func canonicalEndpoint(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.ContainsAny(raw, "/?#@") {
+		return "", false
+	}
+	host, port, err := net.SplitHostPort(raw)
+	if err != nil {
+		if ip := net.ParseIP(strings.Trim(raw, "[]")); ip != nil {
+			host, port = ip.String(), "443"
+		} else if strings.Contains(raw, ":") {
+			return "", false
+		} else {
+			host, port = raw, "443"
+		}
+	}
+	if host == "" || port == "" {
+		return "", false
+	}
+	return endpointKey(host, port), true
+}
+
+func checkRegistryRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("registry: stopped after 10 redirects")
+	}
+	if !strings.EqualFold(req.URL.Scheme, "https") {
+		return fmt.Errorf("registry: refusing redirect to non-HTTPS URL %q", req.URL.String())
+	}
+	if len(via) > 0 {
+		previous, previousOK := canonicalEndpoint(via[len(via)-1].URL.Host)
+		next, nextOK := canonicalEndpoint(req.URL.Host)
+		if !previousOK || !nextOK || previous != next {
+			req.Header.Del("Authorization")
+		}
+	}
+	return nil
 }
 
 // manifestAccept lists every manifest/index media type we can handle, so the
@@ -193,7 +284,11 @@ func (c *Client) authorize(ctx context.Context, reg, repo, challenge string) (st
 		if realm == "" {
 			return "", fmt.Errorf("registry %s: bearer challenge missing realm", reg)
 		}
-		q := url.Values{}
+		realmURL, err := parseAuthRealm(realm)
+		if err != nil {
+			return "", fmt.Errorf("registry %s: invalid bearer realm: %w", reg, err)
+		}
+		q := realmURL.Query()
 		if s := params["service"]; s != "" {
 			q.Set("service", s)
 		}
@@ -202,12 +297,13 @@ func (c *Client) authorize(ctx context.Context, reg, repo, challenge string) (st
 			scope = "repository:" + repo + ":pull"
 		}
 		q.Set("scope", scope)
+		realmURL.RawQuery = q.Encode()
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, realm+"?"+q.Encode(), nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, realmURL.String(), nil)
 		if err != nil {
 			return "", err
 		}
-		if hasCred {
+		if hasCred && credentialAllowedForRealm(reg, realmURL.Host, cred) {
 			req.Header.Set("Authorization", basicAuth(cred))
 		}
 		resp, err := c.http.Do(req)
@@ -237,6 +333,49 @@ func (c *Client) authorize(ctx context.Context, reg, repo, challenge string) (st
 	default:
 		return "", fmt.Errorf("registry %s: unsupported auth scheme %q", reg, scheme)
 	}
+}
+
+func parseAuthRealm(raw string) (*url.URL, error) {
+	realmURL, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(realmURL.Scheme, "https") || realmURL.Host == "" {
+		return nil, errors.New("realm must be an absolute HTTPS URL")
+	}
+	if realmURL.User != nil {
+		return nil, errors.New("realm URL must not contain user information")
+	}
+	if realmURL.Fragment != "" {
+		return nil, errors.New("realm URL must not contain a fragment")
+	}
+	return realmURL, nil
+}
+
+// credentialAllowedForRealm ensures registry credentials are never forwarded
+// to an attacker-selected public token service. Same-endpoint realms are safe;
+// Docker Hub's documented auth host is built in, and operators can explicitly
+// trust additional realm endpoints per credential entry.
+func credentialAllowedForRealm(registryHost, realmHost string, cred Cred) bool {
+	registryEndpoint, registryOK := canonicalEndpoint(registryHost)
+	realmEndpoint, realmOK := canonicalEndpoint(realmHost)
+	if !registryOK || !realmOK {
+		return false
+	}
+	if registryEndpoint == realmEndpoint {
+		return true
+	}
+	dockerRegistry, _ := canonicalEndpoint("registry-1.docker.io")
+	dockerAuth, _ := canonicalEndpoint("auth.docker.io")
+	if registryEndpoint == dockerRegistry && realmEndpoint == dockerAuth {
+		return true
+	}
+	for _, allowed := range cred.AuthRealmHosts {
+		if endpoint, ok := canonicalEndpoint(allowed); ok && endpoint == realmEndpoint {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseImage splits a Docker image reference into registry host, repository,

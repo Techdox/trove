@@ -183,7 +183,7 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 			ImageDigest:      row.ImageDigest,
 			State:            row.State,
 			Health:           row.Health,
-			HealthDetail:     row.HealthDetail,
+			HealthDetail:     s.exposedHealthDetail(row.HealthDetail),
 			Freshness:        freshness,
 			LatestDigest:     latestDigest,
 			Ports:            rawJSON(row.PortsJSON, "[]"),

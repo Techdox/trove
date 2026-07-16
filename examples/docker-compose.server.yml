@@ -4,6 +4,7 @@
 #
 #   1. Save a token for your first agent to .env (Compose loads it automatically
 #      and it persists across restarts/upgrades):
+#        umask 077
 #        echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)" > .env
 #   2. Start the server:
 #        docker compose -f docker-compose.server.yml up -d
@@ -26,7 +27,7 @@ services:
     image: ghcr.io/techdox/trove-server:latest
     environment:
       TROVE_BOOTSTRAP_AGENT: "first-agent"
-      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first with a restrictive umask; see the file header}"
     ports:
       - "8080:8080"
     volumes:

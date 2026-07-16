@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,6 +44,23 @@ type Dispatcher interface {
 	Send(ctx context.Context, n Notification) error
 }
 
+type permanentDeliveryError struct{ err error }
+
+func (e *permanentDeliveryError) Error() string { return e.err.Error() }
+func (e *permanentDeliveryError) Unwrap() error { return e.err }
+
+func permanentDelivery(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &permanentDeliveryError{err: err}
+}
+
+func isPermanentDelivery(err error) bool {
+	var target *permanentDeliveryError
+	return errors.As(err, &target)
+}
+
 // Dispatchers builds the set of configured channel dispatchers.
 func Dispatchers(cfg Config) []Dispatcher {
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -72,7 +90,7 @@ func post(ctx context.Context, client *http.Client, build func() (*http.Request,
 		}
 		req, err := build()
 		if err != nil {
-			return err
+			return permanentDelivery(err)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -87,7 +105,7 @@ func post(ctx context.Context, client *http.Client, build func() (*http.Request,
 		lastErr = fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 		// Client errors won't improve on retry.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
-			return lastErr
+			return permanentDelivery(lastErr)
 		}
 	}
 	return lastErr
@@ -151,8 +169,8 @@ var discordColors = map[string]int{
 
 func (d *discordDispatcher) Send(ctx context.Context, n Notification) error {
 	embed := map[string]any{
-		"title":       n.Title,
-		"description": n.Body,
+		"title":       truncateRunes(n.Title, 256),
+		"description": truncateRunes(n.Body, 4096),
 		"color":       discordColors[n.Level],
 		"timestamp":   n.At.UTC().Format(time.RFC3339),
 		"footer":      map[string]any{"text": "trove"},
@@ -196,12 +214,17 @@ var ntfyTags = map[string]string{
 }
 
 func (d *ntfyDispatcher) Send(ctx context.Context, n Notification) error {
+	title := truncateRunes(n.Title, 256)
+	body := truncateRunes(n.Body, 4096)
+	if !validHeaderValue(title) {
+		return permanentDelivery(errors.New("ntfy title contains an invalid HTTP header character"))
+	}
 	return post(ctx, d.client, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.url, strings.NewReader(n.Body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.url, strings.NewReader(body))
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Title", n.Title)
+		req.Header.Set("Title", title)
 		req.Header.Set("Priority", ntfyPriority[n.Level])
 		req.Header.Set("Tags", ntfyTags[n.Level])
 		if d.token != "" {
@@ -209,4 +232,24 @@ func (d *ntfyDispatcher) Send(ctx context.Context, n Notification) error {
 		}
 		return req, nil
 	})
+}
+
+func validHeaderValue(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if value[i] == '\r' || value[i] == '\n' || value[i] == 0x7f || (value[i] < 0x20 && value[i] != '\t') {
+			return false
+		}
+	}
+	return true
+}
+
+func truncateRunes(value string, max int) string {
+	runes := []rune(value)
+	if len(runes) <= max {
+		return value
+	}
+	if max <= 1 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-1]) + "…"
 }

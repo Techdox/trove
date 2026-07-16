@@ -26,6 +26,7 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, agent stor
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.filterHealthDetails(&report)
 
 	if err := s.store.ApplyReport(r.Context(), agent.ID, &report); err != nil {
 		s.log.Error("apply report", "agent", agent.Name, "err", err)

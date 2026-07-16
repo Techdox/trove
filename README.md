@@ -84,6 +84,7 @@ curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker
 # Save the agent's token to .env — Compose loads it automatically and it
 # survives restarts and upgrades. (Don't just `export` it: a new shell would
 # lose it, and re-running with a fresh token silently breaks the agent.)
+umask 077
 echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)" > .env
 docker compose up -d
 ```
@@ -99,11 +100,15 @@ curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker
 # Save settings to .env (Compose loads it automatically; it persists across
 # restarts). TROVE_TOKEN is Trove's own agent token; TROVE_PROXMOX_TOKEN is
 # your Proxmox API token — two different credentials.
+umask 077
 {
   echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)"
   echo "TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006"
   echo "TROVE_PROXMOX_TOKEN=trove@pve!trove-agent=YOUR-TOKEN-SECRET"
 } > .env
+chmod 600 .env
+# If PVE uses its default private CA, copy /etc/pve/pve-root-ca.pem from a node
+# to ./pve-root-ca.pem and uncomment the CA lines in the Compose file.
 # now edit .env to fill in your real PVE host and API token, then:
 docker compose -f docker-compose.proxmox.yml up -d
 ```
@@ -240,6 +245,8 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 | `TROVE_FRESHNESS_INTERVAL` | `5m`       | How often to scan for images due a check.                              |
 | `TROVE_FRESHNESS_TTL`      | `6h`       | How long a resolved digest counts as fresh before rechecking.          |
 | `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
+| `TROVE_REGISTRY_PRIVATE_HOSTS` | _(unset)_ | Comma-separated private registry `host[:port]` allowlist. Hosts in `TROVE_REGISTRY_AUTHS` are allowed automatically. |
+| `TROVE_HEALTH_DETAILS_ENABLED` | `false` | Explicitly retain and display bounded, redacted platform health messages. |
 | `TROVE_EVENT_RETENTION`    | `720h` (30d) | How long events (activity feed / alert stream) are kept.             |
 | `TROVE_REMOVED_RETENTION`  | `24h`      | How long removed services linger before being purged.                  |
 | `TROVE_HOST_RETENTION`     | `720h` (30d) | How long a silent host and its remaining inventory are retained.     |
@@ -260,7 +267,7 @@ Dex, etc.):
 | `TROVE_OIDC_CLIENT_ID` | OAuth2 client ID registered with your IdP |
 | `TROVE_OIDC_CLIENT_SECRET` | OAuth2 client secret |
 | `TROVE_OIDC_REDIRECT_URL` | Callback URL, e.g. `https://trove.example/oauth2/callback` |
-| `TROVE_API_TOKEN` | _(optional)_ Bearer token for programmatic API access (bypasses OIDC) |
+| `TROVE_API_TOKEN` | _(optional)_ Random bearer token of at least 32 characters for programmatic API access (bypasses OIDC) |
 | `TROVE_OIDC_SESSION_MAX_AGE` | _(optional)_ Session duration (default `8h`) |
 
 OIDC is enabled only when all four required `TROVE_OIDC_*` settings are
@@ -274,6 +281,8 @@ your IdP's login page. After login, Trove sets a signed session cookie. API
 requests with a bearer token matching `TROVE_API_TOKEN` bypass OIDC for script
 access. See the safe, copyable example in
 [docs/authentication.md](docs/authentication.md#programmatic-api-access).
+Generate this optional token with `openssl rand -hex 32`; Trove rejects short
+tokens and known documentation placeholders at startup.
 
 Logout clears Trove's local session cookie and, when the provider exposes an
 OIDC `end_session_endpoint`, redirects through provider logout so users are not
@@ -303,8 +312,18 @@ in [docs/authentication.md](docs/authentication.md).
 Private registry / Docker Hub credentials for freshness checks:
 
 ```sh
-TROVE_REGISTRY_AUTHS='{"docker.io":{"username":"me","password":"dckr_pat_..."},"gitea.example.com":{"username":"me","password":"..."}}'
+TROVE_REGISTRY_AUTHS='{"docker.io":{"username":"me","password":"dckr_pat_..."},"gitea.example.com":{"username":"me","password":"...","auth_realm_hosts":["sso.example.com"]}}'
 ```
+
+Private IP ranges are denied by default. A host configured in
+`TROVE_REGISTRY_AUTHS` is an explicit private-network allowlist entry. For an
+anonymous private registry, set its exact endpoint separately, for example
+`TROVE_REGISTRY_PRIVATE_HOSTS=registry.lan:5000`. Loopback, link-local/cloud
+metadata, unspecified, and multicast destinations remain blocked even when
+listed. Registry credentials are sent to a separate bearer-token realm only
+when that realm is the registry itself, Docker Hub's standard auth service, or
+an exact `auth_realm_hosts` entry. Those explicitly trusted realm hosts are
+also eligible to resolve to a private address.
 
 Docker Hub's anonymous rate limits are generous for Trove's batched, cached
 checks at homelab scale, but if you run many distinct Hub images, adding a

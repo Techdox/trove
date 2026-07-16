@@ -689,6 +689,14 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
   font-size: 11.5px;
   line-height: 1.6;
 }
+.d-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+}
+.d-empty span { display: block; }
 
 /* ---- misc ---- */
 .empty { color: var(--subtle); padding: 30px 14px; text-align: center; font-style: italic; }

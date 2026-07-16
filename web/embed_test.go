@@ -57,6 +57,7 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 			t.Errorf("dashboard focus target is missing %q", marker)
 		}
 	}
+
 }
 
 func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
@@ -177,7 +178,9 @@ func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
 		"function hostMetricRows(metrics)",
 		"function hostMetricsHTML(metrics)",
 		"function findHost(key)",
+		"function findAgent(name)",
 		"function hostMetaLabel(key)",
+		"function missingHostMetricsHTML(host, agent)",
 		"function openHostDrawer(key)",
 		`item("critical-hosts"`,
 		`item("warning-hosts"`,
@@ -185,10 +188,22 @@ func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
 		"hostMetricsHTML(h.metrics)",
 		"data-host-details",
 		"View host stats",
+		"No host metrics reported",
+		"agent version",
 		"state.drawerKey || state.hostDrawerKey",
 	} {
 		if !strings.Contains(string(app), marker) {
 			t.Errorf("dashboard host metrics are missing %q", marker)
+		}
+	}
+
+	for _, duplicate := range []string{
+		`<span class="d-detail-label">Snapshot</span>`,
+		"No host resource metrics were included in the latest report.",
+		"Waiting for a compatible agent to report CPU, load, memory, disk, and uptime.",
+	} {
+		if strings.Contains(string(app), duplicate) {
+			t.Errorf("dashboard host drawer repeats its metrics state with %q", duplicate)
 		}
 	}
 }

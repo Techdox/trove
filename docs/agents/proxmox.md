@@ -165,6 +165,10 @@ separate condition: `online` maps to `normal`, while an explicitly `offline`
 cluster member maps to `critical`. Trove does not treat a single high CPU or
 memory sample as an alert-worthy failure.
 
+After upgrading Trove, update and restart both the server and the Proxmox
+agent. An older agent can continue reporting its guests, but its reports do not
+contain the host condition or resource snapshot required by this view.
+
 If a node's status endpoint is temporarily unavailable, the rest of the
 cluster report is still sent and that host's metrics are cleared rather than
 leaving an old snapshot on screen. Offline nodes are still reported with their

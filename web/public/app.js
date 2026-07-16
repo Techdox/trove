@@ -751,6 +751,10 @@ function findHost(key) {
   return (state.data.services?.hosts || []).find((host) => hostKey(host) === key) || null;
 }
 
+function findAgent(name) {
+  return (state.data.agents?.agents || []).find((agent) => agent.name === name) || null;
+}
+
 function drawerSection(title, body) {
   return body ? `<div class="d-sec">${title}</div>${body}` : "";
 }
@@ -765,10 +769,28 @@ function hostMetaLabel(key) {
   }[key] || key;
 }
 
+function missingHostMetricsHTML(host, agent) {
+  const isProxmox = host.platform === "proxmox" || host.platform === "pve";
+  const version = agent?.version ? ` (${esc(agent.version)})` : "";
+  let detail;
+  if (isProxmox && (host.condition || "unknown") === "unknown") {
+    detail = `The connected Proxmox agent${version} appears to be using the older host report. ` +
+      "Update and restart the Proxmox agent from the same Trove build as the server, then wait for its next report.";
+  } else if (isProxmox) {
+    detail = "The latest report did not contain a node resource snapshot. Check the Proxmox agent logs for node status API errors or permission problems.";
+  } else {
+    detail = "This platform did not include CPU, load, memory, disk, or uptime in its latest report.";
+  }
+  return `<div class="d-empty"><strong>No host metrics reported</strong><span>${detail}</span></div>`;
+}
+
 function renderHostDrawer(el, host) {
   const metrics = hostMetricRows(host.metrics);
+  const agent = findAgent(host.agent);
   const meta = host.meta && typeof host.meta === "object"
-    ? Object.entries(host.meta).sort(([a], [b]) => a.localeCompare(b)) : [];
+    ? Object.entries(host.meta)
+      .filter(([key]) => key !== "platform")
+      .sort(([a], [b]) => a.localeCompare(b)) : [];
   const live = (host.services || []).filter((s) => s.state !== "removed");
   const inventory = [
     ["Services", String(live.length)],
@@ -793,17 +815,8 @@ function renderHostDrawer(el, host) {
       ${badge(AGENT_CLASS[status] || "b-gray", `reporting ${status}`)}
       ${badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`)}
     </div>
-    <div class="d-detail">
-      <span class="d-detail-label">Snapshot</span>
-      ${metrics.length > 0
-        ? "Latest point-in-time host data reported by the agent."
-        : "No host resource metrics were included in the latest report."}
-    </div>
-    <div class="d-mono">
-      <span class="lbl">agent</span> ${esc(host.agent)} · <span class="lbl">platform</span> ${esc(host.platform || "—")}
-    </div>
 
-    ${drawerSection("Host resources", metrics.length ? kv(metrics, "metrics") : `<div class="d-empty">Waiting for a compatible agent to report CPU, load, memory, disk, and uptime.</div>`)}
+    ${drawerSection("Host resources", metrics.length ? kv(metrics, "metrics") : missingHostMetricsHTML(host, agent))}
     ${drawerSection("Platform details", meta.length ? kv(meta.map(([k, v]) => [hostMetaLabel(k), metaValue(v)])) : "")}
     ${drawerSection("Inventory", kv(inventory))}
 
@@ -811,6 +824,7 @@ function renderHostDrawer(el, host) {
     <div class="kv">
       <span class="k">last report</span><span class="v">${esc(absTime(host.last_seen_at))} (${esc(relTime(host.last_seen_at))})</span>
       <span class="k">agent</span><span class="v">${esc(host.agent)}</span>
+      <span class="k">agent version</span><span class="v">${esc(agent?.version || "not reported")}</span>
       <span class="k">platform</span><span class="v">${esc(host.platform || "—")}</span>
     </div>
   `;

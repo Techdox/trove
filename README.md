@@ -46,7 +46,8 @@ not a feature toggle, and it's the project's one hard rule.
   quiet flags itself and all its services within ~90 seconds.
 - **Host condition + resources** — reporting health stays separate from the
   platform's host condition. Proxmox nodes surface online/offline condition,
-  CPU, load, memory, root-disk usage, and uptime directly in the host header.
+  CPU, load, memory, root-disk usage, and uptime in a dedicated host-stats
+  drawer, opened from the clearly labelled action on each host.
 - **Image freshness** — the server checks registries (batched, cached,
   rate-limit-aware) and badges services whose running image is behind its tag.
 - **Alerts & digest** — instant notifications via webhook / Discord / ntfy when

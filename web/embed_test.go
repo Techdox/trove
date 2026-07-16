@@ -174,11 +174,18 @@ func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
 
 	for _, marker := range []string{
 		"function hostMetricItems(metrics)",
+		"function hostMetricRows(metrics)",
 		"function hostMetricsHTML(metrics)",
+		"function findHost(key)",
+		"function hostMetaLabel(key)",
+		"function openHostDrawer(key)",
 		`item("critical-hosts"`,
 		`item("warning-hosts"`,
 		"`condition ${condition}`",
 		"hostMetricsHTML(h.metrics)",
+		"data-host-details",
+		"View host stats",
+		"state.drawerKey || state.hostDrawerKey",
 	} {
 		if !strings.Contains(string(app), marker) {
 			t.Errorf("dashboard host metrics are missing %q", marker)

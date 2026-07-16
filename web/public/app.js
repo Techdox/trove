@@ -20,6 +20,7 @@ const state = {
   removedOnly: false,    // limit the catalogue to soft-removed services
   collapsed: new Set(),  // collapsed host keys
   drawerKey: null,       // key of the service open in the drawer
+  hostDrawerKey: null,   // key of the host open in the drawer
   cursorKey: null,       // key of the keyboard-cursor row
   data: { services: null, agents: null, events: null },
 };
@@ -259,6 +260,37 @@ function hostMetricsHTML(metrics) {
   return `<span class="host-metrics" aria-label="Host resource metrics">${items.map((item) =>
     `<span class="host-metric" title="${esc(item.title)}"><span class="metric-label">${esc(item.label)}</span> ${esc(item.value)}</span>`
   ).join("")}</span>`;
+}
+
+function resourceMetricDetail(usage) {
+  if (!usage || typeof usage !== "object") return "";
+  const used = finiteNumber(usage.used_bytes);
+  const total = finiteNumber(usage.total_bytes);
+  if (used === null || total === null || total <= 0 || used < 0 || used > total) return "";
+  return `${formatBytes(used)} / ${formatBytes(total)} · ${Math.round((used / total) * 100)}%`;
+}
+
+function hostMetricRows(metrics) {
+  if (!metrics || typeof metrics !== "object") return [];
+  const rows = [];
+  const cpu = finiteNumber(metrics.cpu_usage_ratio);
+  const cores = finiteNumber(metrics.cpu_logical_count);
+  if (cpu !== null && cpu >= 0 && cpu <= 1) {
+    rows.push(["CPU usage", `${Math.round(cpu * 100)}%${cores && cores > 0 ? ` · ${cores} logical CPUs` : ""}`]);
+  } else if (cores && cores > 0) {
+    rows.push(["Logical CPUs", String(cores)]);
+  }
+  const load = [metrics.load_1, metrics.load_5, metrics.load_15].map(finiteNumber);
+  if (load.some((n) => n !== null && n >= 0)) {
+    rows.push(["Load average", `${load.map((n) => n === null || n < 0 ? "—" : n.toFixed(2)).join(" · ")} (1m · 5m · 15m)`]);
+  }
+  const memory = resourceMetricDetail(metrics.memory);
+  if (memory) rows.push(["Memory", memory]);
+  const rootDisk = resourceMetricDetail(metrics.root_disk);
+  if (rootDisk) rows.push(["Root disk", rootDisk]);
+  const uptime = finiteNumber(metrics.uptime_seconds);
+  if (uptime !== null && uptime >= 0) rows.push(["Uptime", formatUptime(uptime)]);
+  return rows;
 }
 
 // ------------------------------------------------------- cell rendering ----
@@ -578,9 +610,11 @@ function renderHosts() {
       ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
 
     sections.push(`<div class="host${collapsed ? " collapsed" : ""}" data-hostkey="${esc(hostKey(h))}">
-      <button type="button" class="host-head" aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)}">
-        <span class="chev">${collapsed ? "▸" : "▾"}</span>
-        <span class="hostname">${esc(h.hostname)}</span>
+      <div class="host-head">
+        <button type="button" class="host-toggle" data-host-toggle aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)} services">
+          <span class="chev" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+          <span class="hostname">${esc(h.hostname)}</span>
+        </button>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
         <span class="sub">last report ${esc(relTime(h.last_seen_at))}</span>
         ${badge(AGENT_CLASS[st] || "b-gray", `reporting ${st}`)}
@@ -588,7 +622,10 @@ function renderHosts() {
         ${hostMetricsHTML(h.metrics)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
-      </button>
+        <button type="button" class="host-details" data-host-details data-hostkey="${esc(hostKey(h))}" aria-label="View ${esc(h.hostname)} host stats">
+          View host stats <span aria-hidden="true">→</span>
+        </button>
+      </div>
       <p class="table-scroll-hint">Swipe or scroll horizontally to see all service details <span aria-hidden="true">→</span></p>
       <div class="host-body">
         <table>
@@ -710,8 +747,86 @@ function findService(key) {
   return null;
 }
 
+function findHost(key) {
+  return (state.data.services?.hosts || []).find((host) => hostKey(host) === key) || null;
+}
+
+function drawerSection(title, body) {
+  return body ? `<div class="d-sec">${title}</div>${body}` : "";
+}
+
+function hostMetaLabel(key) {
+  return {
+    "proxmox.version": "Proxmox version",
+    "proxmox.release": "Proxmox release",
+    "proxmox.repoid": "Proxmox repository ID",
+    "docker.version": "Docker version",
+    "kubernetes.version": "Kubernetes version",
+  }[key] || key;
+}
+
+function renderHostDrawer(el, host) {
+  const metrics = hostMetricRows(host.metrics);
+  const meta = host.meta && typeof host.meta === "object"
+    ? Object.entries(host.meta).sort(([a], [b]) => a.localeCompare(b)) : [];
+  const live = (host.services || []).filter((s) => s.state !== "removed");
+  const inventory = [
+    ["Services", String(live.length)],
+    ["Running", String(live.filter((s) => s.state === "running").length)],
+    ["Stopped", String(live.filter((s) => STOPPED_STATES.has(s.state)).length)],
+    ["Unhealthy", String(live.filter((s) => s.health === "unhealthy").length)],
+    ["Outdated", String(live.filter((s) => s.freshness === "outdated").length)],
+  ];
+  const metaValue = (value) => typeof value === "object" ? JSON.stringify(value) : String(value);
+  const kv = (rows, cls = "") => `<div class="kv${cls ? ` ${cls}` : ""}">${rows.map(([k, v]) =>
+    `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>`;
+  const status = host.status || "unknown";
+  const condition = host.condition || "unknown";
+
+  el.innerHTML = `
+    <div class="d-head">
+      <span class="d-name">${esc(host.hostname)}</span>
+      <span class="kind">host</span>
+      <button class="d-close" aria-label="Close host stats" title="close (esc)">✕</button>
+    </div>
+    <div class="d-badges">
+      ${badge(AGENT_CLASS[status] || "b-gray", `reporting ${status}`)}
+      ${badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`)}
+    </div>
+    <div class="d-detail">
+      <span class="d-detail-label">Snapshot</span>
+      ${metrics.length > 0
+        ? "Latest point-in-time host data reported by the agent."
+        : "No host resource metrics were included in the latest report."}
+    </div>
+    <div class="d-mono">
+      <span class="lbl">agent</span> ${esc(host.agent)} · <span class="lbl">platform</span> ${esc(host.platform || "—")}
+    </div>
+
+    ${drawerSection("Host resources", metrics.length ? kv(metrics, "metrics") : `<div class="d-empty">Waiting for a compatible agent to report CPU, load, memory, disk, and uptime.</div>`)}
+    ${drawerSection("Platform details", meta.length ? kv(meta.map(([k, v]) => [hostMetaLabel(k), metaValue(v)])) : "")}
+    ${drawerSection("Inventory", kv(inventory))}
+
+    <div class="d-sec">Reporting</div>
+    <div class="kv">
+      <span class="k">last report</span><span class="v">${esc(absTime(host.last_seen_at))} (${esc(relTime(host.last_seen_at))})</span>
+      <span class="k">agent</span><span class="v">${esc(host.agent)}</span>
+      <span class="k">platform</span><span class="v">${esc(host.platform || "—")}</span>
+    </div>
+  `;
+  el.hidden = false;
+}
+
 function renderDrawer() {
   const el = $("drawer");
+  if (state.hostDrawerKey) {
+    const host = findHost(state.hostDrawerKey);
+    if (host) {
+      renderHostDrawer(el, host);
+      return;
+    }
+    state.hostDrawerKey = null;
+  }
   if (!state.drawerKey) {
     el.hidden = true;
     el.innerHTML = "";
@@ -744,8 +859,6 @@ function renderDrawer() {
   const ports = Array.isArray(s.ports)
     ? [...s.ports].sort((a, b) => (a.host || a.container) - (b.host || b.container)) : [];
 
-  const sec = (title, body) => body ? `<div class="d-sec">${title}</div>${body}` : "";
-
   el.innerHTML = `
     <div class="d-head">
       <span class="d-name">${esc(s.name || s.external_id)}</span>
@@ -765,21 +878,21 @@ function renderDrawer() {
     </div>
     ${parent ? `<div class="d-mono"><span class="lbl">part of</span> ${esc(parent.name)} <span class="kind">${esc(parent.kind)}</span></div>` : ""}
 
-    ${sec("Image", s.image ? `
+    ${drawerSection("Image", s.image ? `
       <div class="d-mono">${esc(s.image)}</div>
       ${s.image_digest ? `<div class="d-mono"><span class="lbl">running</span> ${esc(s.image_digest)}</div>` : ""}
       ${s.latest_digest ? `<div class="d-mono"><span class="lbl">latest&nbsp;</span> ${esc(s.latest_digest)}</div>` : ""}` : "")}
 
-    ${sec("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
+    ${drawerSection("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
 
-    ${sec("Metrics", metricRows.length ? `<div class="kv metrics">${metricRows.map(([k, v]) =>
+    ${drawerSection("Metrics", metricRows.length ? `<div class="kv metrics">${metricRows.map(([k, v]) =>
       `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
 
-    ${sec(`Instances (${children.length})`, children.length ? `<div class="d-kids">${children.map((k) => `
+    ${drawerSection(`Instances (${children.length})`, children.length ? `<div class="d-kids">${children.map((k) => `
       <div class="krow">${badge(HEALTH_CLASS[k.health] || "b-gray", k.health, "mini")} ${esc(k.name)}
         <span class="muted">${esc(k.state)}</span></div>`).join("")}</div>` : "")}
 
-    ${sec("Labels", labels.length ? `<div class="kv">${labels.map(([k, v]) =>
+    ${drawerSection("Labels", labels.length ? `<div class="kv">${labels.map(([k, v]) =>
       `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
 
     <div class="d-sec">Seen</div>
@@ -789,7 +902,7 @@ function renderDrawer() {
       <span class="k">external id</span><span class="v">${esc(s.external_id)}</span>
     </div>
 
-    ${sec("Recent events", events.length ? `<div class="d-events">${events.map(eventRowHTML).join("")}</div>` : "")}
+    ${drawerSection("Recent events", events.length ? `<div class="d-events">${events.map(eventRowHTML).join("")}</div>` : "")}
   `;
   el.hidden = false;
 }
@@ -822,17 +935,34 @@ function moveCursor(delta) {
 }
 
 function openDrawer(key) {
+  state.hostDrawerKey = null;
   state.drawerKey = key;
   state.cursorKey = key;
   render();
   requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
 }
 
-function closeDrawer() {
-  const key = state.drawerKey;
+function openHostDrawer(key) {
   state.drawerKey = null;
+  state.hostDrawerKey = key;
   render();
-  requestAnimationFrame(() => visibleRows().find((tr) => rowKey(tr) === key)?.focus({ preventScroll: true }));
+  requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
+}
+
+function closeDrawer() {
+  const serviceKey = state.drawerKey;
+  const hostKeyToRestore = state.hostDrawerKey;
+  state.drawerKey = null;
+  state.hostDrawerKey = null;
+  render();
+  requestAnimationFrame(() => {
+    if (hostKeyToRestore) {
+      Array.from(document.querySelectorAll("[data-host-details]"))
+        .find((button) => button.dataset.hostkey === hostKeyToRestore)?.focus({ preventScroll: true });
+      return;
+    }
+    visibleRows().find((tr) => rowKey(tr) === serviceKey)?.focus({ preventScroll: true });
+  });
 }
 
 // -------------------------------------------------------------- render ----
@@ -955,9 +1085,12 @@ document.addEventListener("click", (e) => {
   if (e.target.closest(".d-close")) { closeDrawer(); return; }
   if (e.target.closest("#drawer")) return; // clicks inside the drawer stay put
 
-  const head = e.target.closest(".host-head");
-  if (head) {
-    const key = head.parentElement.dataset.hostkey;
+  const hostDetails = e.target.closest("[data-host-details]");
+  if (hostDetails) { openHostDrawer(hostDetails.dataset.hostkey); return; }
+
+  const hostToggle = e.target.closest("[data-host-toggle]");
+  if (hostToggle) {
+    const key = hostToggle.closest(".host").dataset.hostkey;
     if (state.collapsed.has(key)) state.collapsed.delete(key);
     else state.collapsed.add(key);
     render();
@@ -978,7 +1111,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
-    if (state.drawerKey) { closeDrawer(); return; }
+    if (state.drawerKey || state.hostDrawerKey) { closeDrawer(); return; }
     if (filterActive()) clearFilters();
     return;
   }
@@ -987,7 +1120,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); moveCursor(1); return; }
   if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1); return; }
   if (e.key === "Enter") {
-    if (e.target.closest?.(".host-head")) return;
+    if (e.target.closest?.(".host-toggle, .host-details")) return;
     const focused = document.activeElement?.closest?.("#hosts tr[data-ext]");
     if (focused) { openDrawer(rowKey(focused)); return; }
     if (state.cursorKey) openDrawer(state.cursorKey);

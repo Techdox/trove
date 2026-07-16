@@ -54,12 +54,20 @@ func (s *Store) ApplyReport(ctx context.Context, agentID int64, r *model.Report)
 
 	// 2. Upsert host, resolve host_id.
 	metaJSON := mustJSONObject(r.Host.Meta)
+	metricsJSON := mustHostMetrics(r.Host.Metrics)
+	condition := r.Host.Condition
+	if condition == "" {
+		condition = model.HostConditionUnknown
+	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO hosts(agent_id, hostname, platform_meta_json, last_seen_at) VALUES (?, ?, ?, ?)
+		`INSERT INTO hosts(agent_id, hostname, platform_meta_json, condition, metrics_json, last_seen_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(agent_id, hostname) DO UPDATE SET
 		     platform_meta_json = excluded.platform_meta_json,
+		     condition = excluded.condition,
+		     metrics_json = excluded.metrics_json,
 		     last_seen_at = excluded.last_seen_at`,
-		agentID, r.Host.Hostname, metaJSON, now,
+		agentID, r.Host.Hostname, metaJSON, string(condition), metricsJSON, now,
 	); err != nil {
 		return fmt.Errorf("upsert host: %w", err)
 	}
@@ -230,6 +238,20 @@ func insertEvent(ctx context.Context, tx *sql.Tx, kind string, serviceID int64, 
 // literal ("{}" when empty) so the column never holds SQL NULL or "null".
 func mustJSONObject(m map[string]string) string {
 	if len(m) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+// mustHostMetrics marshals the typed host snapshot to a JSON object. A missing
+// snapshot clears previously reported metrics, rather than leaving stale
+// values that the current report no longer supports.
+func mustHostMetrics(m *model.HostMetrics) string {
+	if m == nil {
 		return "{}"
 	}
 	b, err := json.Marshal(m)

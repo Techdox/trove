@@ -20,6 +20,8 @@ const state = {
   removedOnly: false,    // limit the catalogue to soft-removed services
   collapsed: new Set(),  // collapsed host keys
   drawerKey: null,       // key of the service open in the drawer
+  hostDrawerKey: null,   // key of the host open in the drawer
+  hostDrawerReturnAgent: null, // agent card to refocus when it opened a host
   cursorKey: null,       // key of the keyboard-cursor row
   data: { services: null, agents: null, events: null },
 };
@@ -76,6 +78,50 @@ function absTime(iso) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
 }
 
+function agentVersionLabel(version) {
+  if (!version) return "";
+  return /^\d/.test(version) ? `v${version}` : version;
+}
+
+function platformIdentity(platform) {
+  switch (String(platform || "").toLowerCase()) {
+    case "docker": return { key: "docker", label: "Docker" };
+    case "proxmox":
+    case "pve": return { key: "proxmox", label: "Proxmox VE" };
+    case "kubernetes":
+    case "k8s": return { key: "kubernetes", label: "Kubernetes" };
+    case "local":
+    case "linux":
+    case "systemd": return { key: "linux", label: "Linux" };
+    default: return { key: "unknown", label: platform || "Unknown platform" };
+  }
+}
+
+// Small inline marks keep the dashboard self-contained while making each
+// platform immediately scannable. The SVGs are decorative because the nearby
+// platform text and host/agent name carry the accessible label.
+function platformIconHTML(platform) {
+  const identity = platformIdentity(platform);
+  let art;
+  switch (identity.key) {
+    case "docker":
+      art = `<path d="M3 9h3v3H3zm4 0h3v3H7zm4 0h3v3h-3zM7 5h3v3H7zm4 0h3v3h-3zm4 4h3v3h-3z"/><path d="M2 13h15.3c.9 0 1.7-.2 2.3-.5-.2-1.1.1-2 .9-2.8.4-.4.8-.6 1.3-.8.5 1 .6 2.1.2 3.1.7.1 1.4.3 2 .8-.7.9-1.7 1.3-2.9 1.3h-.7C19.2 18 16 20 10.9 20 6.3 20 3.3 17.7 2 13z"/>`;
+      break;
+    case "proxmox":
+      art = `<path d="M1.5 5.2h4.2l6.3 6.7-6.3 6.9H1.5l6.4-6.9z"/><path d="M22.5 5.2h-4.2L12 11.9l6.3 6.9h4.2l-6.4-6.9z" opacity=".72"/>`;
+      break;
+    case "kubernetes":
+      art = `<path d="M12 2.2 20.4 7v10L12 21.8 3.6 17V7z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 5.8v3.7m0 5v3.7M5.8 12h3.7m5 0h3.7M7.6 7.6l2.6 2.6m3.6 3.6 2.6 2.6m0-8.8-2.6 2.6m-3.6 3.6-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>`;
+      break;
+    case "linux":
+      art = `<rect x="2.5" y="4" width="19" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m6.5 9 3 3-3 3m6 0h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      break;
+    default:
+      art = `<rect x="3" y="4" width="18" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="18" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="7" cy="7" r="1"/><circle cx="7" cy="17" r="1"/>`;
+  }
+  return `<span class="platform-mark platform-${identity.key}" title="${esc(identity.label)}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${art}</svg></span>`;
+}
+
 // ---------------------------------------------------------- badge maps ----
 
 const HEALTH_CLASS = {
@@ -86,6 +132,7 @@ const HEALTH_CLASS = {
 };
 
 const AGENT_CLASS = { ok: "b-green", stale: "b-yellow", offline: "b-red", unknown: "b-gray" };
+const HOST_CONDITION_CLASS = { normal: "b-green", warning: "b-yellow", critical: "b-red", unknown: "b-gray" };
 
 function stateClass(state) {
   // K8s parents report "ready/desired" (e.g. "2/2").
@@ -178,6 +225,119 @@ function hostPlatformLine(host) {
   return parts.filter(Boolean).join(" · ");
 }
 
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatBytes(bytes) {
+  const n = finiteNumber(bytes);
+  if (n === null || n < 0) return "—";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  let value = n;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const precision = value >= 10 || unit === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unit]}`;
+}
+
+function formatUptime(seconds) {
+  const total = finiteNumber(seconds);
+  if (total === null || total < 0) return "—";
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function resourceMetric(label, usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const used = finiteNumber(usage.used_bytes);
+  const total = finiteNumber(usage.total_bytes);
+  if (used === null || total === null || total <= 0 || used < 0 || used > total) return null;
+  const percent = Math.round((used / total) * 100);
+  return {
+    label,
+    value: `${percent}%`,
+    title: `${label}: ${formatBytes(used)} / ${formatBytes(total)}`,
+  };
+}
+
+function hostMetricItems(metrics) {
+  if (!metrics || typeof metrics !== "object") return [];
+  const items = [];
+  const cpu = finiteNumber(metrics.cpu_usage_ratio);
+  if (cpu !== null && cpu >= 0 && cpu <= 1) {
+    const cores = finiteNumber(metrics.cpu_logical_count);
+    items.push({
+      label: "CPU",
+      value: `${Math.round(cpu * 100)}%`,
+      title: `CPU: ${Math.round(cpu * 100)}%${cores && cores > 0 ? ` · ${cores} logical CPUs` : ""}`,
+    });
+  }
+  const memory = resourceMetric("RAM", metrics.memory);
+  if (memory) items.push(memory);
+  const rootDisk = resourceMetric("Root", metrics.root_disk);
+  if (rootDisk) items.push(rootDisk);
+  const load1 = finiteNumber(metrics.load_1);
+  const load5 = finiteNumber(metrics.load_5);
+  const load15 = finiteNumber(metrics.load_15);
+  if ([load1, load5, load15].some((n) => n !== null && n >= 0)) {
+    const values = [load1, load5, load15].map((n) => n === null || n < 0 ? "—" : n.toFixed(2));
+    items.push({ label: "Load", value: values[0], title: `Load average: ${values.join(" · ")} (1m · 5m · 15m)` });
+  }
+  const uptime = finiteNumber(metrics.uptime_seconds);
+  if (uptime !== null && uptime >= 0) {
+    items.push({ label: "Up", value: formatUptime(uptime), title: `Uptime: ${formatUptime(uptime)}` });
+  }
+  return items;
+}
+
+function hostMetricsHTML(metrics) {
+  const items = hostMetricItems(metrics);
+  if (items.length === 0) return "";
+  return `<span class="host-metrics" aria-label="Host resource metrics">${items.map((item) =>
+    `<span class="host-metric" title="${esc(item.title)}"><span class="metric-label">${esc(item.label)}</span> ${esc(item.value)}</span>`
+  ).join("")}</span>`;
+}
+
+function resourceMetricDetail(usage) {
+  if (!usage || typeof usage !== "object") return "";
+  const used = finiteNumber(usage.used_bytes);
+  const total = finiteNumber(usage.total_bytes);
+  if (used === null || total === null || total <= 0 || used < 0 || used > total) return "";
+  return `${formatBytes(used)} / ${formatBytes(total)} · ${Math.round((used / total) * 100)}%`;
+}
+
+function hostMetricRows(metrics) {
+  if (!metrics || typeof metrics !== "object") return [];
+  const rows = [];
+  const cpu = finiteNumber(metrics.cpu_usage_ratio);
+  const cores = finiteNumber(metrics.cpu_logical_count);
+  if (cpu !== null && cpu >= 0 && cpu <= 1) {
+    rows.push(["CPU usage", `${Math.round(cpu * 100)}%${cores && cores > 0 ? ` · ${cores} logical CPUs` : ""}`]);
+  } else if (cores && cores > 0) {
+    rows.push(["Logical CPUs", String(cores)]);
+  }
+  const load = [metrics.load_1, metrics.load_5, metrics.load_15].map(finiteNumber);
+  if (load.some((n) => n !== null && n >= 0)) {
+    rows.push(["Load average", `${load.map((n) => n === null || n < 0 ? "—" : n.toFixed(2)).join(" · ")} (1m · 5m · 15m)`]);
+  }
+  const memory = resourceMetricDetail(metrics.memory);
+  if (memory) rows.push(["Memory", memory]);
+  const rootDisk = resourceMetricDetail(metrics.root_disk);
+  if (rootDisk) rows.push(["Root disk", rootDisk]);
+  const uptime = finiteNumber(metrics.uptime_seconds);
+  if (uptime !== null && uptime >= 0) rows.push(["Uptime", formatUptime(uptime)]);
+  return rows;
+}
+
 // ------------------------------------------------------- cell rendering ----
 
 // splitImage separates "registry/namespace/name:tag" so the prefix can
@@ -243,7 +403,7 @@ function matchesFilters(s, host) {
   const q = state.q.trim().toLowerCase();
   if (!q) return true;
   const hay = [s.name, s.external_id, s.image, s.kind, s.state, s.health, s.freshness,
-    host.hostname, host.agent];
+    host.hostname, host.agent, host.platform, host.condition];
   if (s.labels && typeof s.labels === "object") {
     for (const [k, v] of Object.entries(s.labels)) hay.push(k, v);
   }
@@ -257,13 +417,15 @@ function filterActive() {
 // counts over the full dataset (independent of the active filter)
 function computeCounts() {
   const c = {
-    hosts: 0, staleHosts: 0, offlineHosts: 0,
+    hosts: 0, staleHosts: 0, offlineHosts: 0, warningHosts: 0, criticalHosts: 0,
     services: 0, running: 0, unhealthy: 0, stopped: 0, outdated: 0, stale: 0, removed: 0,
   };
   for (const h of state.data.services?.hosts || []) {
     c.hosts++;
     if (h.status === "stale" && h.agent_status !== "stale" && h.agent_status !== "offline") c.staleHosts++;
     if (h.status === "offline" && h.agent_status !== "offline") c.offlineHosts++;
+    if (h.status === "ok" && h.condition === "warning") c.warningHosts++;
+    if (h.status === "ok" && h.condition === "critical") c.criticalHosts++;
     for (const s of h.services || []) {
       if (s.state === "removed") { c.removed++; continue; }
       c.services++;
@@ -292,9 +454,11 @@ function attentionItems() {
   return [
     item("offline-agents", "critical", offline, "Offline agent", "Trove is no longer receiving reports from this source.", "Review agents"),
     item("offline-hosts", "critical", c.offlineHosts, "Offline host", "This host has missed its own reporting window and its inventory is stale.", "Review hosts"),
+    item("critical-hosts", "critical", c.criticalHosts, "Critical host condition", "The platform reports that this host needs attention.", "Review hosts"),
     item("unhealthy", "critical", c.unhealthy, "Unhealthy service", "A platform health check or readiness signal is failing.", "Show services"),
     item("stale-agents", "warning", staleAgents, "Stale agent", "This source has missed its expected reporting interval.", "Review agents"),
     item("stale-hosts", "warning", c.staleHosts, "Stale host", "This host has stopped reporting even if another host from the same agent is still active.", "Review hosts"),
+    item("warning-hosts", "warning", c.warningHosts, "Host condition warning", "The platform reports a degraded host condition.", "Review hosts"),
     item("stopped", "info", c.stopped, "Stopped workload", "A discovered workload is not running. It may be intentional.", "Show services"),
     item("removed", "info", c.removed, "Recently disappeared service", "A service is absent from its latest full-state report.", "Show services"),
     item("outdated", "info", c.outdated, "Outdated image", "The running image digest is behind the current tag.", "Show services"),
@@ -307,7 +471,7 @@ function renderAttention() {
   if (items.length === 0) {
     el.innerHTML = `<div class="attention-healthy">
       <span class="attention-icon" aria-hidden="true">✓</span>
-      <div><strong>Nothing needs attention right now.</strong><span>All reporting agents are online and discovered services have no current health, state, or image-freshness warnings.</span></div>
+      <div><strong>Nothing needs attention right now.</strong><span>All reporting agents and hosts are online, and discovered services have no current health, state, or image-freshness warnings.</span></div>
     </div>`;
     return;
   }
@@ -325,7 +489,7 @@ function showAttention(key) {
     focusInvestigationTarget("infrastructure-title");
     return;
   }
-  if (key === "offline-hosts" || key === "stale-hosts") {
+  if (["offline-hosts", "stale-hosts", "critical-hosts", "warning-hosts"].includes(key)) {
     $("inventory-title").scrollIntoView({ behavior: "smooth", block: "start" });
     focusInvestigationTarget("inventory-title");
     return;
@@ -402,14 +566,19 @@ function renderAgents() {
   }
   el.innerHTML = agents.map((a) => {
     const st = a.status || "unknown";
-    return `<div class="agent-card ${esc(st)}">
+    const hosts = (state.data.services?.hosts || []).filter((host) => host.agent === a.name);
+    const destination = hosts.length === 1 ? "Open host"
+      : (hosts.length > 1 ? `Filter ${hosts.length} hosts` : "Filter catalogue");
+    const ariaLabel = hosts.length === 1 ? `View host ${hosts[0].hostname} reported by ${a.name}`
+      : (hosts.length > 1 ? `Show ${hosts.length} hosts reported by ${a.name}` : `Filter catalogue by agent ${a.name}`);
+    return `<button type="button" class="agent-card ${esc(st)}" data-agent-destination="${esc(a.name)}" aria-label="${esc(ariaLabel)}">
       <div class="row">
-        <span class="name">${esc(a.name)}</span>
+        <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name">${esc(a.name)}</span></span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
       </div>
-      <div class="meta">${esc(a.platform || "—")}${a.version ? " · v" + esc(a.version) : ""}</div>
-      <div class="meta">last push: ${esc(relTime(a.last_seen_at))}</div>
-    </div>`;
+      <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>
+      <div class="agent-foot"><span class="meta">last push: ${esc(relTime(a.last_seen_at))}</span><span class="agent-action">${esc(destination)} <span aria-hidden="true">→</span></span></div>
+    </button>`;
   }).join("");
 }
 
@@ -483,20 +652,32 @@ function renderHosts() {
       (nOutdated ? badge("b-peach", `${nOutdated} outdated`, "mini") : "");
 
     const st = h.status || "unknown";
+    const condition = h.condition || "unknown";
+    const conditionBadge = condition !== "unknown"
+      ? badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`) : "";
     const collapsed = state.collapsed.has(hostKey(h));
     const countLabel = filterActive() && visible.length !== total
       ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
 
     sections.push(`<div class="host${collapsed ? " collapsed" : ""}" data-hostkey="${esc(hostKey(h))}">
-      <button type="button" class="host-head" aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)}">
-        <span class="chev">${collapsed ? "▸" : "▾"}</span>
-        <span class="hostname">${esc(h.hostname)}</span>
+      <div class="host-head">
+        <button type="button" class="host-toggle" data-host-toggle aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)} services" title="${collapsed ? "Expand" : "Collapse"} services">
+          <span class="chev" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+        </button>
+        <button type="button" class="host-name" data-host-details data-hostkey="${esc(hostKey(h))}" aria-label="View ${esc(h.hostname)} host stats">
+          ${platformIconHTML(h.platform)}<span class="hostname">${esc(h.hostname)}</span>
+        </button>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
         <span class="sub">last report ${esc(relTime(h.last_seen_at))}</span>
-        ${badge(AGENT_CLASS[st] || "b-gray", `host ${st}`)}
+        ${badge(AGENT_CLASS[st] || "b-gray", `reporting ${st}`)}
+        ${conditionBadge}
+        ${hostMetricsHTML(h.metrics)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
-      </button>
+        <button type="button" class="host-details" data-host-details data-hostkey="${esc(hostKey(h))}" aria-label="View ${esc(h.hostname)} host stats">
+          View host stats <span aria-hidden="true">→</span>
+        </button>
+      </div>
       <p class="table-scroll-hint">Swipe or scroll horizontally to see all service details <span aria-hidden="true">→</span></p>
       <div class="host-body">
         <table>
@@ -618,8 +799,128 @@ function findService(key) {
   return null;
 }
 
+function findHost(key) {
+  return (state.data.services?.hosts || []).find((host) => hostKey(host) === key) || null;
+}
+
+function findAgent(name) {
+  return (state.data.agents?.agents || []).find((agent) => agent.name === name) || null;
+}
+
+function drawerSection(title, body) {
+  return body ? `<div class="d-sec">${title}</div>${body}` : "";
+}
+
+function hostMetaLabel(key) {
+  return {
+    "proxmox.version": "Proxmox version",
+    "proxmox.release": "Proxmox release",
+    "proxmox.repoid": "Proxmox repository ID",
+    "docker.version": "Docker version",
+    "docker.api_version": "Docker API version",
+    "docker.os": "Docker OS",
+    "docker.arch": "Docker architecture",
+    "docker.os_name": "Operating system",
+    "docker.kernel": "Kernel",
+    "docker.host_metrics": "Host metrics source",
+    "kubernetes.version": "Kubernetes version",
+    "kubernetes.platform": "Kubernetes platform",
+    "kubernetes.nodes": "Nodes",
+    "kubernetes.ready_nodes": "Ready nodes",
+    "kubernetes.metrics_api": "Metrics API",
+    "linux.os": "Operating system",
+    "linux.kernel": "Kernel",
+    "linux.arch": "Architecture",
+  }[key] || key;
+}
+
+function hostMetricsNoticeHTML(host) {
+  const meta = host.meta && typeof host.meta === "object" ? host.meta : {};
+  if ((host.platform === "kubernetes") && meta["kubernetes.metrics_api"] === "unavailable") {
+    return `<div class="d-note">CPU and memory usage require the optional Kubernetes Metrics API. Node capacity and readiness are still reported.</div>`;
+  }
+  return "";
+}
+
+function missingHostMetricsHTML(host, agent) {
+  const isProxmox = host.platform === "proxmox" || host.platform === "pve";
+  const version = agent?.version ? ` (${esc(agent.version)})` : "";
+  let detail;
+  if (isProxmox && (host.condition || "unknown") === "unknown") {
+    detail = `The connected Proxmox agent${version} appears to be using the older host report. ` +
+      "Update and restart the Proxmox agent from the same Trove build as the server, then wait for its next report.";
+  } else if (isProxmox) {
+    detail = "The latest report did not contain a node resource snapshot. Check the Proxmox agent logs for node status API errors or permission problems.";
+  } else if (host.platform === "kubernetes") {
+    detail = "Apply the current read-only node RBAC. CPU and memory usage also require metrics-server or another metrics.k8s.io provider.";
+  } else if (host.platform === "docker") {
+    detail = "Live Docker host usage is available when the agent runs beside the daemon through its local Unix socket. Remote Docker APIs expose capacity but not host usage.";
+  } else if (host.platform === "local") {
+    detail = "The Linux agent could not read the aggregate procfs metrics for this host. Check its logs and /proc access.";
+  } else {
+    detail = "This platform did not include CPU, load, memory, disk, or uptime in its latest report.";
+  }
+  return `<div class="d-empty"><strong>No host metrics reported</strong><span>${detail}</span></div>`;
+}
+
+function renderHostDrawer(el, host) {
+  const metrics = hostMetricRows(host.metrics);
+  const agent = findAgent(host.agent);
+  const meta = host.meta && typeof host.meta === "object"
+    ? Object.entries(host.meta)
+      .filter(([key]) => key !== "platform")
+      .sort(([a], [b]) => a.localeCompare(b)) : [];
+  const live = (host.services || []).filter((s) => s.state !== "removed");
+  const inventory = [
+    ["Services", String(live.length)],
+    ["Running", String(live.filter((s) => s.state === "running").length)],
+    ["Stopped", String(live.filter((s) => STOPPED_STATES.has(s.state)).length)],
+    ["Unhealthy", String(live.filter((s) => s.health === "unhealthy").length)],
+    ["Outdated", String(live.filter((s) => s.freshness === "outdated").length)],
+  ];
+  const metaValue = (value) => typeof value === "object" ? JSON.stringify(value) : String(value);
+  const kv = (rows, cls = "") => `<div class="kv${cls ? ` ${cls}` : ""}">${rows.map(([k, v]) =>
+    `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>`;
+  const status = host.status || "unknown";
+  const condition = host.condition || "unknown";
+
+  el.innerHTML = `
+    <div class="d-head">
+      <span class="d-name">${esc(host.hostname)}</span>
+      <span class="kind">host</span>
+      <button class="d-close" aria-label="Close host stats" title="close (esc)">✕</button>
+    </div>
+    <div class="d-badges">
+      ${badge(AGENT_CLASS[status] || "b-gray", `reporting ${status}`)}
+      ${badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`)}
+    </div>
+
+    ${drawerSection("Host resources", metrics.length ? kv(metrics, "metrics") + hostMetricsNoticeHTML(host) : missingHostMetricsHTML(host, agent))}
+    ${drawerSection("Platform details", meta.length ? kv(meta.map(([k, v]) => [hostMetaLabel(k), metaValue(v)])) : "")}
+    ${drawerSection("Inventory", kv(inventory))}
+
+    <div class="d-sec">Reporting</div>
+    <div class="kv">
+      <span class="k">last report</span><span class="v">${esc(absTime(host.last_seen_at))} (${esc(relTime(host.last_seen_at))})</span>
+      <span class="k">agent</span><span class="v">${esc(host.agent)}</span>
+      <span class="k">agent version</span><span class="v">${esc(agent?.version || "not reported")}</span>
+      <span class="k">platform</span><span class="v">${esc(host.platform || "—")}</span>
+    </div>
+  `;
+  el.hidden = false;
+}
+
 function renderDrawer() {
   const el = $("drawer");
+  if (state.hostDrawerKey) {
+    const host = findHost(state.hostDrawerKey);
+    if (host) {
+      renderHostDrawer(el, host);
+      return;
+    }
+    state.hostDrawerKey = null;
+    state.hostDrawerReturnAgent = null;
+  }
   if (!state.drawerKey) {
     el.hidden = true;
     el.innerHTML = "";
@@ -652,8 +953,6 @@ function renderDrawer() {
   const ports = Array.isArray(s.ports)
     ? [...s.ports].sort((a, b) => (a.host || a.container) - (b.host || b.container)) : [];
 
-  const sec = (title, body) => body ? `<div class="d-sec">${title}</div>${body}` : "";
-
   el.innerHTML = `
     <div class="d-head">
       <span class="d-name">${esc(s.name || s.external_id)}</span>
@@ -673,21 +972,21 @@ function renderDrawer() {
     </div>
     ${parent ? `<div class="d-mono"><span class="lbl">part of</span> ${esc(parent.name)} <span class="kind">${esc(parent.kind)}</span></div>` : ""}
 
-    ${sec("Image", s.image ? `
+    ${drawerSection("Image", s.image ? `
       <div class="d-mono">${esc(s.image)}</div>
       ${s.image_digest ? `<div class="d-mono"><span class="lbl">running</span> ${esc(s.image_digest)}</div>` : ""}
       ${s.latest_digest ? `<div class="d-mono"><span class="lbl">latest&nbsp;</span> ${esc(s.latest_digest)}</div>` : ""}` : "")}
 
-    ${sec("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
+    ${drawerSection("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
 
-    ${sec("Metrics", metricRows.length ? `<div class="kv metrics">${metricRows.map(([k, v]) =>
+    ${drawerSection("Metrics", metricRows.length ? `<div class="kv metrics">${metricRows.map(([k, v]) =>
       `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
 
-    ${sec(`Instances (${children.length})`, children.length ? `<div class="d-kids">${children.map((k) => `
+    ${drawerSection(`Instances (${children.length})`, children.length ? `<div class="d-kids">${children.map((k) => `
       <div class="krow">${badge(HEALTH_CLASS[k.health] || "b-gray", k.health, "mini")} ${esc(k.name)}
         <span class="muted">${esc(k.state)}</span></div>`).join("")}</div>` : "")}
 
-    ${sec("Labels", labels.length ? `<div class="kv">${labels.map(([k, v]) =>
+    ${drawerSection("Labels", labels.length ? `<div class="kv">${labels.map(([k, v]) =>
       `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
 
     <div class="d-sec">Seen</div>
@@ -697,7 +996,7 @@ function renderDrawer() {
       <span class="k">external id</span><span class="v">${esc(s.external_id)}</span>
     </div>
 
-    ${sec("Recent events", events.length ? `<div class="d-events">${events.map(eventRowHTML).join("")}</div>` : "")}
+    ${drawerSection("Recent events", events.length ? `<div class="d-events">${events.map(eventRowHTML).join("")}</div>` : "")}
   `;
   el.hidden = false;
 }
@@ -730,17 +1029,69 @@ function moveCursor(delta) {
 }
 
 function openDrawer(key) {
+  state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
   state.drawerKey = key;
   state.cursorKey = key;
   render();
   requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
 }
 
-function closeDrawer() {
-  const key = state.drawerKey;
+function openHostDrawer(key) {
+  openHostDrawerFromAgent(key, null);
+}
+
+function openHostDrawerFromAgent(key, returnAgent) {
   state.drawerKey = null;
+  state.hostDrawerKey = key;
+  state.hostDrawerReturnAgent = returnAgent;
   render();
-  requestAnimationFrame(() => visibleRows().find((tr) => rowKey(tr) === key)?.focus({ preventScroll: true }));
+  requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
+}
+
+function openAgentDestination(name) {
+  const hosts = (state.data.services?.hosts || []).filter((host) => host.agent === name);
+  if (hosts.length === 1) {
+    openHostDrawerFromAgent(hostKey(hosts[0]), name);
+    return;
+  }
+
+  state.q = name;
+  $("q").value = name;
+  state.chips.clear();
+  state.showRemoved = false;
+  state.removedOnly = false;
+  state.drawerKey = null;
+  state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
+  render();
+  requestAnimationFrame(() => {
+    $("inventory-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    focusInvestigationTarget("inventory-title");
+  });
+}
+
+function closeDrawer() {
+  const serviceKey = state.drawerKey;
+  const hostKeyToRestore = state.hostDrawerKey;
+  const agentToRestore = state.hostDrawerReturnAgent;
+  state.drawerKey = null;
+  state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
+  render();
+  requestAnimationFrame(() => {
+    if (agentToRestore) {
+      Array.from(document.querySelectorAll("[data-agent-destination]"))
+        .find((button) => button.dataset.agentDestination === agentToRestore)?.focus({ preventScroll: true });
+      return;
+    }
+    if (hostKeyToRestore) {
+      Array.from(document.querySelectorAll("[data-host-details]"))
+        .find((button) => button.dataset.hostkey === hostKeyToRestore)?.focus({ preventScroll: true });
+      return;
+    }
+    visibleRows().find((tr) => rowKey(tr) === serviceKey)?.focus({ preventScroll: true });
+  });
 }
 
 // -------------------------------------------------------------- render ----
@@ -860,12 +1211,18 @@ document.addEventListener("click", (e) => {
   const chip = e.target.closest("[data-chip]");
   if (chip) { toggleChip(chip.dataset.chip); return; }
 
+  const agentDestination = e.target.closest("[data-agent-destination]");
+  if (agentDestination) { openAgentDestination(agentDestination.dataset.agentDestination); return; }
+
   if (e.target.closest(".d-close")) { closeDrawer(); return; }
   if (e.target.closest("#drawer")) return; // clicks inside the drawer stay put
 
-  const head = e.target.closest(".host-head");
-  if (head) {
-    const key = head.parentElement.dataset.hostkey;
+  const hostDetails = e.target.closest("[data-host-details]");
+  if (hostDetails) { openHostDrawer(hostDetails.dataset.hostkey); return; }
+
+  const hostToggle = e.target.closest("[data-host-toggle]");
+  if (hostToggle) {
+    const key = hostToggle.closest(".host").dataset.hostkey;
     if (state.collapsed.has(key)) state.collapsed.delete(key);
     else state.collapsed.add(key);
     render();
@@ -886,7 +1243,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
-    if (state.drawerKey) { closeDrawer(); return; }
+    if (state.drawerKey || state.hostDrawerKey) { closeDrawer(); return; }
     if (filterActive()) clearFilters();
     return;
   }
@@ -895,7 +1252,9 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); moveCursor(1); return; }
   if (e.key === "k" || e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1); return; }
   if (e.key === "Enter") {
-    if (e.target.closest?.(".host-head")) return;
+    // Native controls own Enter. Let their click behavior run instead of
+    // opening a service left behind by the j/k row cursor.
+    if (e.target.closest?.("button, a, [role='button'], [role='link']")) return;
     const focused = document.activeElement?.closest?.("#hosts tr[data-ext]");
     if (focused) { openDrawer(rowKey(focused)); return; }
     if (state.cursorKey) openDrawer(state.cursorKey);

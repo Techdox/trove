@@ -156,6 +156,32 @@ agent reads it with `GET /api2/json/nodes/{node}/version` and stores it as host
 metadata (`proxmox.version`, `proxmox.release`, and `proxmox.repoid`) rather
 than repeating it on every VM/LXC.
 
+The same header shows a compact snapshot of the node's current CPU, load,
+memory, root-disk usage, and uptime. Click **View host stats** on that host to
+open the full resource, condition, platform, inventory, and reporting details.
+These metrics come from the read-only
+`GET /api2/json/nodes/{node}/status` endpoint. Node availability remains a
+separate condition: `online` maps to `normal`, while an explicitly `offline`
+cluster member maps to `critical`. Trove does not treat a single high CPU or
+memory sample as an alert-worthy failure.
+
+After upgrading Trove, update and restart both the server and the Proxmox
+agent. An older agent can continue reporting its guests, but its reports do not
+contain the host condition or resource snapshot required by this view.
+
+For a branch preview, use the same branch tag for both images. For example,
+add `TROVE_VERSION=feat-host-health-metrics` to `.env`, then recreate both
+services with `docker compose -f docker-compose.proxmox.yml pull` followed by
+`docker compose -f docker-compose.proxmox.yml up -d`. The preview workflow
+stamps the branch and short commit SHA into each binary, which is shown as the
+agent version in Trove.
+
+If a node's status endpoint is temporarily unavailable, the rest of the
+cluster report is still sent and that host's metrics are cleared rather than
+leaving an old snapshot on screen. Offline nodes are still reported with their
+critical condition, without repeatedly querying node-local endpoints that are
+expected to fail.
+
 Click a Proxmox guest in the dashboard to see its reported metrics: node, CPU,
 memory, disk, uptime, VMID, and OS type where available.
 

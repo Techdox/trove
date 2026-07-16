@@ -1,7 +1,8 @@
 # Trove Kubernetes agent — in-cluster, strictly read-only.
 #
-# The ClusterRole grants only get/list on the workload and pod resources
-# the agent reads; it can never mutate anything. Trove is read-only by design.
+# The ClusterRole grants only get/list on the workload, pod, node, and optional
+# Metrics API resources the agent reads; it can never mutate anything. Trove
+# is read-only by design.
 #
 # Before applying:
 #   1. Create the token secret (get the token from `trove-server agent create`):
@@ -33,7 +34,10 @@ rules:
     resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
     verbs: ["get", "list"]
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -57,6 +57,7 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 			t.Errorf("dashboard focus target is missing %q", marker)
 		}
 	}
+
 }
 
 func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
@@ -152,14 +153,116 @@ func TestDashboardShowsIndependentHostLiveness(t *testing.T) {
 		`if (h.status === "offline" && h.agent_status !== "offline") c.offlineHosts++;`,
 		`item("offline-hosts"`,
 		`item("stale-hosts"`,
-		`if (key === "offline-hosts" || key === "stale-hosts") {`,
+		`["offline-hosts", "stale-hosts", "critical-hosts", "warning-hosts"].includes(key)`,
 		"last report ${esc(relTime(h.last_seen_at))}",
-		"`host ${st}`",
+		"`reporting ${st}`",
 		`case "host":`,
 		`e.kind === "agent" || e.kind === "host"`,
 	} {
 		if !strings.Contains(string(app), marker) {
 			t.Errorf("dashboard host liveness is missing %q", marker)
 		}
+	}
+}
+
+func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	for _, marker := range []string{
+		"function hostMetricItems(metrics)",
+		"function hostMetricRows(metrics)",
+		"function hostMetricsHTML(metrics)",
+		"function findHost(key)",
+		"function findAgent(name)",
+		"function hostMetaLabel(key)",
+		"function hostMetricsNoticeHTML(host)",
+		"function agentVersionLabel(version)",
+		"function missingHostMetricsHTML(host, agent)",
+		"function openHostDrawer(key)",
+		`item("critical-hosts"`,
+		`item("warning-hosts"`,
+		"`condition ${condition}`",
+		"hostMetricsHTML(h.metrics)",
+		"data-host-details",
+		"View host stats",
+		"No host metrics reported",
+		"agent version",
+		"docker.host_metrics",
+		"kubernetes.metrics_api",
+		"state.drawerKey || state.hostDrawerKey",
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard host metrics are missing %q", marker)
+		}
+	}
+
+	for _, duplicate := range []string{
+		`<span class="d-detail-label">Snapshot</span>`,
+		"No host resource metrics were included in the latest report.",
+		"Waiting for a compatible agent to report CPU, load, memory, disk, and uptime.",
+	} {
+		if strings.Contains(string(app), duplicate) {
+			t.Errorf("dashboard host drawer repeats its metrics state with %q", duplicate)
+		}
+	}
+}
+
+func TestDashboardHostNavigationAndPlatformMarks(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	for _, marker := range []string{
+		"function platformIdentity(platform)",
+		"function platformIconHTML(platform)",
+		"function openAgentDestination(name)",
+		"function openHostDrawerFromAgent(key, returnAgent)",
+		`data-agent-destination="${esc(a.name)}"`,
+		`class="host-name" data-host-details`,
+		`openHostDrawerFromAgent(hostKey(hosts[0]), name)`,
+		`state.q = name;`,
+		`case "docker":`,
+		`case "proxmox":`,
+		`case "kubernetes":`,
+		`case "linux":`,
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard host navigation is missing %q", marker)
+		}
+	}
+}
+
+func TestDashboardEnterShortcutDefersToNativeControls(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	source := string(app)
+	enter := strings.Index(source, `if (e.key === "Enter") {`)
+	if enter == -1 {
+		t.Fatal("dashboard Enter shortcut is missing")
+	}
+	shortcut := source[enter:]
+	guard := strings.Index(shortcut, `if (e.target.closest?.("button, a, [role='button'], [role='link']")) return;`)
+	fallback := strings.Index(shortcut, `if (state.cursorKey) openDrawer(state.cursorKey);`)
+	if guard == -1 {
+		t.Fatal("dashboard Enter shortcut does not defer to native controls")
+	}
+	if fallback == -1 {
+		t.Fatal("dashboard Enter shortcut cursor fallback is missing")
+	}
+	if guard > fallback {
+		t.Fatal("dashboard Enter shortcut checks the stale row cursor before native controls")
 	}
 }

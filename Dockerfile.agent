@@ -4,11 +4,12 @@
 # Dev/compose image; the release counterpart is
 # build/docker/Dockerfile.agent-docker — keep base image/user in sync.
 FROM golang:1.26 AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/trove-agent-docker ./cmd/trove-agent-docker
 
 FROM gcr.io/distroless/static-debian12

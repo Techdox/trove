@@ -7,6 +7,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -111,12 +112,61 @@ type ReportAgent struct {
 	IntervalSeconds int `json:"interval_seconds,omitempty"`
 }
 
+// HostCondition is the platform-reported condition of a host. It is separate
+// from the server-derived heartbeat status: a host can be reporting on time
+// while its platform says it is degraded, or stop reporting while its last
+// known platform condition was normal.
+type HostCondition string
+
+const (
+	HostConditionNormal   HostCondition = "normal"
+	HostConditionWarning  HostCondition = "warning"
+	HostConditionCritical HostCondition = "critical"
+	HostConditionUnknown  HostCondition = "unknown"
+)
+
+// Valid reports whether c is a recognized platform condition.
+func (c HostCondition) Valid() bool {
+	switch c {
+	case HostConditionNormal, HostConditionWarning, HostConditionCritical, HostConditionUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// HostResourceUsage is a current used/total capacity sample. It deliberately
+// carries bytes rather than a percentage so API clients can choose their own
+// display precision without losing the original values.
+type HostResourceUsage struct {
+	UsedBytes  uint64 `json:"used_bytes"`
+	TotalBytes uint64 `json:"total_bytes"`
+}
+
+// HostMetrics is a current point-in-time resource snapshot. Pointer scalars
+// preserve the difference between a real zero (for example an idle CPU) and a
+// metric the platform did not provide. Trove stores only the latest snapshot;
+// it is not intended to replace a time-series monitoring system.
+type HostMetrics struct {
+	CPUUsageRatio   *float64           `json:"cpu_usage_ratio,omitempty"`
+	CPULogicalCount *int               `json:"cpu_logical_count,omitempty"`
+	Load1           *float64           `json:"load_1,omitempty"`
+	Load5           *float64           `json:"load_5,omitempty"`
+	Load15          *float64           `json:"load_15,omitempty"`
+	Memory          *HostResourceUsage `json:"memory,omitempty"`
+	RootDisk        *HostResourceUsage `json:"root_disk,omitempty"`
+	UptimeSeconds   *uint64            `json:"uptime_seconds,omitempty"`
+}
+
 // ReportHost describes the machine the agent runs on. Meta carries
 // platform-specific facts (e.g. docker.version) that are useful to surface but
-// not worth first-class columns.
+// not worth first-class columns. Condition and Metrics are typed because they
+// have shared meaning across platforms and are rendered consistently.
 type ReportHost struct {
-	Hostname string            `json:"hostname"`
-	Meta     map[string]string `json:"meta,omitempty"`
+	Hostname  string            `json:"hostname"`
+	Condition HostCondition     `json:"condition,omitempty"`
+	Metrics   *HostMetrics      `json:"metrics,omitempty"`
+	Meta      map[string]string `json:"meta,omitempty"`
 }
 
 // ReportService is one catalog entry: a container now, a pod/vm/lxc later.
@@ -167,6 +217,12 @@ func (r *Report) Validate() error {
 	if strings.TrimSpace(r.Host.Hostname) == "" {
 		return errors.New("host.hostname is required")
 	}
+	if r.Host.Condition != "" && !r.Host.Condition.Valid() {
+		return fmt.Errorf("host.condition %q is not a recognized condition", r.Host.Condition)
+	}
+	if err := validateHostMetrics(r.Host.Metrics); err != nil {
+		return err
+	}
 	seen := make(map[string]struct{}, len(r.Services))
 	for i, s := range r.Services {
 		if strings.TrimSpace(s.ExternalID) == "" {
@@ -188,6 +244,54 @@ func (r *Report) Validate() error {
 		if !s.Health.Valid() {
 			return fmt.Errorf("services[%d].health %q is not an agent-reportable health value", i, s.Health)
 		}
+	}
+	return nil
+}
+
+func validateHostMetrics(m *HostMetrics) error {
+	if m == nil {
+		return nil
+	}
+	if m.CPUUsageRatio != nil {
+		v := *m.CPUUsageRatio
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 1 {
+			return errors.New("host.metrics.cpu_usage_ratio must be a finite value between 0 and 1")
+		}
+	}
+	if m.CPULogicalCount != nil && *m.CPULogicalCount < 1 {
+		return errors.New("host.metrics.cpu_logical_count must be positive")
+	}
+	if err := validateNonNegativeMetric("load_1", m.Load1); err != nil {
+		return err
+	}
+	if err := validateNonNegativeMetric("load_5", m.Load5); err != nil {
+		return err
+	}
+	if err := validateNonNegativeMetric("load_15", m.Load15); err != nil {
+		return err
+	}
+	if err := validateResourceUsage("memory", m.Memory); err != nil {
+		return err
+	}
+	return validateResourceUsage("root_disk", m.RootDisk)
+}
+
+func validateNonNegativeMetric(name string, value *float64) error {
+	if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0) {
+		return fmt.Errorf("host.metrics.%s must be a finite non-negative value", name)
+	}
+	return nil
+}
+
+func validateResourceUsage(name string, usage *HostResourceUsage) error {
+	if usage == nil {
+		return nil
+	}
+	if usage.TotalBytes == 0 {
+		return fmt.Errorf("host.metrics.%s.total_bytes must be positive", name)
+	}
+	if usage.UsedBytes > usage.TotalBytes {
+		return fmt.Errorf("host.metrics.%s.used_bytes must not exceed total_bytes", name)
 	}
 	return nil
 }

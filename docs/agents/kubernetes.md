@@ -49,7 +49,8 @@ kubectl apply -f trove-agent.yaml
 ```
 
 The manifest contains the ServiceAccount, a read-only ClusterRole
-(deployments/statefulsets/daemonsets/replicasets/pods; get/list only),
+(deployments/statefulsets/daemonsets/replicasets/pods/nodes and node metrics;
+get/list only),
 the binding, and the Deployment running
 `ghcr.io/techdox/trove-agent-k8s` as nonroot with a read-only filesystem. It
 also declares the `trove` namespace (harmless that step 2 created it too — we
@@ -66,7 +67,9 @@ cluster appears on the dashboard within ~30s. A `connection refused`/timeout
 means `TROVE_SERVER_URL` is wrong or unreachable from the cluster (see above); a
 `401` means the token in the Secret doesn't match the one minted in step 1.
 
-To upgrade the agent later: `kubectl -n trove rollout restart deploy/trove-agent`.
+To upgrade the agent later, re-apply the current manifest so image and read-only
+RBAC changes are both installed, then restart it:
+`kubectl apply -f trove-agent.yaml && kubectl -n trove rollout restart deploy/trove-agent`.
 
 ## Configuration
 
@@ -94,3 +97,12 @@ supported via `TROVE_KUBE_APISERVER`, `TROVE_KUBE_TOKEN`, `TROVE_KUBE_CA`, and
   reason (`OOMKilled`, exit code), falling back to the pod-level reason.
 - Pod image digests are captured, so image freshness works for cluster
   workloads just like containers.
+- The cluster host drawer rolls Kubernetes Node `Ready` conditions into one
+  condition: all ready is `normal`, a partially ready cluster is `warning`, and
+  no ready nodes is `critical`. It always reports node count and logical CPU
+  capacity when the node API is readable.
+- If [Metrics Server](https://github.com/kubernetes-sigs/metrics-server) or
+  another `metrics.k8s.io` provider is installed, the drawer also shows
+  aggregate node CPU and memory usage. Metrics API is optional: without it,
+  workload discovery, node readiness, and capacity continue normally and the
+  drawer explains why usage is absent.

@@ -33,6 +33,18 @@ host (a LAN IP or hostname; `localhost` only if the server runs on this same
 box). The host and its containers appear on the dashboard within one push
 interval (30s by default).
 
+The host drawer also reports Docker daemon condition, logical CPUs, and the
+Linux kernel's CPU, load, memory, and uptime snapshot when the agent uses the
+local Unix socket (the default). These aggregate procfs values require no
+additional mount. Root-disk usage is intentionally omitted: inside the agent
+container, `/` is an overlay filesystem and presenting it as the host disk
+would be misleading.
+
+When `DOCKER_HOST` points to a remote daemon, the Docker API supplies logical
+CPU capacity but not live host usage. Trove labels that source as
+`capacity only (remote daemon)` rather than displaying metrics from the machine
+where the agent process happens to run.
+
 ## Configuration
 
 | Variable           | Default                       | Purpose                                            |

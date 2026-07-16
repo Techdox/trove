@@ -14,8 +14,13 @@ import (
 // collector turns the Docker daemon's view into a Trove report. Docker is a
 // single-host platform, so Collect returns exactly one HostSnapshot.
 type collector struct {
-	cli *dockerClient
-	log *slog.Logger
+	cli     *dockerClient
+	log     *slog.Logger
+	metrics metricSampler
+}
+
+type metricSampler interface {
+	Collect() (*model.HostMetrics, error)
 }
 
 // Collect builds a full-state snapshot of every container on the host.
@@ -25,7 +30,28 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		return nil, err
 	}
 
-	hostname, meta := c.hostInfo(ctx)
+	hostname, meta, info := c.hostInfo(ctx)
+	if meta == nil {
+		meta = map[string]string{}
+	}
+	if c.cli.localHost {
+		meta["docker.host_metrics"] = "local procfs"
+	} else {
+		meta["docker.host_metrics"] = "capacity only (remote daemon)"
+	}
+	var metrics *model.HostMetrics
+	if c.metrics != nil {
+		metrics, err = c.metrics.Collect()
+		if err != nil {
+			c.log.Debug("docker host metrics partially unavailable", "err", err)
+		}
+	}
+	if info.NCPU > 0 {
+		if metrics == nil {
+			metrics = &model.HostMetrics{}
+		}
+		metrics.CPULogicalCount = &info.NCPU
+	}
 
 	// Cache image digests within this cycle so N containers of the same image
 	// cost one image inspect, not N.
@@ -56,7 +82,12 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 	}
 
 	return []agentkit.HostSnapshot{{
-		Host:     model.ReportHost{Hostname: hostname, Meta: meta},
+		Host: model.ReportHost{
+			Hostname:  hostname,
+			Condition: model.HostConditionNormal,
+			Metrics:   metrics,
+			Meta:      meta,
+		},
 		Services: services,
 	}}, nil
 }
@@ -65,12 +96,12 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 // hostname if the daemon info call fails. Meta keys use the dotted convention
 // (docker.version, docker.api_version, docker.os, docker.arch) matching the
 // Proxmox agent's proxmox.version pattern.
-func (c *collector) hostInfo(ctx context.Context) (string, map[string]string) {
+func (c *collector) hostInfo(ctx context.Context) (string, map[string]string, dockerInfo) {
 	info, err := c.cli.info(ctx)
 	if err != nil {
 		c.log.Debug("docker info failed; using OS hostname", "err", err)
 		h, _ := os.Hostname()
-		return h, nil
+		return h, nil, dockerInfo{}
 	}
 	hostname := info.Name
 	if hostname == "" {
@@ -79,6 +110,12 @@ func (c *collector) hostInfo(ctx context.Context) (string, map[string]string) {
 	meta := map[string]string{}
 	if info.ServerVersion != "" {
 		meta["docker.version"] = info.ServerVersion
+	}
+	if info.OperatingSystem != "" {
+		meta["docker.os_name"] = info.OperatingSystem
+	}
+	if info.KernelVersion != "" {
+		meta["docker.kernel"] = info.KernelVersion
 	}
 	// The /version endpoint carries API version and OS/arch details.
 	v, err := c.cli.version(ctx)
@@ -99,7 +136,7 @@ func (c *collector) hostInfo(ctx context.Context) (string, map[string]string) {
 			meta["docker.arch"] = info.Arch
 		}
 	}
-	return hostname, meta
+	return hostname, meta, info
 }
 
 // resolveDigest returns the registry manifest digest (sha256:...) for an image,

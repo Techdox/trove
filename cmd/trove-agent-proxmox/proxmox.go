@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,7 +80,8 @@ func (c *proxmoxClient) get(ctx context.Context, path string, out any) error {
 
 // pveNode is an entry from /nodes.
 type pveNode struct {
-	Node string `json:"node"`
+	Node   string `json:"node"`
+	Status string `json:"status"`
 }
 
 // pveNodeVersion is returned by /nodes/{node}/version.
@@ -87,6 +89,42 @@ type pveNodeVersion struct {
 	Version string `json:"version"`
 	Release string `json:"release"`
 	RepoID  string `json:"repoid"`
+}
+
+// pveMetricFloat accepts the Proxmox API's numeric metrics in either their
+// number or quoted-number form. loadavg has used both representations across
+// API versions, so being liberal here keeps collection compatible without
+// weakening Trove's validated wire contract.
+type pveMetricFloat float64
+
+func (f *pveMetricFloat) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' {
+		raw = raw[1 : len(raw)-1]
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return fmt.Errorf("parse Proxmox metric %q: %w", raw, err)
+	}
+	*f = pveMetricFloat(v)
+	return nil
+}
+
+type pveNodeResourceUsage struct {
+	Used  uint64 `json:"used"`
+	Total uint64 `json:"total"`
+}
+
+// pveNodeStatus is the resource summary returned by /nodes/{node}/status.
+type pveNodeStatus struct {
+	CPU     *pveMetricFloat `json:"cpu"`
+	CPUInfo struct {
+		CPUs int `json:"cpus"`
+	} `json:"cpuinfo"`
+	LoadAvg []pveMetricFloat     `json:"loadavg"`
+	Memory  pveNodeResourceUsage `json:"memory"`
+	RootFS  pveNodeResourceUsage `json:"rootfs"`
+	Uptime  *uint64              `json:"uptime"`
 }
 
 // pveResource is a guest entry from /cluster/resources?type=vm.
@@ -128,6 +166,10 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 	if err := c.cli.get(ctx, "/api2/json/nodes", &nodesResp); err != nil {
 		return nil, err
 	}
+	conditionByNode := make(map[string]model.HostCondition, len(nodesResp.Data))
+	for _, n := range nodesResp.Data {
+		conditionByNode[n.Node] = proxmoxNodeCondition(n.Status)
+	}
 	var resResp struct {
 		Data []pveResource `json:"data"`
 	}
@@ -153,7 +195,13 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		if name == "" {
 			name = fmt.Sprintf("%s-%d", r.Type, r.VMID)
 		}
-		image, osType := c.guestImage(ctx, r)
+		var image, osType string
+		// Cluster resources can retain guests for an offline node. Keep those
+		// guests in the catalogue, but do not issue node-local config requests
+		// that are expected to fail or wait for the HTTP timeout while it is down.
+		if conditionByNode[r.Node] != model.HostConditionCritical {
+			image, osType = c.guestImage(ctx, r)
+		}
 		health, healthDetail := proxmoxGuestHealth(r)
 		labels := proxmoxLabels(r)
 		if osType != "" {
@@ -173,12 +221,96 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 
 	snaps := make([]agentkit.HostSnapshot, 0, len(nodesResp.Data))
 	for _, n := range nodesResp.Data {
+		condition := conditionByNode[n.Node]
+		var metrics *model.HostMetrics
+		meta := map[string]string{"platform": "proxmox"}
+		// Offline cluster members cannot answer their node-local status endpoint.
+		// Preserve the useful critical condition without logging expected 5xx
+		// responses from either node-local endpoint every collection interval.
+		if condition != model.HostConditionCritical {
+			metrics = c.nodeMetrics(ctx, n.Node)
+			meta = c.nodeMeta(ctx, n.Node)
+		}
 		snaps = append(snaps, agentkit.HostSnapshot{
-			Host:     model.ReportHost{Hostname: n.Node, Meta: c.nodeMeta(ctx, n.Node)},
+			Host: model.ReportHost{
+				Hostname:  n.Node,
+				Condition: condition,
+				Metrics:   metrics,
+				Meta:      meta,
+			},
 			Services: byNode[n.Node],
 		})
 	}
 	return snaps, nil
+}
+
+func proxmoxNodeCondition(status string) model.HostCondition {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "online":
+		return model.HostConditionNormal
+	case "offline":
+		return model.HostConditionCritical
+	default:
+		return model.HostConditionUnknown
+	}
+}
+
+func (c *collector) nodeMetrics(ctx context.Context, node string) *model.HostMetrics {
+	var resp struct {
+		Data pveNodeStatus `json:"data"`
+	}
+	path := fmt.Sprintf("/api2/json/nodes/%s/status", url.PathEscape(node))
+	if err := c.cli.get(ctx, path, &resp); err != nil {
+		c.log.Warn("proxmox: node metrics unavailable", "node", node, "err", err)
+		return nil
+	}
+
+	m := &model.HostMetrics{}
+	if resp.Data.CPU != nil {
+		if cpu := float64(*resp.Data.CPU); isRatio(cpu) {
+			m.CPUUsageRatio = &cpu
+		}
+	}
+	if resp.Data.CPUInfo.CPUs > 0 {
+		count := resp.Data.CPUInfo.CPUs
+		m.CPULogicalCount = &count
+	}
+	for i := 0; i < len(resp.Data.LoadAvg) && i < 3; i++ {
+		load := float64(resp.Data.LoadAvg[i])
+		if !isNonNegativeFinite(load) {
+			continue
+		}
+		switch i {
+		case 0:
+			m.Load1 = &load
+		case 1:
+			m.Load5 = &load
+		case 2:
+			m.Load15 = &load
+		}
+	}
+	m.Memory = resourceUsage(resp.Data.Memory)
+	m.RootDisk = resourceUsage(resp.Data.RootFS)
+	if resp.Data.Uptime != nil {
+		uptime := *resp.Data.Uptime
+		m.UptimeSeconds = &uptime
+	}
+	return m
+}
+
+func isRatio(v float64) bool {
+	return isNonNegativeFinite(v) && v <= 1
+}
+
+func isNonNegativeFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0
+}
+
+func resourceUsage(v pveNodeResourceUsage) *model.HostResourceUsage {
+	if v.Total == 0 || v.Used > v.Total {
+		return nil
+	}
+	return &model.HostResourceUsage{UsedBytes: v.Used, TotalBytes: v.Total}
 }
 
 func (c *collector) nodeMeta(ctx context.Context, node string) map[string]string {

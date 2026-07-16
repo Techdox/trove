@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -37,6 +38,8 @@ func svc(id, state string, health model.Health) model.ReportService {
 		Image: "img/" + id + ":1", State: state, Health: health,
 	}
 }
+
+func pointer[T any](v T) *T { return &v }
 
 func TestImagesDueForCheckRequiresRunningDigest(t *testing.T) {
 	st, _ := newTestStore(t)
@@ -153,6 +156,52 @@ func TestApplyReportUpsertAndEvents(t *testing.T) {
 	// Denormalized display context survives without joins.
 	if evs[0].Service != "c1" || evs[0].Hostname != "host-a" || evs[0].Agent != "docker-a" {
 		t.Fatalf("event context = %q@%q by %q, want c1@host-a by docker-a", evs[0].Service, evs[0].Hostname, evs[0].Agent)
+	}
+}
+
+func TestApplyReportReplacesHostConditionAndMetrics(t *testing.T) {
+	st, clock := newTestStore(t)
+	ctx := context.Background()
+	_, agent, _ := st.CreateAgent(ctx, "proxmox-a")
+
+	first := report()
+	first.Agent.Platform = model.PlatformProxmox
+	first.Host.Condition = model.HostConditionWarning
+	first.Host.Metrics = &model.HostMetrics{
+		CPUUsageRatio: pointer(0.25),
+		Memory:        &model.HostResourceUsage{UsedBytes: 4, TotalBytes: 8},
+	}
+	if err := st.ApplyReport(ctx, agent.ID, first); err != nil {
+		t.Fatalf("apply metrics: %v", err)
+	}
+
+	hosts, err := st.ListHosts(ctx)
+	if err != nil || len(hosts) != 1 {
+		t.Fatalf("list hosts: hosts=%+v err=%v", hosts, err)
+	}
+	if hosts[0].Condition != string(model.HostConditionWarning) {
+		t.Fatalf("condition = %q, want warning", hosts[0].Condition)
+	}
+	var got model.HostMetrics
+	if err := json.Unmarshal([]byte(hosts[0].MetricsJSON), &got); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+	if got.CPUUsageRatio == nil || *got.CPUUsageRatio != 0.25 || got.Memory == nil || got.Memory.TotalBytes != 8 {
+		t.Fatalf("stored metrics = %+v", got)
+	}
+
+	*clock = clock.Add(30 * time.Second)
+	second := report()
+	second.Agent.Platform = model.PlatformProxmox
+	if err := st.ApplyReport(ctx, agent.ID, second); err != nil {
+		t.Fatalf("clear metrics: %v", err)
+	}
+	hosts, err = st.ListHosts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hosts[0].Condition != string(model.HostConditionUnknown) || hosts[0].MetricsJSON != "{}" {
+		t.Fatalf("cleared host = condition %q metrics %q", hosts[0].Condition, hosts[0].MetricsJSON)
 	}
 }
 

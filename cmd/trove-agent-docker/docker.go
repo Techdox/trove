@@ -18,8 +18,9 @@ import (
 // structurally rather than by convention. It speaks the daemon's default API
 // version (unversioned paths) for broad compatibility.
 type dockerClient struct {
-	http *http.Client
-	base string // scheme+host prefix, e.g. "http://docker" (unix) or "http://host:2375"
+	http      *http.Client
+	base      string // scheme+host prefix, e.g. "http://docker" (unix) or "http://host:2375"
+	localHost bool   // true only when procfs belongs to the daemon host
 }
 
 // newDockerClient connects using DOCKER_HOST, defaulting to the local unix
@@ -43,8 +44,9 @@ func newDockerClient(dockerHost string) (*dockerClient, error) {
 			},
 		}
 		return &dockerClient{
-			http: &http.Client{Transport: tr, Timeout: 30 * time.Second},
-			base: "http://docker", // host is ignored for unix transport
+			http:      &http.Client{Transport: tr, Timeout: 30 * time.Second},
+			base:      "http://docker", // host is ignored for unix transport
+			localHost: true,
 		}, nil
 	case "tcp", "http", "https":
 		scheme := "http"
@@ -127,10 +129,13 @@ type dockerImage struct {
 }
 
 type dockerInfo struct {
-	Name          string `json:"Name"`
-	ServerVersion string `json:"ServerVersion"`
-	OSType        string `json:"OSType"`
-	Arch          string `json:"Architecture"`
+	Name            string `json:"Name"`
+	ServerVersion   string `json:"ServerVersion"`
+	OSType          string `json:"OSType"`
+	Arch            string `json:"Architecture"`
+	NCPU            int    `json:"NCPU"`
+	OperatingSystem string `json:"OperatingSystem"`
+	KernelVersion   string `json:"KernelVersion"`
 }
 
 // dockerVersion is the response from /version. It carries the API version

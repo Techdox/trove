@@ -26,9 +26,17 @@ func TestReadAPIsExposeStableServiceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := func(state string) *model.Report {
+		cpuUsage := 0.25
 		return &model.Report{
 			Agent: model.ReportAgent{Name: "docker-a", Platform: model.PlatformDocker, Version: "test"},
-			Host:  model.ReportHost{Hostname: "host-a"},
+			Host: model.ReportHost{
+				Hostname:  "host-a",
+				Condition: model.HostConditionNormal,
+				Metrics: &model.HostMetrics{
+					CPUUsageRatio: &cpuUsage,
+					Memory:        &model.HostResourceUsage{UsedBytes: 4, TotalBytes: 8},
+				},
+			},
 			Services: []model.ReportService{{
 				ExternalID: "container-1", Name: "web", Kind: model.KindContainer,
 				State: state, Health: model.HealthHealthy,
@@ -51,8 +59,10 @@ func TestReadAPIsExposeStableServiceIdentity(t *testing.T) {
 	}
 	var services struct {
 		Hosts []struct {
-			Status     string  `json:"status"`
-			LastSeenAt *string `json:"last_seen_at"`
+			Status     string            `json:"status"`
+			LastSeenAt *string           `json:"last_seen_at"`
+			Condition  string            `json:"condition"`
+			Metrics    model.HostMetrics `json:"metrics"`
 			Services   []struct {
 				ID int64 `json:"id"`
 			} `json:"services"`
@@ -66,6 +76,10 @@ func TestReadAPIsExposeStableServiceIdentity(t *testing.T) {
 	}
 	if services.Hosts[0].Status != "ok" || services.Hosts[0].LastSeenAt == nil {
 		t.Fatalf("services response omitted host liveness: %+v", services.Hosts[0])
+	}
+	if services.Hosts[0].Condition != "normal" || services.Hosts[0].Metrics.CPUUsageRatio == nil ||
+		*services.Hosts[0].Metrics.CPUUsageRatio != 0.25 || services.Hosts[0].Metrics.Memory == nil {
+		t.Fatalf("services response omitted host condition/metrics: %+v", services.Hosts[0])
 	}
 	serviceID := services.Hosts[0].Services[0].ID
 

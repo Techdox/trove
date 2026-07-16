@@ -1,12 +1,24 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/techdox/trove/pkg/model"
 )
+
+type stubMetricSampler struct {
+	metrics *model.HostMetrics
+	err     error
+}
+
+func (s stubMetricSampler) Collect() (*model.HostMetrics, error) { return s.metrics, s.err }
 
 func inspectFromJSON(t *testing.T, s string) dockerInspect {
 	t.Helper()
@@ -57,4 +69,57 @@ func TestHealthDetail(t *testing.T) {
 			t.Fatalf("truncated detail should end with ellipsis: %q", d)
 		}
 	})
+}
+
+func TestCollectReportsDockerHostConditionAndMetrics(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/containers/json":
+			_, _ = io.WriteString(w, `[]`)
+		case "/info":
+			_, _ = io.WriteString(w, `{"Name":"docker-host","ServerVersion":"28.1","NCPU":8,"OperatingSystem":"Debian 12","KernelVersion":"6.8.0"}`)
+		case "/version":
+			_, _ = io.WriteString(w, `{"Version":"28.1","ApiVersion":"1.49","Os":"linux","Arch":"amd64"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer api.Close()
+
+	ratio := 0.25
+	col := &collector{
+		cli: &dockerClient{http: api.Client(), base: api.URL},
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		metrics: stubMetricSampler{metrics: &model.HostMetrics{
+			CPUUsageRatio: &ratio,
+		}},
+	}
+	snaps, err := col.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(snaps) != 1 || snaps[0].Host.Hostname != "docker-host" ||
+		snaps[0].Host.Condition != model.HostConditionNormal || snaps[0].Host.Metrics == nil ||
+		snaps[0].Host.Metrics.CPULogicalCount == nil || *snaps[0].Host.Metrics.CPULogicalCount != 8 ||
+		snaps[0].Host.Metrics.CPUUsageRatio == nil || *snaps[0].Host.Metrics.CPUUsageRatio != 0.25 {
+		t.Fatalf("docker snapshot = %+v", snaps)
+	}
+	if snaps[0].Host.Meta["docker.os_name"] != "Debian 12" || snaps[0].Host.Meta["docker.kernel"] != "6.8.0" {
+		t.Fatalf("docker metadata = %+v", snaps[0].Host.Meta)
+	}
+}
+
+func TestDockerClientOnlyTreatsUnixSocketAsLocalHost(t *testing.T) {
+	local, err := newDockerClient("unix:///var/run/docker.sock")
+	if err != nil {
+		t.Fatalf("local client: %v", err)
+	}
+	remote, err := newDockerClient("tcp://docker.example:2375")
+	if err != nil {
+		t.Fatalf("remote client: %v", err)
+	}
+	if !local.localHost || remote.localHost {
+		t.Fatalf("local flags = unix:%v remote:%v", local.localHost, remote.localHost)
+	}
 }

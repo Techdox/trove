@@ -212,6 +212,29 @@ type pod struct {
 	} `json:"status"`
 }
 
+type nodeList struct {
+	Items []kubeNode `json:"items"`
+}
+
+type kubeNode struct {
+	Metadata objectMeta `json:"metadata"`
+	Status   struct {
+		Capacity    map[string]string `json:"capacity"`
+		Allocatable map[string]string `json:"allocatable"`
+		Conditions  []struct {
+			Type   string `json:"type"`
+			Status string `json:"status"`
+		} `json:"conditions"`
+	} `json:"status"`
+}
+
+type nodeMetricsList struct {
+	Items []struct {
+		Metadata objectMeta        `json:"metadata"`
+		Usage    map[string]string `json:"usage"`
+	} `json:"items"`
+}
+
 // apiPath builds a list path, namespaced if configured.
 func (c *collector) apiPath(group, resource string) string {
 	if c.cfg.namespace != "" {

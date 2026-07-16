@@ -45,9 +45,10 @@ not a feature toggle, and it's the project's one hard rule.
   healthchecks, K8s readiness), plus server-side staleness: an agent that goes
   quiet flags itself and all its services within ~90 seconds.
 - **Host condition + resources** — reporting health stays separate from the
-  platform's host condition. Proxmox nodes surface online/offline condition,
-  CPU, load, memory, root-disk usage, and uptime in a dedicated host-stats
-  drawer, opened from the clearly labelled action on each host.
+  platform's host condition. Proxmox and Linux hosts surface CPU, load, memory,
+  disk, and uptime; local Docker agents report the kernel metrics they can
+  observe truthfully; Kubernetes rolls up node readiness plus CPU/memory when
+  Metrics API is available. Open the dedicated host-stats drawer from each host.
 - **Image freshness** — the server checks registries (batched, cached,
   rate-limit-aware) and badges services whose running image is behind its tag.
 - **Alerts & digest** — instant notifications via webhook / Discord / ntfy when

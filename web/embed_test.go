@@ -180,6 +180,8 @@ func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
 		"function findHost(key)",
 		"function findAgent(name)",
 		"function hostMetaLabel(key)",
+		"function hostMetricsNoticeHTML(host)",
+		"function agentVersionLabel(version)",
 		"function missingHostMetricsHTML(host, agent)",
 		"function openHostDrawer(key)",
 		`item("critical-hosts"`,
@@ -190,6 +192,8 @@ func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
 		"View host stats",
 		"No host metrics reported",
 		"agent version",
+		"docker.host_metrics",
+		"kubernetes.metrics_api",
 		"state.drawerKey || state.hostDrawerKey",
 	} {
 		if !strings.Contains(string(app), marker) {

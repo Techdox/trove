@@ -19,10 +19,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"path"
+	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/internal/hostmetrics"
 	"github.com/techdox/trove/pkg/model"
 )
 
@@ -43,11 +45,20 @@ type collector struct {
 	filter     string // optional glob
 	includeAll bool   // include inactive units
 	hostname   string
+	metrics    metricSampler
+	listUnits  func(context.Context) ([]byte, error)
+}
+
+type metricSampler interface {
+	Collect() (*model.HostMetrics, error)
 }
 
 func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error) {
-	out, err := exec.CommandContext(ctx, "systemctl",
-		"list-units", "--type=service", "--all", "--output=json", "--no-pager", "--no-legend").Output()
+	listUnits := c.listUnits
+	if listUnits == nil {
+		listUnits = systemdUnits
+	}
+	out, err := listUnits(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("systemctl list-units: %w", err)
 	}
@@ -83,10 +94,37 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		})
 	}
 
+	var metrics *model.HostMetrics
+	if c.metrics != nil {
+		metrics, err = c.metrics.Collect()
+		if err != nil {
+			c.log.Debug("linux host metrics partially unavailable", "err", err)
+		}
+	}
+	if runtime.NumCPU() > 0 {
+		if metrics == nil {
+			metrics = &model.HostMetrics{}
+		}
+		count := runtime.NumCPU()
+		metrics.CPULogicalCount = &count
+	}
+	meta := hostmetrics.LinuxMetadata()
+	meta["platform"] = string(model.PlatformLocal)
+
 	return []agentkit.HostSnapshot{{
-		Host:     model.ReportHost{Hostname: c.hostname, Meta: map[string]string{"platform": string(model.PlatformLocal)}},
+		Host: model.ReportHost{
+			Hostname:  c.hostname,
+			Condition: model.HostConditionNormal,
+			Metrics:   metrics,
+			Meta:      meta,
+		},
 		Services: services,
 	}}, nil
+}
+
+func systemdUnits(ctx context.Context) ([]byte, error) {
+	return exec.CommandContext(ctx, "systemctl",
+		"list-units", "--type=service", "--all", "--output=json", "--no-pager", "--no-legend").Output()
 }
 
 // isInteresting keeps running/failed units by default and drops inactive noise.
@@ -129,6 +167,7 @@ func main() {
 		filter:     os.Getenv("TROVE_LOCAL_UNIT_FILTER"),
 		includeAll: includeAll,
 		hostname:   hostname,
+		metrics:    hostmetrics.NewLinuxSampler(true),
 	}
 	agentkit.Run(ctx, cfg, model.PlatformLocal, version, col, log)
 }

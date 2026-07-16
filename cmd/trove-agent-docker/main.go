@@ -20,6 +20,7 @@ import (
 	"syscall"
 
 	"github.com/techdox/trove/internal/agentkit"
+	"github.com/techdox/trove/internal/hostmetrics"
 	"github.com/techdox/trove/pkg/model"
 )
 
@@ -50,6 +51,10 @@ func main() {
 		log.Warn("docker daemon not reachable yet; will retry", "err", err)
 	}
 
-	col := &collector{cli: cli, log: log}
+	var metrics metricSampler
+	if cli.localHost {
+		metrics = hostmetrics.NewLinuxSampler(false)
+	}
+	col := &collector{cli: cli, log: log, metrics: metrics}
 	agentkit.Run(ctx, cfg, model.PlatformDocker, version, col, log)
 }

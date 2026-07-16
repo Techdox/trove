@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/techdox/trove/internal/agentkit"
@@ -81,13 +83,194 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		}
 	}
 
+	condition, metrics, nodeMeta := c.clusterHealth(ctx)
+	for key, value := range nodeMeta {
+		meta[key] = value
+	}
+
 	return []agentkit.HostSnapshot{{
 		Host: model.ReportHost{
-			Hostname: c.cfg.cluster,
-			Meta:     meta,
+			Hostname:  c.cfg.cluster,
+			Condition: condition,
+			Metrics:   metrics,
+			Meta:      meta,
 		},
 		Services: services,
 	}}, nil
+}
+
+// clusterHealth rolls node readiness into one cluster condition and, when the
+// optional Metrics API is installed, aggregates its current CPU and memory
+// usage. Both reads are best-effort so upgrading an existing deployment before
+// applying the expanded read-only RBAC cannot stop workload reports.
+func (c *collector) clusterHealth(ctx context.Context) (model.HostCondition, *model.HostMetrics, map[string]string) {
+	var nodes nodeList
+	if err := c.cli.get(ctx, "/api/v1/nodes", &nodes); err != nil {
+		c.log.Debug("kube nodes unavailable; host condition and capacity omitted", "err", err)
+		return model.HostConditionUnknown, nil, nil
+	}
+
+	condition, ready := nodeCondition(nodes.Items)
+	meta := map[string]string{
+		"kubernetes.nodes":       strconv.Itoa(len(nodes.Items)),
+		"kubernetes.ready_nodes": strconv.Itoa(ready),
+	}
+
+	var usage nodeMetricsList
+	if err := c.cli.get(ctx, "/apis/metrics.k8s.io/v1beta1/nodes", &usage); err != nil {
+		c.log.Debug("kube Metrics API unavailable; reporting node capacity without usage", "err", err)
+		meta["kubernetes.metrics_api"] = "unavailable"
+		return condition, aggregateNodeMetrics(nodes.Items, nil), meta
+	}
+	meta["kubernetes.metrics_api"] = "available"
+	return condition, aggregateNodeMetrics(nodes.Items, &usage), meta
+}
+
+func nodeCondition(nodes []kubeNode) (model.HostCondition, int) {
+	if len(nodes) == 0 {
+		return model.HostConditionUnknown, 0
+	}
+	ready, notReady := 0, 0
+	for i := range nodes {
+		status := ""
+		for _, condition := range nodes[i].Status.Conditions {
+			if condition.Type == "Ready" {
+				status = condition.Status
+				break
+			}
+		}
+		switch status {
+		case "True":
+			ready++
+		case "False":
+			notReady++
+		}
+	}
+	if ready == len(nodes) {
+		return model.HostConditionNormal, ready
+	}
+	if ready > 0 {
+		return model.HostConditionWarning, ready
+	}
+	if notReady > 0 {
+		return model.HostConditionCritical, ready
+	}
+	return model.HostConditionUnknown, ready
+}
+
+func aggregateNodeMetrics(nodes []kubeNode, usage *nodeMetricsList) *model.HostMetrics {
+	byName := make(map[string]kubeNode, len(nodes))
+	totalCores := 0.0
+	for _, node := range nodes {
+		byName[node.Metadata.Name] = node
+		if cores, ok := parseCPUQuantity(node.Status.Capacity["cpu"]); ok {
+			totalCores += cores
+		}
+	}
+
+	m := &model.HostMetrics{}
+	populated := false
+	if totalCores > 0 && totalCores <= float64(math.MaxInt) {
+		count := int(math.Round(totalCores))
+		if count > 0 {
+			m.CPULogicalCount = &count
+			populated = true
+		}
+	}
+	if usage == nil {
+		if populated {
+			return m
+		}
+		return nil
+	}
+
+	usedCPU, capacityCPU := 0.0, 0.0
+	var usedMemory, capacityMemory uint64
+	for _, item := range usage.Items {
+		node, ok := byName[item.Metadata.Name]
+		if !ok {
+			continue
+		}
+		if used, ok := parseCPUQuantity(item.Usage["cpu"]); ok {
+			if capacity, ok := parseCPUQuantity(node.Status.Capacity["cpu"]); ok && capacity > 0 {
+				usedCPU += used
+				capacityCPU += capacity
+			}
+		}
+		if used, ok := parseByteQuantity(item.Usage["memory"]); ok {
+			if capacity, ok := parseByteQuantity(node.Status.Capacity["memory"]); ok && capacity > 0 && used <= capacity {
+				if math.MaxUint64-usedMemory >= used && math.MaxUint64-capacityMemory >= capacity {
+					usedMemory += used
+					capacityMemory += capacity
+				}
+			}
+		}
+	}
+	if capacityCPU > 0 {
+		ratio := math.Min(usedCPU/capacityCPU, 1)
+		if ratio >= 0 && !math.IsNaN(ratio) && !math.IsInf(ratio, 0) {
+			m.CPUUsageRatio = &ratio
+			populated = true
+		}
+	}
+	if capacityMemory > 0 && usedMemory <= capacityMemory {
+		m.Memory = &model.HostResourceUsage{UsedBytes: usedMemory, TotalBytes: capacityMemory}
+		populated = true
+	}
+	if !populated {
+		return nil
+	}
+	return m
+}
+
+func parseCPUQuantity(raw string) (float64, bool) {
+	return parseScaledQuantity(raw, map[string]float64{
+		"n": 1e-9,
+		"u": 1e-6,
+		"m": 1e-3,
+		"":  1,
+	})
+}
+
+func parseByteQuantity(raw string) (uint64, bool) {
+	value, ok := parseScaledQuantity(raw, map[string]float64{
+		"Ki": 1 << 10,
+		"Mi": 1 << 20,
+		"Gi": 1 << 30,
+		"Ti": 1 << 40,
+		"Pi": 1 << 50,
+		"k":  1e3,
+		"K":  1e3,
+		"M":  1e6,
+		"G":  1e9,
+		"T":  1e12,
+		"P":  1e15,
+		"":   1,
+	})
+	if !ok || value < 0 || value > math.MaxUint64 {
+		return 0, false
+	}
+	return uint64(math.Round(value)), true
+}
+
+func parseScaledQuantity(raw string, scales map[string]float64) (float64, bool) {
+	raw = strings.TrimSpace(raw)
+	for _, suffix := range []string{"Pi", "Ti", "Gi", "Mi", "Ki", "n", "u", "m", "P", "T", "G", "M", "K", "k", ""} {
+		scale, supported := scales[suffix]
+		if !supported || !strings.HasSuffix(raw, suffix) {
+			continue
+		}
+		number := strings.TrimSuffix(raw, suffix)
+		if number == "" {
+			return 0, false
+		}
+		value, err := strconv.ParseFloat(number, 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+			return 0, false
+		}
+		return value * scale, true
+	}
+	return 0, false
 }
 
 func replicaCount(w *workload) int {

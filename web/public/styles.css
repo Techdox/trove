@@ -697,6 +697,16 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
   font-size: 12.5px;
 }
 .d-empty span { display: block; }
+.d-note {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-left: 2px solid var(--blue);
+  background: rgba(116, 186, 255, 0.05);
+  color: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
 
 /* ---- misc ---- */
 .empty { color: var(--subtle); padding: 30px 14px; text-align: center; font-style: italic; }

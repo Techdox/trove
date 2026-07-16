@@ -64,3 +64,9 @@ Each `.service` unit appears as a service with its systemd sub-state
 everything else is `unknown` health (systemd has no app-level healthcheck) with
 the state badge carrying the signal. By default only active/failed units are
 reported to keep the noise down — set `TROVE_LOCAL_ALL=true` for everything.
+
+Click **View host stats** to see current CPU, load average, memory, root-disk
+usage, uptime, logical CPU count, operating system, kernel, and architecture.
+The first report establishes the CPU counter baseline; current CPU usage appears
+from the next interval onward. All inputs are aggregate read-only procfs and
+filesystem-statistics reads—Trove does not inspect process contents.

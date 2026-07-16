@@ -77,6 +77,11 @@ function absTime(iso) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
 }
 
+function agentVersionLabel(version) {
+  if (!version) return "";
+  return /^\d/.test(version) ? `v${version}` : version;
+}
+
 // ---------------------------------------------------------- badge maps ----
 
 const HEALTH_CLASS = {
@@ -526,7 +531,7 @@ function renderAgents() {
         <span class="name">${esc(a.name)}</span>
         ${badge(AGENT_CLASS[st] || "b-gray", st)}
       </div>
-      <div class="meta">${esc(a.platform || "—")}${a.version ? " · v" + esc(a.version) : ""}</div>
+      <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>
       <div class="meta">last push: ${esc(relTime(a.last_seen_at))}</div>
     </div>`;
   }).join("");
@@ -765,8 +770,29 @@ function hostMetaLabel(key) {
     "proxmox.release": "Proxmox release",
     "proxmox.repoid": "Proxmox repository ID",
     "docker.version": "Docker version",
+    "docker.api_version": "Docker API version",
+    "docker.os": "Docker OS",
+    "docker.arch": "Docker architecture",
+    "docker.os_name": "Operating system",
+    "docker.kernel": "Kernel",
+    "docker.host_metrics": "Host metrics source",
     "kubernetes.version": "Kubernetes version",
+    "kubernetes.platform": "Kubernetes platform",
+    "kubernetes.nodes": "Nodes",
+    "kubernetes.ready_nodes": "Ready nodes",
+    "kubernetes.metrics_api": "Metrics API",
+    "linux.os": "Operating system",
+    "linux.kernel": "Kernel",
+    "linux.arch": "Architecture",
   }[key] || key;
+}
+
+function hostMetricsNoticeHTML(host) {
+  const meta = host.meta && typeof host.meta === "object" ? host.meta : {};
+  if ((host.platform === "kubernetes") && meta["kubernetes.metrics_api"] === "unavailable") {
+    return `<div class="d-note">CPU and memory usage require the optional Kubernetes Metrics API. Node capacity and readiness are still reported.</div>`;
+  }
+  return "";
 }
 
 function missingHostMetricsHTML(host, agent) {
@@ -778,6 +804,12 @@ function missingHostMetricsHTML(host, agent) {
       "Update and restart the Proxmox agent from the same Trove build as the server, then wait for its next report.";
   } else if (isProxmox) {
     detail = "The latest report did not contain a node resource snapshot. Check the Proxmox agent logs for node status API errors or permission problems.";
+  } else if (host.platform === "kubernetes") {
+    detail = "Apply the current read-only node RBAC. CPU and memory usage also require metrics-server or another metrics.k8s.io provider.";
+  } else if (host.platform === "docker") {
+    detail = "Live Docker host usage is available when the agent runs beside the daemon through its local Unix socket. Remote Docker APIs expose capacity but not host usage.";
+  } else if (host.platform === "local") {
+    detail = "The Linux agent could not read the aggregate procfs metrics for this host. Check its logs and /proc access.";
   } else {
     detail = "This platform did not include CPU, load, memory, disk, or uptime in its latest report.";
   }
@@ -816,7 +848,7 @@ function renderHostDrawer(el, host) {
       ${badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`)}
     </div>
 
-    ${drawerSection("Host resources", metrics.length ? kv(metrics, "metrics") : missingHostMetricsHTML(host, agent))}
+    ${drawerSection("Host resources", metrics.length ? kv(metrics, "metrics") + hostMetricsNoticeHTML(host) : missingHostMetricsHTML(host, agent))}
     ${drawerSection("Platform details", meta.length ? kv(meta.map(([k, v]) => [hostMetaLabel(k), metaValue(v)])) : "")}
     ${drawerSection("Inventory", kv(inventory))}
 

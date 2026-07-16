@@ -15,14 +15,26 @@ import (
 
 func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 	seen := map[string]bool{}
+	cpuUsage := pveMetricFloat(0.125)
+	uptime := uint64(90061)
+	nodeStatus := pveNodeStatus{
+		CPU:     &cpuUsage,
+		LoadAvg: []pveMetricFloat{0.5, 0.25, 0.125},
+		Memory:  pveNodeResourceUsage{Used: 8 * 1024 * 1024 * 1024, Total: 32 * 1024 * 1024 * 1024},
+		RootFS:  pveNodeResourceUsage{Used: 40 * 1024 * 1024 * 1024, Total: 100 * 1024 * 1024 * 1024},
+		Uptime:  &uptime,
+	}
+	nodeStatus.CPUInfo.CPUs = 16
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen[r.URL.Path] = true
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api2/json/nodes":
-			writePVEResponse(t, w, []pveNode{{Node: "pve-a"}})
+			writePVEResponse(t, w, []pveNode{{Node: "pve-a", Status: "online"}})
 		case "/api2/json/nodes/pve-a/version":
 			writePVEResponse(t, w, pveNodeVersion{Version: "8.4.1", Release: "1", RepoID: "a2b3c4d5"})
+		case "/api2/json/nodes/pve-a/status":
+			writePVEResponse(t, w, nodeStatus)
 		case "/api2/json/cluster/resources":
 			if got := r.URL.Query().Get("type"); got != "vm" {
 				t.Fatalf("resources type query = %q, want vm", got)
@@ -64,6 +76,18 @@ func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 	if got := snaps[0].Host.Meta["proxmox.repoid"]; got != "a2b3c4d5" {
 		t.Fatalf("host proxmox.repoid meta = %q, want a2b3c4d5", got)
 	}
+	if snaps[0].Host.Condition != model.HostConditionNormal {
+		t.Fatalf("host condition = %q, want normal", snaps[0].Host.Condition)
+	}
+	metrics := snaps[0].Host.Metrics
+	if metrics == nil || metrics.CPUUsageRatio == nil || *metrics.CPUUsageRatio != 0.125 ||
+		metrics.CPULogicalCount == nil || *metrics.CPULogicalCount != 16 ||
+		metrics.Load1 == nil || *metrics.Load1 != 0.5 ||
+		metrics.Memory == nil || metrics.Memory.UsedBytes != 8*1024*1024*1024 ||
+		metrics.RootDisk == nil || metrics.RootDisk.TotalBytes != 100*1024*1024*1024 ||
+		metrics.UptimeSeconds == nil || *metrics.UptimeSeconds != 90061 {
+		t.Fatalf("host metrics = %+v", metrics)
+	}
 	services := snaps[0].Services
 	if len(services) != 2 {
 		t.Fatalf("services = %d, want 2", len(services))
@@ -87,12 +111,85 @@ func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 
 	for _, path := range []string{
 		"/api2/json/nodes/pve-a/version",
+		"/api2/json/nodes/pve-a/status",
 		"/api2/json/nodes/pve-a/qemu/101/config",
 		"/api2/json/nodes/pve-a/lxc/202/config",
 	} {
 		if !seen[path] {
 			t.Fatalf("expected config endpoint %s to be queried", path)
 		}
+	}
+}
+
+func TestCollectReportsOfflineNodeConditionWithoutMetricsRequest(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api2/json/nodes":
+			writePVEResponse(t, w, []pveNode{{Node: "pve-offline", Status: "offline"}})
+		case "/api2/json/cluster/resources":
+			writePVEResponse(t, w, []pveResource{})
+		case "/api2/json/nodes/pve-offline/version":
+			t.Fatal("offline node version endpoint must not be queried")
+		case "/api2/json/nodes/pve-offline/status":
+			t.Fatal("offline node status endpoint must not be queried")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer api.Close()
+
+	col := &collector{
+		cli: newProxmoxClient(proxmoxConfig{url: api.URL, token: "root@pam!trove=test"}),
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	snaps, err := col.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(snaps) != 1 || snaps[0].Host.Condition != model.HostConditionCritical || snaps[0].Host.Metrics != nil {
+		t.Fatalf("offline snapshot = %+v", snaps)
+	}
+}
+
+func TestCollectKeepsOnlineNodeWhenMetricsUnavailable(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api2/json/nodes":
+			writePVEResponse(t, w, []pveNode{{Node: "pve-a", Status: "online"}})
+		case "/api2/json/cluster/resources":
+			writePVEResponse(t, w, []pveResource{})
+		case "/api2/json/nodes/pve-a/version":
+			writePVEResponse(t, w, pveNodeVersion{})
+		case "/api2/json/nodes/pve-a/status":
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer api.Close()
+
+	col := &collector{
+		cli: newProxmoxClient(proxmoxConfig{url: api.URL, token: "root@pam!trove=test"}),
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	snaps, err := col.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(snaps) != 1 || snaps[0].Host.Condition != model.HostConditionNormal || snaps[0].Host.Metrics != nil {
+		t.Fatalf("online snapshot with missing metrics = %+v", snaps)
+	}
+}
+
+func TestPVEMetricFloatAcceptsQuotedAndNumericValues(t *testing.T) {
+	var values []pveMetricFloat
+	if err := json.Unmarshal([]byte(`["0.25",0.5,"0"]`), &values); err != nil {
+		t.Fatalf("unmarshal metric values: %v", err)
+	}
+	if len(values) != 3 || values[0] != 0.25 || values[1] != 0.5 || values[2] != 0 {
+		t.Fatalf("metric values = %+v", values)
 	}
 }
 

@@ -86,6 +86,7 @@ const HEALTH_CLASS = {
 };
 
 const AGENT_CLASS = { ok: "b-green", stale: "b-yellow", offline: "b-red", unknown: "b-gray" };
+const HOST_CONDITION_CLASS = { normal: "b-green", warning: "b-yellow", critical: "b-red", unknown: "b-gray" };
 
 function stateClass(state) {
   // K8s parents report "ready/desired" (e.g. "2/2").
@@ -178,6 +179,88 @@ function hostPlatformLine(host) {
   return parts.filter(Boolean).join(" · ");
 }
 
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatBytes(bytes) {
+  const n = finiteNumber(bytes);
+  if (n === null || n < 0) return "—";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  let value = n;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const precision = value >= 10 || unit === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unit]}`;
+}
+
+function formatUptime(seconds) {
+  const total = finiteNumber(seconds);
+  if (total === null || total < 0) return "—";
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function resourceMetric(label, usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const used = finiteNumber(usage.used_bytes);
+  const total = finiteNumber(usage.total_bytes);
+  if (used === null || total === null || total <= 0 || used < 0 || used > total) return null;
+  const percent = Math.round((used / total) * 100);
+  return {
+    label,
+    value: `${percent}%`,
+    title: `${label}: ${formatBytes(used)} / ${formatBytes(total)}`,
+  };
+}
+
+function hostMetricItems(metrics) {
+  if (!metrics || typeof metrics !== "object") return [];
+  const items = [];
+  const cpu = finiteNumber(metrics.cpu_usage_ratio);
+  if (cpu !== null && cpu >= 0 && cpu <= 1) {
+    const cores = finiteNumber(metrics.cpu_logical_count);
+    items.push({
+      label: "CPU",
+      value: `${Math.round(cpu * 100)}%`,
+      title: `CPU: ${Math.round(cpu * 100)}%${cores && cores > 0 ? ` · ${cores} logical CPUs` : ""}`,
+    });
+  }
+  const memory = resourceMetric("RAM", metrics.memory);
+  if (memory) items.push(memory);
+  const rootDisk = resourceMetric("Root", metrics.root_disk);
+  if (rootDisk) items.push(rootDisk);
+  const load1 = finiteNumber(metrics.load_1);
+  const load5 = finiteNumber(metrics.load_5);
+  const load15 = finiteNumber(metrics.load_15);
+  if ([load1, load5, load15].some((n) => n !== null && n >= 0)) {
+    const values = [load1, load5, load15].map((n) => n === null || n < 0 ? "—" : n.toFixed(2));
+    items.push({ label: "Load", value: values[0], title: `Load average: ${values.join(" · ")} (1m · 5m · 15m)` });
+  }
+  const uptime = finiteNumber(metrics.uptime_seconds);
+  if (uptime !== null && uptime >= 0) {
+    items.push({ label: "Up", value: formatUptime(uptime), title: `Uptime: ${formatUptime(uptime)}` });
+  }
+  return items;
+}
+
+function hostMetricsHTML(metrics) {
+  const items = hostMetricItems(metrics);
+  if (items.length === 0) return "";
+  return `<span class="host-metrics" aria-label="Host resource metrics">${items.map((item) =>
+    `<span class="host-metric" title="${esc(item.title)}"><span class="metric-label">${esc(item.label)}</span> ${esc(item.value)}</span>`
+  ).join("")}</span>`;
+}
+
 // ------------------------------------------------------- cell rendering ----
 
 // splitImage separates "registry/namespace/name:tag" so the prefix can
@@ -243,7 +326,7 @@ function matchesFilters(s, host) {
   const q = state.q.trim().toLowerCase();
   if (!q) return true;
   const hay = [s.name, s.external_id, s.image, s.kind, s.state, s.health, s.freshness,
-    host.hostname, host.agent];
+    host.hostname, host.agent, host.platform, host.condition];
   if (s.labels && typeof s.labels === "object") {
     for (const [k, v] of Object.entries(s.labels)) hay.push(k, v);
   }
@@ -257,13 +340,15 @@ function filterActive() {
 // counts over the full dataset (independent of the active filter)
 function computeCounts() {
   const c = {
-    hosts: 0, staleHosts: 0, offlineHosts: 0,
+    hosts: 0, staleHosts: 0, offlineHosts: 0, warningHosts: 0, criticalHosts: 0,
     services: 0, running: 0, unhealthy: 0, stopped: 0, outdated: 0, stale: 0, removed: 0,
   };
   for (const h of state.data.services?.hosts || []) {
     c.hosts++;
     if (h.status === "stale" && h.agent_status !== "stale" && h.agent_status !== "offline") c.staleHosts++;
     if (h.status === "offline" && h.agent_status !== "offline") c.offlineHosts++;
+    if (h.status === "ok" && h.condition === "warning") c.warningHosts++;
+    if (h.status === "ok" && h.condition === "critical") c.criticalHosts++;
     for (const s of h.services || []) {
       if (s.state === "removed") { c.removed++; continue; }
       c.services++;
@@ -292,9 +377,11 @@ function attentionItems() {
   return [
     item("offline-agents", "critical", offline, "Offline agent", "Trove is no longer receiving reports from this source.", "Review agents"),
     item("offline-hosts", "critical", c.offlineHosts, "Offline host", "This host has missed its own reporting window and its inventory is stale.", "Review hosts"),
+    item("critical-hosts", "critical", c.criticalHosts, "Critical host condition", "The platform reports that this host needs attention.", "Review hosts"),
     item("unhealthy", "critical", c.unhealthy, "Unhealthy service", "A platform health check or readiness signal is failing.", "Show services"),
     item("stale-agents", "warning", staleAgents, "Stale agent", "This source has missed its expected reporting interval.", "Review agents"),
     item("stale-hosts", "warning", c.staleHosts, "Stale host", "This host has stopped reporting even if another host from the same agent is still active.", "Review hosts"),
+    item("warning-hosts", "warning", c.warningHosts, "Host condition warning", "The platform reports a degraded host condition.", "Review hosts"),
     item("stopped", "info", c.stopped, "Stopped workload", "A discovered workload is not running. It may be intentional.", "Show services"),
     item("removed", "info", c.removed, "Recently disappeared service", "A service is absent from its latest full-state report.", "Show services"),
     item("outdated", "info", c.outdated, "Outdated image", "The running image digest is behind the current tag.", "Show services"),
@@ -307,7 +394,7 @@ function renderAttention() {
   if (items.length === 0) {
     el.innerHTML = `<div class="attention-healthy">
       <span class="attention-icon" aria-hidden="true">✓</span>
-      <div><strong>Nothing needs attention right now.</strong><span>All reporting agents are online and discovered services have no current health, state, or image-freshness warnings.</span></div>
+      <div><strong>Nothing needs attention right now.</strong><span>All reporting agents and hosts are online, and discovered services have no current health, state, or image-freshness warnings.</span></div>
     </div>`;
     return;
   }
@@ -325,7 +412,7 @@ function showAttention(key) {
     focusInvestigationTarget("infrastructure-title");
     return;
   }
-  if (key === "offline-hosts" || key === "stale-hosts") {
+  if (["offline-hosts", "stale-hosts", "critical-hosts", "warning-hosts"].includes(key)) {
     $("inventory-title").scrollIntoView({ behavior: "smooth", block: "start" });
     focusInvestigationTarget("inventory-title");
     return;
@@ -483,6 +570,9 @@ function renderHosts() {
       (nOutdated ? badge("b-peach", `${nOutdated} outdated`, "mini") : "");
 
     const st = h.status || "unknown";
+    const condition = h.condition || "unknown";
+    const conditionBadge = condition !== "unknown"
+      ? badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`) : "";
     const collapsed = state.collapsed.has(hostKey(h));
     const countLabel = filterActive() && visible.length !== total
       ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
@@ -493,7 +583,9 @@ function renderHosts() {
         <span class="hostname">${esc(h.hostname)}</span>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
         <span class="sub">last report ${esc(relTime(h.last_seen_at))}</span>
-        ${badge(AGENT_CLASS[st] || "b-gray", `host ${st}`)}
+        ${badge(AGENT_CLASS[st] || "b-gray", `reporting ${st}`)}
+        ${conditionBadge}
+        ${hostMetricsHTML(h.metrics)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
       </button>

@@ -156,6 +156,19 @@ agent reads it with `GET /api2/json/nodes/{node}/version` and stores it as host
 metadata (`proxmox.version`, `proxmox.release`, and `proxmox.repoid`) rather
 than repeating it on every VM/LXC.
 
+The same header shows the node's current CPU, load, memory, root-disk usage,
+and uptime. These come from the read-only
+`GET /api2/json/nodes/{node}/status` endpoint. Node availability remains a
+separate condition: `online` maps to `normal`, while an explicitly `offline`
+cluster member maps to `critical`. Trove does not treat a single high CPU or
+memory sample as an alert-worthy failure.
+
+If a node's status endpoint is temporarily unavailable, the rest of the
+cluster report is still sent and that host's metrics are cleared rather than
+leaving an old snapshot on screen. Offline nodes are still reported with their
+critical condition, without repeatedly querying node-local endpoints that are
+expected to fail.
+
 Click a Proxmox guest in the dashboard to see its reported metrics: node, CPU,
 memory, disk, uptime, VMID, and OS type where available.
 

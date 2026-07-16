@@ -22,7 +22,40 @@ If OIDC is enabled, read APIs require either an authenticated dashboard session 
 
 By default, Trove returns all services grouped by agent and host for the dashboard. Reported hosts with no services are included with an empty `services` array so their liveness remains visible.
 
-Each host group includes its own derived `status` (`ok`, `stale`, `offline`, or `unknown`) and `last_seen_at`, plus `agent_status` for the owning agent. Host and agent status can differ when a multi-host agent continues reporting some hosts after another disappears.
+Each host group includes its own derived `status` (`ok`, `stale`, `offline`, or
+`unknown`) and `last_seen_at`, plus `agent_status` for the owning agent. Host
+and agent status can differ when a multi-host agent continues reporting some
+hosts after another disappears.
+
+`condition` is the platform's latest verdict (`normal`, `warning`, `critical`,
+or `unknown`). It is deliberately separate from reporting `status`: for
+example, a Proxmox agent can keep reporting normally while one cluster node is
+offline and therefore `critical`.
+
+`metrics` is the latest point-in-time resource snapshot reported for the host.
+Fields the platform cannot provide are omitted; an empty object means no host
+metrics are currently available. Trove stores only the latest snapshot and
+does not turn a brief resource spike into a health verdict.
+
+```json
+{
+  "agent": "proxmox",
+  "hostname": "pve-a",
+  "platform": "proxmox",
+  "status": "ok",
+  "condition": "normal",
+  "metrics": {
+    "cpu_usage_ratio": 0.125,
+    "cpu_logical_count": 16,
+    "load_1": 0.5,
+    "load_5": 0.25,
+    "load_15": 0.125,
+    "memory": { "used_bytes": 8589934592, "total_bytes": 34359738368 },
+    "root_disk": { "used_bytes": 42949672960, "total_bytes": 107374182400 },
+    "uptime_seconds": 90061
+  }
+}
+```
 
 Optional query parameters:
 
@@ -75,7 +108,7 @@ TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \
   'https://trove.example/api/v1/events?kind=health&limit=50&offset=50'
 ```
 
-## Metrics
+## Prometheus metrics
 
 `GET /metrics` exposes Prometheus text format and is protected like the other read APIs when OIDC/API-token auth is enabled.
 

@@ -13,6 +13,8 @@ type Host struct {
 	AgentID              int64
 	Hostname             string
 	MetaJSON             string
+	Condition            string
+	MetricsJSON          string
 	AgentName            string
 	AgentPlatform        string
 	AgentIntervalSeconds int
@@ -25,7 +27,8 @@ type Host struct {
 // Host status is derived by callers from LastSeenAt and that interval.
 func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT h.id, h.agent_id, h.hostname, h.platform_meta_json, h.last_seen_at, h.last_status,
+		SELECT h.id, h.agent_id, h.hostname, h.platform_meta_json, h.condition, h.metrics_json,
+		       h.last_seen_at, h.last_status,
 		       a.name, a.platform, a.report_interval_seconds, a.last_seen_at
 		  FROM hosts h
 		  JOIN agents a ON a.id = h.agent_id
@@ -39,7 +42,8 @@ func (s *Store) ListHosts(ctx context.Context) ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		if err := rows.Scan(
-			&h.ID, &h.AgentID, &h.Hostname, &h.MetaJSON, &h.LastSeenAt, &h.LastStatus,
+			&h.ID, &h.AgentID, &h.Hostname, &h.MetaJSON, &h.Condition, &h.MetricsJSON,
+			&h.LastSeenAt, &h.LastStatus,
 			&h.AgentName, &h.AgentPlatform, &h.AgentIntervalSeconds, &h.AgentLastSeenAt,
 		); err != nil {
 			return nil, err

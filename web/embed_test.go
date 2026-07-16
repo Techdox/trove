@@ -152,14 +152,36 @@ func TestDashboardShowsIndependentHostLiveness(t *testing.T) {
 		`if (h.status === "offline" && h.agent_status !== "offline") c.offlineHosts++;`,
 		`item("offline-hosts"`,
 		`item("stale-hosts"`,
-		`if (key === "offline-hosts" || key === "stale-hosts") {`,
+		`["offline-hosts", "stale-hosts", "critical-hosts", "warning-hosts"].includes(key)`,
 		"last report ${esc(relTime(h.last_seen_at))}",
-		"`host ${st}`",
+		"`reporting ${st}`",
 		`case "host":`,
 		`e.kind === "agent" || e.kind === "host"`,
 	} {
 		if !strings.Contains(string(app), marker) {
 			t.Errorf("dashboard host liveness is missing %q", marker)
+		}
+	}
+}
+
+func TestDashboardShowsHostConditionAndMetrics(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+
+	for _, marker := range []string{
+		"function hostMetricItems(metrics)",
+		"function hostMetricsHTML(metrics)",
+		`item("critical-hosts"`,
+		`item("warning-hosts"`,
+		"`condition ${condition}`",
+		"hostMetricsHTML(h.metrics)",
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard host metrics are missing %q", marker)
 		}
 	}
 }

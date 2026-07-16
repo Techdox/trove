@@ -66,8 +66,10 @@ func TestHostLivenessMigrationBackfillsExistingHosts(t *testing.T) {
 
 	var got sql.NullInt64
 	var status string
+	var condition, metricsJSON string
 	if err := st.DB().QueryRowContext(ctx,
-		`SELECT last_seen_at, last_status FROM hosts WHERE hostname = 'node-a'`).Scan(&got, &status); err != nil {
+		`SELECT last_seen_at, last_status, condition, metrics_json FROM hosts WHERE hostname = 'node-a'`).
+		Scan(&got, &status, &condition, &metricsJSON); err != nil {
 		t.Fatalf("read migrated host heartbeat: %v", err)
 	}
 	if !got.Valid || got.Int64 != lastSeen {
@@ -75,5 +77,8 @@ func TestHostLivenessMigrationBackfillsExistingHosts(t *testing.T) {
 	}
 	if status != "ok" {
 		t.Fatalf("migrated last_status = %q, want ok", status)
+	}
+	if condition != "unknown" || metricsJSON != "{}" {
+		t.Fatalf("migrated host condition/metrics = %q/%q, want unknown/{}", condition, metricsJSON)
 	}
 }

@@ -42,6 +42,8 @@ type hostGroupDTO struct {
 	Status      string          `json:"status"`
 	LastSeenAt  *string         `json:"last_seen_at"`
 	AgentStatus string          `json:"agent_status"`
+	Condition   string          `json:"condition"`
+	Metrics     json.RawMessage `json:"metrics"`
 	Meta        json.RawMessage `json:"meta"`
 	Services    []serviceDTO    `json:"services"`
 }
@@ -139,6 +141,8 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 				Status:      string(heartbeatStatus(host.LastSeenAt, host.AgentIntervalSeconds, now)),
 				LastSeenAt:  rfc3339Ptr(host.LastSeenAt),
 				AgentStatus: string(heartbeatStatus(host.AgentLastSeenAt, host.AgentIntervalSeconds, now)),
+				Condition:   host.Condition,
+				Metrics:     rawJSON(host.MetricsJSON, "{}"),
 				Meta:        rawJSON(host.MetaJSON, "{}"),
 				Services:    []serviceDTO{},
 			})
@@ -155,6 +159,8 @@ func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
 				Status:      string(heartbeatStatus(row.HostLastSeenAt, row.AgentIntervalSeconds, now)),
 				LastSeenAt:  rfc3339Ptr(row.HostLastSeenAt),
 				AgentStatus: string(heartbeatStatus(row.AgentLastSeenAt, row.AgentIntervalSeconds, now)),
+				Condition:   row.HostCondition,
+				Metrics:     rawJSON(row.HostMetricsJSON, "{}"),
 				Meta:        rawJSON(row.HostMetaJSON, "{}"),
 				Services:    []serviceDTO{},
 			})

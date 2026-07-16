@@ -169,6 +169,13 @@ After upgrading Trove, update and restart both the server and the Proxmox
 agent. An older agent can continue reporting its guests, but its reports do not
 contain the host condition or resource snapshot required by this view.
 
+For a branch preview, use the same branch tag for both images. For example,
+add `TROVE_VERSION=feat-host-health-metrics` to `.env`, then recreate both
+services with `docker compose -f docker-compose.proxmox.yml pull` followed by
+`docker compose -f docker-compose.proxmox.yml up -d`. The preview workflow
+stamps the branch and short commit SHA into each binary, which is shown as the
+agent version in Trove.
+
 If a node's status endpoint is temporarily unavailable, the rest of the
 cluster report is still sent and that host's metrics are cleared rather than
 leaving an old snapshot on screen. Offline nodes are still reported with their

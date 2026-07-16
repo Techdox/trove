@@ -3,11 +3,12 @@
 # goreleaser) is build/docker/Dockerfile.server — keep base image, user, and
 # ENV defaults in sync between the two.
 FROM golang:1.26 AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/trove-server ./cmd/trove-server
 # Pre-create the data dir owned by the distroless nonroot uid (65532) so a
 # fresh named volume inherits writable ownership.

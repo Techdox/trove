@@ -29,6 +29,8 @@ jobs:
         run: go vet ./...
       - name: Dockerfile drift check
         run: ./scripts/check-dockerfile-drift.sh
+      - name: GitHub Actions lint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.10
       - name: Release surface check
         run: python3 ./scripts/check_release_surface.py
       - name: golangci-lint

@@ -1,15 +1,16 @@
 name: Preview images
 
-# Builds and pushes branch-tagged Docker images to GHCR for server/runtime
-# changes on feature branches. This lets you test a PR build without merging
-# to main:
+# Builds and pushes branch-tagged Docker images to GHCR for server and agent
+# changes on feature branches. This lets you test a complete PR build without
+# merging to main:
 #
 #   docker pull ghcr.io/techdox/trove-server:feat-oidc-auth
+#   docker pull ghcr.io/techdox/trove-agent-proxmox:feat-oidc-auth
 #
-# Only the server image is built (it's the one with dashboard/auth changes).
-# Agent images are unchanged by most feature work and can be tested with
-# the latest released image. Docs-only branches/changes deliberately do not
-# publish preview images.
+# Every containerized binary is built from the same commit. This prevents a
+# preview server from silently running alongside a released agent whose report
+# contract is older. The local/systemd agent has no container image. Docs-only
+# branches/changes deliberately do not publish preview images.
 #
 # Images are tagged with a sanitized branch name. On main, the tag is
 # "main" (overwritten on every push). Tags are never published to
@@ -32,7 +33,12 @@ on:
     paths:
       - '.dockerignore'
       - '.github/workflows/preview-images.yml'
+      - 'Dockerfile.agent'
+      - 'Dockerfile.agents'
       - 'Dockerfile.server'
+      - 'cmd/trove-agent-docker/**'
+      - 'cmd/trove-agent-k8s/**'
+      - 'cmd/trove-agent-proxmox/**'
       - 'cmd/trove-server/**'
       - 'go.mod'
       - 'go.sum'
@@ -45,9 +51,46 @@ permissions:
   packages: write
 
 jobs:
-  build-server:
-    name: Build trove-server preview image
+  metadata:
+    name: Derive preview metadata
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Derive image tag and runtime version
+        id: tag
+        shell: bash
+        run: |
+          raw="${GITHUB_REF#refs/heads/}"
+          tag=$(echo "$raw" | sed 's|/|-|g' | tr -cd '[:alnum:]._-')
+          short_sha="${GITHUB_SHA:0:7}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag}-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "Building preview tag $tag from $short_sha"
+
+  build-preview:
+    name: Build ${{ matrix.image }} preview image
+    needs: metadata
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: trove-server
+            dockerfile: Dockerfile.server
+            extra_build_args: ''
+          - image: trove-agent-docker
+            dockerfile: Dockerfile.agent
+            extra_build_args: ''
+          - image: trove-agent-k8s
+            dockerfile: Dockerfile.agents
+            extra_build_args: CMD=trove-agent-k8s
+          - image: trove-agent-proxmox
+            dockerfile: Dockerfile.agents
+            extra_build_args: CMD=trove-agent-proxmox
     steps:
       - uses: actions/checkout@v7
 
@@ -62,23 +105,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Derive image tag from branch name
-        id: tag
-        run: |
-          # Sanitize branch name: replace / with -, strip non-alphanumeric
-          raw="${GITHUB_REF#refs/heads/}"
-          tag=$(echo "$raw" | sed 's|/|-|g' | tr -cd '[:alnum:]._-')
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Building image tag: $tag"
-
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.server
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/techdox/trove-server:${{ steps.tag.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ghcr.io/techdox/${{ matrix.image }}:${{ needs.metadata.outputs.tag }}
+          build-args: |
+            VERSION=${{ needs.metadata.outputs.version }}
+            ${{ matrix.extra_build_args }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

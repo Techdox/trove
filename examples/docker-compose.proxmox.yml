@@ -1,5 +1,6 @@
 # Trove quickstart for Proxmox — the server plus a Proxmox agent that watches
 # your PVE cluster, using the published images. No cloning or building required.
+# Set TROVE_VERSION in .env to pin both services to one release or preview tag.
 #
 #   1. Create a read-only Proxmox API token (PVEAuditor role). See:
 #        https://github.com/techdox/trove/blob/main/docs/agents/proxmox.md
@@ -27,7 +28,7 @@
 
 services:
   server:
-    image: ghcr.io/techdox/trove-server:latest
+    image: ghcr.io/techdox/trove-server:${TROVE_VERSION:-latest}
     environment:
       TROVE_BOOTSTRAP_AGENT: "proxmox"
       TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
@@ -40,7 +41,7 @@ services:
   agent:
     # The Proxmox agent — NOT trove-agent-docker. It reads the PVE API only;
     # it needs no Docker socket.
-    image: ghcr.io/techdox/trove-agent-proxmox:latest
+    image: ghcr.io/techdox/trove-agent-proxmox:${TROVE_VERSION:-latest}
     environment:
       TROVE_SERVER_URL: "http://server:8080"
       TROVE_TOKEN: "${TROVE_TOKEN}"

@@ -1,5 +1,6 @@
 # Trove quickstart — server + a Docker agent watching this host, using the
 # published images. No cloning or building required.
+# Set TROVE_VERSION in .env to pin both services to one release or preview tag.
 #
 #   1. Generate a token for this host's agent and save it to .env (Compose
 #      loads .env automatically, and it survives restarts/upgrades — an
@@ -19,7 +20,7 @@
 
 services:
   server:
-    image: ghcr.io/techdox/trove-server:latest
+    image: ghcr.io/techdox/trove-server:${TROVE_VERSION:-latest}
     environment:
       TROVE_BOOTSTRAP_AGENT: "docker-local"
       TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
@@ -30,7 +31,7 @@ services:
     restart: unless-stopped
 
   agent:
-    image: ghcr.io/techdox/trove-agent-docker:latest
+    image: ghcr.io/techdox/trove-agent-docker:${TROVE_VERSION:-latest}
     environment:
       TROVE_SERVER_URL: "http://server:8080"
       TROVE_TOKEN: "${TROVE_TOKEN}"

@@ -166,6 +166,10 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 	if err := c.cli.get(ctx, "/api2/json/nodes", &nodesResp); err != nil {
 		return nil, err
 	}
+	conditionByNode := make(map[string]model.HostCondition, len(nodesResp.Data))
+	for _, n := range nodesResp.Data {
+		conditionByNode[n.Node] = proxmoxNodeCondition(n.Status)
+	}
 	var resResp struct {
 		Data []pveResource `json:"data"`
 	}
@@ -191,7 +195,13 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 		if name == "" {
 			name = fmt.Sprintf("%s-%d", r.Type, r.VMID)
 		}
-		image, osType := c.guestImage(ctx, r)
+		var image, osType string
+		// Cluster resources can retain guests for an offline node. Keep those
+		// guests in the catalogue, but do not issue node-local config requests
+		// that are expected to fail or wait for the HTTP timeout while it is down.
+		if conditionByNode[r.Node] != model.HostConditionCritical {
+			image, osType = c.guestImage(ctx, r)
+		}
 		health, healthDetail := proxmoxGuestHealth(r)
 		labels := proxmoxLabels(r)
 		if osType != "" {
@@ -211,7 +221,7 @@ func (c *collector) Collect(ctx context.Context) ([]agentkit.HostSnapshot, error
 
 	snaps := make([]agentkit.HostSnapshot, 0, len(nodesResp.Data))
 	for _, n := range nodesResp.Data {
-		condition := proxmoxNodeCondition(n.Status)
+		condition := conditionByNode[n.Node]
 		var metrics *model.HostMetrics
 		meta := map[string]string{"platform": "proxmox"}
 		// Offline cluster members cannot answer their node-local status endpoint.

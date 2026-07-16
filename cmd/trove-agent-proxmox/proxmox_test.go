@@ -128,11 +128,15 @@ func TestCollectReportsOfflineNodeConditionWithoutMetricsRequest(t *testing.T) {
 		case "/api2/json/nodes":
 			writePVEResponse(t, w, []pveNode{{Node: "pve-offline", Status: "offline"}})
 		case "/api2/json/cluster/resources":
-			writePVEResponse(t, w, []pveResource{})
+			writePVEResponse(t, w, []pveResource{{
+				Type: "qemu", VMID: 101, Name: "offline-guest", Status: "running", Node: "pve-offline",
+			}})
 		case "/api2/json/nodes/pve-offline/version":
 			t.Fatal("offline node version endpoint must not be queried")
 		case "/api2/json/nodes/pve-offline/status":
 			t.Fatal("offline node status endpoint must not be queried")
+		case "/api2/json/nodes/pve-offline/qemu/101/config":
+			t.Fatal("offline guest config endpoint must not be queried")
 		default:
 			http.NotFound(w, r)
 		}
@@ -149,6 +153,10 @@ func TestCollectReportsOfflineNodeConditionWithoutMetricsRequest(t *testing.T) {
 	}
 	if len(snaps) != 1 || snaps[0].Host.Condition != model.HostConditionCritical || snaps[0].Host.Metrics != nil {
 		t.Fatalf("offline snapshot = %+v", snaps)
+	}
+	if len(snaps[0].Services) != 1 || snaps[0].Services[0].ExternalID != "qemu/101" ||
+		snaps[0].Services[0].Image != "" || snaps[0].Services[0].Health != model.HealthHealthy {
+		t.Fatalf("offline guest snapshot = %+v", snaps[0].Services)
 	}
 }
 

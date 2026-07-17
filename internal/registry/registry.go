@@ -115,16 +115,116 @@ func newSSRFGuardedDialer(allowedPrivateEndpoints map[string]struct{}) func(cont
 			}
 		}
 
-		var dialErrors []error
-		for _, candidate := range resolved {
-			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
-			if dialErr == nil {
-				return conn, nil
-			}
-			dialErrors = append(dialErrors, dialErr)
+		conn, err := dialValidatedAddresses(ctx, network, port, resolved, 300*time.Millisecond, dialer.DialContext)
+		if err != nil {
+			return nil, fmt.Errorf("registry: connect to %q: %w", host, err)
 		}
-		return nil, fmt.Errorf("registry: connect to %q: %w", host, errors.Join(dialErrors...))
+		return conn, nil
 	}
+}
+
+type dialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+type dialResult struct {
+	conn net.Conn
+	err  error
+}
+
+// dialValidatedAddresses implements a small Happy-Eyeballs race without
+// handing the hostname back to net.Dialer. Candidates have already passed the
+// SSRF policy, so each attempt dials its validated IP directly. Opposite IP
+// families are interleaved and attempts are staggered to avoid penalising a
+// healthy first route while still escaping a blackholed IPv6 or IPv4 path.
+func dialValidatedAddresses(
+	ctx context.Context,
+	network, port string,
+	resolved []net.IPAddr,
+	fallbackDelay time.Duration,
+	dial dialContextFunc,
+) (net.Conn, error) {
+	candidates := interleaveIPFamilies(resolved)
+	if len(candidates) == 0 {
+		return nil, errors.New("no validated addresses")
+	}
+	attemptCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan dialResult, len(candidates))
+
+	for i, candidate := range candidates {
+		candidate := candidate
+		delay := time.Duration(i) * fallbackDelay
+		go func() {
+			if delay > 0 {
+				timer := time.NewTimer(delay)
+				defer timer.Stop()
+				select {
+				case <-attemptCtx.Done():
+					results <- dialResult{err: attemptCtx.Err()}
+					return
+				case <-timer.C:
+				}
+			}
+			conn, err := dial(attemptCtx, network, net.JoinHostPort(candidate.IP.String(), port))
+			results <- dialResult{conn: conn, err: err}
+		}()
+	}
+
+	dialErrors := make([]error, 0, len(candidates))
+	for received := 0; received < len(candidates); received++ {
+		result := <-results
+		if result.err == nil && result.conn != nil {
+			cancel()
+			// Other attempts may win their race with cancellation. Drain their
+			// buffered results and close any late connection so it cannot leak.
+			go func(remaining int) {
+				for range remaining {
+					late := <-results
+					if late.conn != nil {
+						_ = late.conn.Close()
+					}
+				}
+			}(len(candidates) - received - 1)
+			return result.conn, nil
+		}
+		if result.conn != nil {
+			_ = result.conn.Close()
+		}
+		if result.err != nil {
+			dialErrors = append(dialErrors, result.err)
+		} else {
+			dialErrors = append(dialErrors, errors.New("dial returned no connection"))
+		}
+	}
+	return nil, errors.Join(dialErrors...)
+}
+
+func interleaveIPFamilies(resolved []net.IPAddr) []net.IPAddr {
+	if len(resolved) < 2 {
+		return append([]net.IPAddr(nil), resolved...)
+	}
+	firstIsIPv4 := resolved[0].IP.To4() != nil
+	preferred := make([]net.IPAddr, 0, len(resolved))
+	fallback := make([]net.IPAddr, 0, len(resolved))
+	for _, candidate := range resolved {
+		if (candidate.IP.To4() != nil) == firstIsIPv4 {
+			preferred = append(preferred, candidate)
+		} else {
+			fallback = append(fallback, candidate)
+		}
+	}
+
+	interleaved := make([]net.IPAddr, 0, len(resolved))
+	for len(preferred) > 0 || len(fallback) > 0 {
+		if len(preferred) > 0 {
+			interleaved = append(interleaved, preferred[0])
+			preferred = preferred[1:]
+		}
+		if len(fallback) > 0 {
+			interleaved = append(interleaved, fallback[0])
+			fallback = fallback[1:]
+		}
+	}
+	return interleaved
 }
 
 func validateDestination(ip net.IP, allowPrivate bool) error {

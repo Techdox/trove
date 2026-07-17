@@ -1,11 +1,13 @@
 package registry
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateDestination(t *testing.T) {
@@ -37,6 +39,49 @@ func TestValidateDestination(t *testing.T) {
 				t.Fatalf("expected %s to be allowed: %v", tc.address, err)
 			}
 		})
+	}
+}
+
+func TestDialValidatedAddressesFallsBackAcrossIPFamilies(t *testing.T) {
+	candidates := []net.IPAddr{
+		{IP: net.ParseIP("2001:db8::1")},
+		{IP: net.ParseIP("2001:db8::2")},
+		{IP: net.ParseIP("192.0.2.10")},
+	}
+	attempts := make(chan string, len(candidates))
+	dial := func(ctx context.Context, _, address string) (net.Conn, error) {
+		attempts <- address
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		if net.ParseIP(host).To4() == nil {
+			<-ctx.Done() // simulate a blackholed IPv6 path
+			return nil, ctx.Err()
+		}
+		conn, peer := net.Pipe()
+		_ = peer.Close()
+		return conn, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	started := time.Now()
+	conn, err := dialValidatedAddresses(ctx, "tcp", "443", candidates, 10*time.Millisecond, dial)
+	if err != nil {
+		t.Fatalf("dialValidatedAddresses: %v", err)
+	}
+	defer conn.Close()
+	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
+		t.Fatalf("fallback took %s; blackholed first address delayed the successful candidate", elapsed)
+	}
+
+	first := <-attempts
+	second := <-attempts
+	firstHost, _, _ := net.SplitHostPort(first)
+	secondHost, _, _ := net.SplitHostPort(second)
+	if net.ParseIP(firstHost).To4() != nil || net.ParseIP(secondHost).To4() == nil {
+		t.Fatalf("attempt order = %q, %q; want preferred IPv6 then fallback IPv4", first, second)
 	}
 }
 

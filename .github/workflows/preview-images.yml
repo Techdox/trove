@@ -83,9 +83,11 @@ jobs:
             slug=${slug:0:100}
             tag="${slug}-${branch_hash}"
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "sha_tag=$sha_tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag}-${short_sha}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$tag"
+            echo "sha_tag=$sha_tag"
+            echo "version=${tag}-${short_sha}"
+          } >> "$GITHUB_OUTPUT"
           printf 'Building preview tags %s and %s\n' "$tag" "$sha_tag"
 
   build-preview:

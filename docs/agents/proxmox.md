@@ -49,9 +49,14 @@ trove@pve!trove-agent=<the-secret-uuid>
 trap above in seconds (run it from wherever the agent will run):
 
 ```sh
-curl -sk -H "Authorization: PVEAPIToken=trove@pve!trove-agent=<secret>" \
+curl --cacert ./pve-root-ca.pem \
+  -H "Authorization: PVEAPIToken=trove@pve!trove-agent=<secret>" \
   https://YOUR-PVE-HOST:8006/api2/json/nodes
 ```
+
+For the default Proxmox certificate, first copy `/etc/pve/pve-root-ca.pem`
+from a PVE node to the machine running the agent. If the API uses a certificate
+issued by a public CA, omit `--cacert`.
 
 You should get a JSON list of your nodes. `{"data":[]}` means the token
 authenticated but has no permission — recheck the `aclmod` and `--privsep 0`
@@ -83,11 +88,16 @@ curl -fsSLO https://raw.githubusercontent.com/techdox/trove/main/examples/docker
 
 # Save settings to .env (Compose loads it automatically; it persists across
 # restarts). Then edit .env to fill in your real PVE host and API token.
+umask 077
 {
   echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)"
   echo "TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006"
   echo "TROVE_PROXMOX_TOKEN=trove@pve!trove-agent=YOUR-TOKEN-SECRET"
 } > .env
+chmod 600 .env
+# For Proxmox's default private CA, also copy /etc/pve/pve-root-ca.pem from a
+# PVE node to ./pve-root-ca.pem, then uncomment the CA environment and volume
+# lines in docker-compose.proxmox.yml.
 docker compose -f docker-compose.proxmox.yml up -d
 docker compose -f docker-compose.proxmox.yml logs -f agent   # watch it connect
 ```
@@ -106,7 +116,8 @@ docker run -d --name trove-agent-proxmox --restart unless-stopped \
   -e TROVE_TOKEN=trove_xxxxxxxx \
   -e TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006 \
   -e TROVE_PROXMOX_TOKEN='trove@pve!trove-agent=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' \
-  -e TROVE_PROXMOX_INSECURE=true \
+  -e TROVE_PROXMOX_CA_FILE=/etc/trove/pve-root-ca.pem \
+  -v "$PWD/pve-root-ca.pem:/etc/trove/pve-root-ca.pem:ro" \
   ghcr.io/techdox/trove-agent-proxmox:latest
 ```
 
@@ -114,22 +125,26 @@ docker run -d --name trove-agent-proxmox --restart unless-stopped \
 > agent token (format `trove_…`, from step 2). `TROVE_PROXMOX_TOKEN` is your
 > Proxmox API token (format `user@realm!tokenid=secret`, from step 1).
 
-`TROVE_PROXMOX_INSECURE=true` skips TLS verification — needed for Proxmox's
-default self-signed certificate. Drop it if your PVE API has a real cert.
+TLS verification is always enabled by default. `TROVE_PROXMOX_CA_FILE` adds a
+PEM CA bundle for Proxmox's default private CA. The legacy
+`TROVE_PROXMOX_INSECURE=true` escape hatch disables verification and should
+only be used briefly to diagnose certificate problems; it cannot be combined
+with `TROVE_PROXMOX_CA_FILE`.
 
 Replace `YOUR-SERVER` and `YOUR-PVE-HOST` with addresses reachable from where
 the agent runs (not `localhost` unless the agent shares that host).
 
 ## Configuration
 
-| Variable                 | Default      | Purpose                                          |
-| ------------------------ | ------------ | ------------------------------------------------ |
-| `TROVE_SERVER_URL`       | _(required)_ | Base URL of the Trove server.                    |
-| `TROVE_TOKEN`            | _(required)_ | Trove agent token (`trove_…`), from step 2.      |
-| `TROVE_PROXMOX_URL`      | _(required)_ | PVE API base, e.g. `https://pve.lan:8006`.       |
-| `TROVE_PROXMOX_TOKEN`    | _(required)_ | `USER@REALM!TOKENID=SECRET` from step 1.         |
-| `TROVE_PROXMOX_INSECURE` | `false`      | `true` to accept self-signed certificates.       |
-| `TROVE_INTERVAL`         | `30s`        | Push interval.                                   |
+| Variable                  | Default      | Purpose                                                   |
+| ------------------------- | ------------ | --------------------------------------------------------- |
+| `TROVE_SERVER_URL`        | _(required)_ | Base URL of the Trove server.                             |
+| `TROVE_TOKEN`             | _(required)_ | Trove agent token (`trove_…`), from step 2.               |
+| `TROVE_PROXMOX_URL`       | _(required)_ | HTTPS PVE API base, e.g. `https://pve.lan:8006`.           |
+| `TROVE_PROXMOX_TOKEN`     | _(required)_ | `USER@REALM!TOKENID=SECRET` from step 1.                  |
+| `TROVE_PROXMOX_CA_FILE`   | _(none)_     | PEM CA bundle for a private/self-signed PVE certificate.  |
+| `TROVE_PROXMOX_INSECURE`  | `false`      | Legacy diagnostic opt-out from TLS verification.          |
+| `TROVE_INTERVAL`          | `30s`        | Push interval.                                            |
 
 ## What you'll see
 
@@ -192,8 +207,9 @@ agent`, or `docker logs trove-agent-proxmox`):
 
 - **`collect failed` with an auth/connection error** — the agent can't reach or
   authenticate to the PVE API. Check `TROVE_PROXMOX_URL` is reachable from the
-  agent's host and `TROVE_PROXMOX_TOKEN` is correct (and `TROVE_PROXMOX_INSECURE=true`
-  for a self-signed cert).
+  agent's host and `TROVE_PROXMOX_TOKEN` is correct. For a certificate signed
+  by Proxmox's private CA, mount its root certificate and set
+  `TROVE_PROXMOX_CA_FILE` as shown above.
 - **`collected 0 hosts …` warning** — the token authenticated but returned no
   nodes: it's missing the `PVEAuditor` role or was created with privilege
   separation. Re-run the step-1 `aclmod` / `--privsep 0` commands, or use the

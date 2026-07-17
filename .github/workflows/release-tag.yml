@@ -12,7 +12,8 @@ jobs:
     name: tag release from release-please manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      # actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -37,10 +38,35 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Parse repository-controlled data before any release credential is
+      # present. Isolated mode prevents imports from the checked-out tree.
+      - name: Read release version
+        id: version
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          version=$(python3 -I - <<'PY'
+          import json
+          with open('.release-please-manifest.json', 'r', encoding='utf-8') as f:
+              manifest = json.load(f)
+          version = manifest.get('.')
+          if not isinstance(version, str):
+              raise SystemExit('manifest does not contain package "."')
+          print(version)
+          PY
+          )
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release manifest contains an invalid version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Create release tag
         if: steps.changed.outputs.changed == 'true'
         env:
           RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
 
@@ -49,17 +75,7 @@ jobs:
             exit 1
           fi
 
-          version=$(python3 - <<'PY'
-          import json
-          with open('.release-please-manifest.json', 'r', encoding='utf-8') as f:
-              manifest = json.load(f)
-          version = manifest.get('.')
-          if not version:
-              raise SystemExit('manifest does not contain package "."')
-          print(version)
-          PY
-          )
-          tag="v${version}"
+          tag="v${VERSION}"
 
           git fetch origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null || true
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then

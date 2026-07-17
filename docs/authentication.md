@@ -45,7 +45,7 @@ Optional:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TROVE_API_TOKEN` | unset | Static bearer token for scripts/API clients that cannot use browser OIDC. |
+| `TROVE_API_TOKEN` | unset | Static bearer token for scripts/API clients that cannot use browser OIDC. Must be at least 32 characters and randomly generated. |
 | `TROVE_OIDC_SESSION_MAX_AGE` | `8h` | Signed dashboard session lifetime. Uses Go duration syntax such as `4h`, `12h`, or `30m`. |
 
 Example:
@@ -55,9 +55,18 @@ TROVE_OIDC_ISSUER=https://auth.example.com/application/o/trove/
 TROVE_OIDC_CLIENT_ID=trove
 TROVE_OIDC_CLIENT_SECRET=OIDC_CLIENT_SECRET_VALUE
 TROVE_OIDC_REDIRECT_URL=https://trove.example.com/oauth2/callback
-TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE
 TROVE_OIDC_SESSION_MAX_AGE=8h
 ```
+
+Only configure programmatic API access when it is needed. Generate its token
+instead of inventing or copying one:
+
+```sh
+openssl rand -hex 32
+```
+
+Store that command's output in `TROVE_API_TOKEN`. Trove rejects short tokens,
+leading/trailing whitespace, and known documentation placeholders at startup.
 
 The session cookie is signed using the OIDC client secret. It is `HttpOnly`, `SameSite=Lax`, and marked `Secure` when the configured redirect URL is HTTPS.
 
@@ -121,8 +130,7 @@ After the provider logout finishes, the user lands back at the dashboard root an
 If OIDC is enabled and you want scripts to query read APIs, set `TROVE_API_TOKEN` and send it as a bearer token:
 
 ```sh
-TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \\
-  curl --oauth2-bearer "$TROVE_API_TOKEN" \\
+curl --oauth2-bearer "$TROVE_API_TOKEN" \\
   https://trove.example.com/api/v1/services
 ```
 
@@ -151,8 +159,7 @@ curl -i https://trove.example.com/api/v1/services
 API requests with `TROVE_API_TOKEN` should return JSON:
 
 ```sh
-TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \\
-  curl --oauth2-bearer "$TROVE_API_TOKEN" \\
+curl --oauth2-bearer "$TROVE_API_TOKEN" \\
   https://trove.example.com/api/v1/services
 ```
 

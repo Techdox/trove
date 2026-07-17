@@ -89,7 +89,9 @@ docker compose cp server:/data/backups/trove-$(date +%F).db ./backups/
 ```
 
 `trove-server backup` uses SQLite's online `VACUUM INTO` path and refuses to
-overwrite an existing destination file. If you prefer SQLite's own CLI, this is
+overwrite an existing destination file. It creates new parent directories as
+`0700` and the backup itself as `0600`, independent of the caller's normal
+umask. If you prefer SQLite's own CLI, this is
 equivalent:
 
 ```sh

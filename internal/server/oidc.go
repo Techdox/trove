@@ -44,6 +44,17 @@ type OIDCConfig struct {
 
 const oidcDiscoveryTimeout = 10 * time.Second
 
+const minAPITokenLength = 32
+
+var rejectedAPITokens = map[string]struct{}{
+	"trove_api_token_value": {},
+	"change-me":             {},
+	"changeme":              {},
+	"example":               {},
+	"secret":                {},
+	"token":                 {},
+}
+
 // Enabled reports whether OIDC authentication is active.
 func (c OIDCConfig) Enabled() bool {
 	return c.Issuer != "" && c.ClientID != "" && c.ClientSecret != "" && c.RedirectURL != ""
@@ -75,6 +86,17 @@ func (c OIDCConfig) validate() error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("incomplete OIDC configuration: missing %s", strings.Join(missing, ", "))
+	}
+	if c.APIToken != "" {
+		if c.APIToken != strings.TrimSpace(c.APIToken) {
+			return errors.New("TROVE_API_TOKEN must not have leading or trailing whitespace")
+		}
+		if _, rejected := rejectedAPITokens[strings.ToLower(c.APIToken)]; rejected {
+			return errors.New("TROVE_API_TOKEN uses a public example value; generate one with: openssl rand -hex 32")
+		}
+		if len(c.APIToken) < minAPITokenLength {
+			return fmt.Errorf("TROVE_API_TOKEN must be at least %d characters; generate one with: openssl rand -hex 32", minAPITokenLength)
+		}
 	}
 	return nil
 }

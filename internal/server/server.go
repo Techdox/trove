@@ -39,6 +39,10 @@ type Server struct {
 	// authentication. Agent ingest and /healthz are never gated.
 	oidc *oidcProvider
 
+	// healthDetailsEnabled is an explicit opt-in for storing and returning
+	// platform-provided free-form health messages. The default is false.
+	healthDetailsEnabled bool
+
 	startTime       time.Time
 	reportsAccepted atomic.Uint64
 }

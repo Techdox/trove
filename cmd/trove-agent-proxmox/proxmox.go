@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ type proxmoxConfig struct {
 	url      string // e.g. https://pve.example:8006
 	token    string // USER@REALM!TOKENID=SECRET
 	insecure bool   // skip TLS verification (common for self-signed homelab certs)
+	rootCAs  *x509.CertPool
 }
 
 func loadProxmoxConfig() (proxmoxConfig, error) {
@@ -32,11 +34,33 @@ func loadProxmoxConfig() (proxmoxConfig, error) {
 	if c.url == "" {
 		return c, fmt.Errorf("TROVE_PROXMOX_URL is required (e.g. https://pve.example:8006)")
 	}
+	parsedURL, err := url.Parse(c.url)
+	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
+		return c, fmt.Errorf("TROVE_PROXMOX_URL must be an absolute HTTPS URL")
+	}
 	c.token = os.Getenv("TROVE_PROXMOX_TOKEN")
 	if c.token == "" {
 		return c, fmt.Errorf("TROVE_PROXMOX_TOKEN is required (format USER@REALM!TOKENID=SECRET)")
 	}
 	c.insecure, _ = strconv.ParseBool(os.Getenv("TROVE_PROXMOX_INSECURE"))
+	caFile := strings.TrimSpace(os.Getenv("TROVE_PROXMOX_CA_FILE"))
+	if c.insecure && caFile != "" {
+		return c, fmt.Errorf("TROVE_PROXMOX_CA_FILE and TROVE_PROXMOX_INSECURE cannot be used together")
+	}
+	if caFile != "" {
+		pemData, err := os.ReadFile(caFile)
+		if err != nil {
+			return c, fmt.Errorf("read TROVE_PROXMOX_CA_FILE: %w", err)
+		}
+		pool, err := x509.SystemCertPool()
+		if err != nil || pool == nil {
+			pool = x509.NewCertPool()
+		}
+		if !pool.AppendCertsFromPEM(pemData) {
+			return c, fmt.Errorf("TROVE_PROXMOX_CA_FILE contains no valid PEM certificates")
+		}
+		c.rootCAs = pool
+	}
 	return c, nil
 }
 
@@ -49,10 +73,11 @@ type proxmoxClient struct {
 }
 
 func newProxmoxClient(cfg proxmoxConfig) *proxmoxClient {
-	tr := &http.Transport{}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.rootCAs}
 	if cfg.insecure {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for homelab self-signed certs
+		tlsConfig.InsecureSkipVerify = true //nolint:gosec // explicit legacy opt-in; secure verification is the default
 	}
+	tr := &http.Transport{TLSClientConfig: tlsConfig}
 	return &proxmoxClient{
 		http:  &http.Client{Timeout: 20 * time.Second, Transport: tr},
 		base:  cfg.url,

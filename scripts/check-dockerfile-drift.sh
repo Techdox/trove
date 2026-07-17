@@ -11,7 +11,7 @@
 #   Dockerfile.agents -> build/docker/Dockerfile.agent-proxmox
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 fail=0
 
@@ -22,7 +22,19 @@ final_stage_runtime() {
   local file=$1
   awk '/^FROM /{stage=""} {stage=stage $0 "\n"} END{printf "%s", stage}' "$file" \
     | sed -e 's/#.*$//' \
-    | tr -d '\\' \
+    | awk '
+        {
+          line = pending $0
+          if (line ~ /\\[[:space:]]*$/) {
+            sub(/\\[[:space:]]*$/, " ", line)
+            pending = line
+            next
+          }
+          print line
+          pending = ""
+        }
+        END { if (pending != "") print pending }
+      ' \
     | tr -s ' \t' ' ' \
     | grep -E '^ ?(FROM|ENV|EXPOSE|VOLUME) ' \
     | sed -e 's/^ //' -e 's/ $//' \
@@ -43,9 +55,15 @@ check_pair() {
   fi
 }
 
-check_pair Dockerfile.server build/docker/Dockerfile.server
-check_pair Dockerfile.agent  build/docker/Dockerfile.agent-docker
-check_pair Dockerfile.agents build/docker/Dockerfile.agent-k8s
-check_pair Dockerfile.agents build/docker/Dockerfile.agent-proxmox
+main() {
+  cd "$repo_root"
+  check_pair Dockerfile.server build/docker/Dockerfile.server
+  check_pair Dockerfile.agent  build/docker/Dockerfile.agent-docker
+  check_pair Dockerfile.agents build/docker/Dockerfile.agent-k8s
+  check_pair Dockerfile.agents build/docker/Dockerfile.agent-proxmox
+  exit "$fail"
+}
 
-exit "$fail"
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

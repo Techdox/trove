@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +31,31 @@ type sink struct {
 type namedDispatcher struct {
 	name string
 	Dispatcher
+}
+
+type poisonDispatcher struct {
+	name     string
+	poison   string
+	mu       sync.Mutex
+	accepted []string
+}
+
+func (d *poisonDispatcher) Name() string { return d.name }
+
+func (d *poisonDispatcher) Send(_ context.Context, n Notification) error {
+	if strings.Contains(n.Title, d.poison) {
+		return permanentDelivery(errors.New("payload rejected"))
+	}
+	d.mu.Lock()
+	d.accepted = append(d.accepted, n.Title)
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *poisonDispatcher) count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.accepted)
 }
 
 func (d namedDispatcher) Name() string { return d.name }
@@ -316,6 +343,47 @@ func TestEngineRetriesOnlyFailedChannelAfterPartialFanout(t *testing.T) {
 	}
 	if flaky.count() != 4 {
 		t.Fatalf("failed channel was not retried after recovery: %d sends", flaky.count())
+	}
+}
+
+func TestPermanentChannelRejectionDoesNotBlockLaterEvents(t *testing.T) {
+	e, st, good, _ := newTestEngine(t)
+	ctx := context.Background()
+	poison := &poisonDispatcher{name: "payload-sensitive", poison: "poison"}
+	e.dispatchers = []Dispatcher{
+		namedDispatcher{name: "good", Dispatcher: &webhookDispatcher{client: good.srv.Client(), url: good.srv.URL}},
+		poison,
+	}
+	_, agent, _ := st.CreateAgent(ctx, "docker-a")
+	service := func(id, name string, health model.Health) model.ReportService {
+		return model.ReportService{ExternalID: id, Name: name, Kind: model.KindContainer, State: "running", Health: health}
+	}
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(
+		service("poison", "poison", model.HealthHealthy),
+		service("safe", "safe", model.HealthHealthy),
+	))
+	e.Sweep(ctx) // seed cursor
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(
+		service("poison", "poison", model.HealthUnhealthy),
+		service("safe", "safe", model.HealthHealthy),
+	))
+	e.Sweep(ctx)
+	if good.count() != 1 || poison.count() != 0 {
+		t.Fatalf("poison event fanout good=%d payload-sensitive=%d, want 1/0", good.count(), poison.count())
+	}
+
+	_ = st.ApplyReport(ctx, agent.ID, testReport(
+		service("poison", "poison", model.HealthUnhealthy),
+		service("safe", "safe", model.HealthUnhealthy),
+	))
+	e.Sweep(ctx)
+	if good.count() != 2 {
+		t.Fatalf("later healthy-channel notification blocked: good sends=%d", good.count())
+	}
+	if poison.count() != 1 {
+		t.Fatalf("later acceptable payload was not delivered: sends=%d", poison.count())
 	}
 }
 

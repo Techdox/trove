@@ -96,6 +96,7 @@ Environment:
   TROVE_OIDC_CLIENT_SECRET  OAuth2 client secret
   TROVE_OIDC_REDIRECT_URL   OAuth2 callback URL
   TROVE_API_TOKEN         Bearer token for programmatic API access (with OIDC)
+  TROVE_HEALTH_DETAILS_ENABLED  true to retain/display redacted platform health messages (default false)
   TROVE_HOST_RETENTION    Retain silent hosts before pruning (default "720h")
 `)
 }
@@ -141,6 +142,7 @@ func runServe() error {
 
 	addr := envOr("TROVE_ADDR", ":8080")
 	srv := server.New(st, logger)
+	srv.ConfigureHealthDetails(server.LoadHealthDetailsEnabledFromEnv())
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -235,7 +237,7 @@ func runBackup(args []string) error {
 		return fmt.Errorf("stat backup path: %w", err)
 	}
 	if dir := filepath.Dir(dst); dir != "." && dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create backup directory: %w", err)
 		}
 	}

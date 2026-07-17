@@ -2,7 +2,7 @@
 
 Trove's API is read-mostly by design. Agents push full-state reports into the server, and humans or automation read catalog state back out.
 
-If OIDC is enabled, read APIs require either an authenticated dashboard session or `Authorization: Bearer TROVE_API_TOKEN_VALUE` when `TROVE_API_TOKEN` is configured. Agent ingest always uses the agent token and is never gated by OIDC.
+If OIDC is enabled, read APIs require either an authenticated dashboard session or `Authorization: Bearer $TROVE_API_TOKEN` when a securely generated `TROVE_API_TOKEN` is configured. Agent ingest always uses the agent token and is never gated by OIDC.
 
 ## Endpoints
 
@@ -26,6 +26,11 @@ Each host group includes its own derived `status` (`ok`, `stale`, `offline`, or
 `unknown`) and `last_seen_at`, plus `agent_status` for the owning agent. Host
 and agent status can differ when a multi-host agent continues reporting some
 hosts after another disappears.
+
+The optional `health_detail` field is omitted by default because upstream
+Docker/Kubernetes messages can contain application output. Operators may opt
+in with `TROVE_HEALTH_DETAILS_ENABLED=true`; enabled values are normalized,
+redacted for common secret forms, and length-limited before storage and output.
 
 `condition` is the platform's latest verdict (`normal`, `warning`, `critical`,
 or `unknown`). It is deliberately separate from reporting `status`: for
@@ -66,8 +71,7 @@ Optional query parameters:
 Example:
 
 ```sh
-TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \
-  curl --oauth2-bearer "$TROVE_API_TOKEN" \
+curl --oauth2-bearer "$TROVE_API_TOKEN" \
   'https://trove.example/api/v1/services?limit=100&offset=0&since=2026-07-01T00:00:00Z'
 ```
 
@@ -103,8 +107,7 @@ soft historical references and remain in the feed after their subject is pruned.
 Example:
 
 ```sh
-TROVE_API_TOKEN=TROVE_API_TOKEN_VALUE \
-  curl --oauth2-bearer "$TROVE_API_TOKEN" \
+curl --oauth2-bearer "$TROVE_API_TOKEN" \
   'https://trove.example/api/v1/events?kind=health&limit=50&offset=50'
 ```
 

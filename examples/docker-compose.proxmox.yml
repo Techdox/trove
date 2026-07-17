@@ -6,6 +6,7 @@
 #        https://github.com/techdox/trove/blob/main/docs/agents/proxmox.md
 #   2. Save a Trove token and your Proxmox connection details to .env (Compose
 #      loads .env automatically and it persists across restarts/upgrades):
+#        umask 077
 #        {
 #          echo "TROVE_TOKEN=trove_$(openssl rand -hex 24)"
 #          echo "TROVE_PROXMOX_URL=https://YOUR-PVE-HOST:8006"
@@ -31,7 +32,7 @@ services:
     image: ghcr.io/techdox/trove-server:${TROVE_VERSION:-latest}
     environment:
       TROVE_BOOTSTRAP_AGENT: "proxmox"
-      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first:  echo \"TROVE_TOKEN=trove_$(openssl rand -hex 24)\" > .env}"
+      TROVE_BOOTSTRAP_TOKEN: "${TROVE_TOKEN:?generate one first with a restrictive umask; see the file header}"
     ports:
       - "8080:8080"
     volumes:
@@ -47,9 +48,12 @@ services:
       TROVE_TOKEN: "${TROVE_TOKEN}"
       TROVE_PROXMOX_URL: "${TROVE_PROXMOX_URL:?set your Proxmox API URL, e.g. https://192.168.1.10:8006}"
       TROVE_PROXMOX_TOKEN: "${TROVE_PROXMOX_TOKEN:?set your Proxmox API token in the form USER@REALM!TOKENID=SECRET}"
-      # Proxmox ships a self-signed cert by default; "true" accepts it. Set to
-      # "false" (or remove) once your PVE API has a trusted certificate.
-      TROVE_PROXMOX_INSECURE: "true"
+      # TLS verification is enabled by default. For Proxmox's private CA,
+      # uncomment this and the read-only volume below after copying
+      # /etc/pve/pve-root-ca.pem from a PVE node into this directory.
+      # TROVE_PROXMOX_CA_FILE: "/etc/trove/pve-root-ca.pem"
+    # volumes:
+    #   - "./pve-root-ca.pem:/etc/trove/pve-root-ca.pem:ro"
     depends_on:
       server:
         condition: service_healthy

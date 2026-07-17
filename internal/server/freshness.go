@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,10 +15,11 @@ import (
 
 // FreshnessConfig controls the image-freshness checker.
 type FreshnessConfig struct {
-	Enabled  bool
-	Interval time.Duration // how often to scan for images due a check
-	TTL      time.Duration // how long a successful result is considered current
-	Creds    map[string]registry.Cred
+	Enabled                  bool
+	Interval                 time.Duration // how often to scan for images due a check
+	TTL                      time.Duration // how long a successful result is considered current
+	Creds                    map[string]registry.Cred
+	AllowedPrivateRegistries []string
 }
 
 // freshness tuning constants.
@@ -36,6 +38,7 @@ const (
 //	TROVE_FRESHNESS_INTERVAL   scan cadence (Go duration, default 5m)
 //	TROVE_FRESHNESS_TTL        per-image recheck interval (default 6h)
 //	TROVE_REGISTRY_AUTHS       JSON {"host":{"username":..,"password":..}}
+//	TROVE_REGISTRY_PRIVATE_HOSTS comma-separated private registry host[:port] allowlist
 func LoadFreshnessConfigFromEnv() FreshnessConfig {
 	cfg := FreshnessConfig{
 		Enabled:  true,
@@ -63,13 +66,20 @@ func LoadFreshnessConfigFromEnv() FreshnessConfig {
 			cfg.Creds = creds
 		}
 	}
+	if v := os.Getenv("TROVE_REGISTRY_PRIVATE_HOSTS"); v != "" {
+		for _, host := range strings.Split(v, ",") {
+			if host = strings.TrimSpace(host); host != "" {
+				cfg.AllowedPrivateRegistries = append(cfg.AllowedPrivateRegistries, host)
+			}
+		}
+	}
 	return cfg
 }
 
 // ConfigureFreshness enables the freshness checker with the given config.
 func (s *Server) ConfigureFreshness(cfg FreshnessConfig) {
 	s.freshness = cfg
-	s.registry = registry.New(cfg.Creds)
+	s.registry = registry.New(cfg.Creds, registry.Options{AllowedPrivateRegistries: cfg.AllowedPrivateRegistries})
 }
 
 // RunFreshnessLoop periodically resolves the latest registry digest for images

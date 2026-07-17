@@ -3,15 +3,78 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 
 	"github.com/techdox/trove/pkg/model"
 )
+
+func TestLoadProxmoxConfigRequiresHTTPS(t *testing.T) {
+	t.Setenv("TROVE_PROXMOX_URL", "http://pve.example:8006")
+	t.Setenv("TROVE_PROXMOX_TOKEN", "root@pam!trove=test")
+	t.Setenv("TROVE_PROXMOX_CA_FILE", "")
+	t.Setenv("TROVE_PROXMOX_INSECURE", "")
+
+	if _, err := loadProxmoxConfig(); err == nil {
+		t.Fatal("loadProxmoxConfig accepted an HTTP URL")
+	}
+}
+
+func TestProxmoxClientTrustsConfiguredCAFile(t *testing.T) {
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "PVEAPIToken=root@pam!trove=test" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		writePVEResponse(t, w, []pveNode{{Node: "pve-a", Status: "online"}})
+	}))
+	defer api.Close()
+
+	caPath := filepath.Join(t.TempDir(), "pve-root-ca.pem")
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: api.Certificate().Raw})
+	if err := os.WriteFile(caPath, caPEM, 0o600); err != nil {
+		t.Fatalf("write CA file: %v", err)
+	}
+	t.Setenv("TROVE_PROXMOX_URL", api.URL)
+	t.Setenv("TROVE_PROXMOX_TOKEN", "root@pam!trove=test")
+	t.Setenv("TROVE_PROXMOX_CA_FILE", caPath)
+	t.Setenv("TROVE_PROXMOX_INSECURE", "")
+
+	cfg, err := loadProxmoxConfig()
+	if err != nil {
+		t.Fatalf("loadProxmoxConfig: %v", err)
+	}
+	var response struct {
+		Data []pveNode `json:"data"`
+	}
+	if err := newProxmoxClient(cfg).get(context.Background(), "/api2/json/nodes", &response); err != nil {
+		t.Fatalf("GET with configured CA: %v", err)
+	}
+	if len(response.Data) != 1 || response.Data[0].Node != "pve-a" {
+		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestLoadProxmoxConfigRejectsCAWithInsecureMode(t *testing.T) {
+	caPath := filepath.Join(t.TempDir(), "pve-root-ca.pem")
+	if err := os.WriteFile(caPath, []byte("unused"), 0o600); err != nil {
+		t.Fatalf("write CA file: %v", err)
+	}
+	t.Setenv("TROVE_PROXMOX_URL", "https://pve.example:8006")
+	t.Setenv("TROVE_PROXMOX_TOKEN", "root@pam!trove=test")
+	t.Setenv("TROVE_PROXMOX_CA_FILE", caPath)
+	t.Setenv("TROVE_PROXMOX_INSECURE", "true")
+
+	if _, err := loadProxmoxConfig(); err == nil {
+		t.Fatal("loadProxmoxConfig accepted both CA_FILE and INSECURE")
+	}
+}
 
 func TestCollectSetsGuestImageFromOSType(t *testing.T) {
 	seen := map[string]bool{}

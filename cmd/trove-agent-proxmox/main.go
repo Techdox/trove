@@ -10,6 +10,7 @@
 //	TROVE_AGENT_NAME     name reported to the server (default: hostname)
 //	TROVE_PROXMOX_URL    Proxmox API base, e.g. https://pve.example:8006 (required)
 //	TROVE_PROXMOX_TOKEN  Proxmox API token: USER@REALM!TOKENID=SECRET (required)
+//	TROVE_PROXMOX_CA_FILE  PEM CA bundle for private/self-signed PVE certificates
 //	TROVE_PROXMOX_INSECURE  "true" to skip TLS verification (self-signed certs)
 package main
 

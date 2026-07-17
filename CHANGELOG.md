@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/Techdox/trove/compare/v0.15.0...v0.15.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **security:** remediate Codex security findings ([#93](https://github.com/Techdox/trove/issues/93)) ([591edea](https://github.com/Techdox/trove/commit/591edea621ace23500863390fcf21574e44da1dd))
+
 ## [0.15.0](https://github.com/Techdox/trove/compare/v0.14.0...v0.15.0) (2026-07-16)
 
 

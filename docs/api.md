@@ -14,7 +14,7 @@ If OIDC is enabled, read APIs require either an authenticated dashboard session 
 | `GET /api/v1/events` | OIDC or optional API token | Recent state-change events. |
 | `GET /api/v1/me` | OIDC or optional API token | Current dashboard/API auth state. |
 | `GET /metrics` | OIDC or optional API token | Prometheus text metrics. |
-| `GET /healthz` | none | Liveness and database reachability. |
+| `GET /healthz` | none | Database and enabled-background-worker health. |
 
 ## Pagination and filtering
 
@@ -119,6 +119,7 @@ Current metrics are intentionally non-sensitive:
 
 - `trove_uptime_seconds`
 - `trove_reports_accepted_total`
+- `trove_background_workers_healthy` (`1` when all enabled workers are available, otherwise `0`)
 - `trove_sqlite_database_size_bytes`
 - `trove_agents{status=...}`
 - `trove_services_by_health{health=...}`

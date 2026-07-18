@@ -1,6 +1,6 @@
 # goreleaser v2 config. Tag vX.Y.Z + push -> binaries, archives, checksums,
 # and multi-arch images on GHCR. Validate locally with:
-#   go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+#   go run github.com/goreleaser/goreleaser/v2@v2.17.0 release --snapshot --clean
 version: 2
 
 project_name: trove

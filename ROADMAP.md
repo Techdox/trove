@@ -26,11 +26,12 @@ the read-only contract intact: no deploy/restart/exec/edit paths.
 - [x] Add dashboard/API security headers and prevent authenticated or dynamic
   responses from being cached.
 - [x] Reject oversized and trailing-data agent reports with stable HTTP errors.
-- [ ] Prove the supported upgrade compatibility contract.
+- [x] Prove the supported upgrade compatibility contract.
   - [x] Define the server-first, previous-release-agent policy and test frozen
     `v0.15.1` Docker/Kubernetes/Proxmox report fixtures through ingest.
-  - [ ] Test database upgrade, backup/restore, and rollback from the previous
-    public release.
+  - [x] Validate a real `v0.15.1` production backup through an isolated
+    candidate upgrade/restart and `v0.15.1` restore/rollback, and keep a
+    representative backup-lifecycle regression in the suite.
 - [ ] Close the critical integration-coverage gaps.
   - [x] Cover report ingestion edge cases and background-worker supervision.
   - [ ] Cover the Kubernetes collector and registry authentication,

@@ -155,6 +155,24 @@ func TestDashboardDrawerEventTimestampClearsStatusRail(t *testing.T) {
 	}
 }
 
+func TestDashboardServiceKindLabelsRemainReadable(t *testing.T) {
+	t.Parallel()
+
+	styles, err := fs.ReadFile(FS(), "styles.css")
+	if err != nil {
+		t.Fatalf("read embedded styles: %v", err)
+	}
+	for _, marker := range []string{
+		`.svc-name { min-width: 0;`,
+		`.kind {` + "\n" + `  flex: none;`,
+		`font-size: 10px;` + "\n" + `  white-space: nowrap;`,
+	} {
+		if !strings.Contains(string(styles), marker) {
+			t.Errorf("service kind layout is missing %q", marker)
+		}
+	}
+}
+
 func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
 	t.Parallel()
 

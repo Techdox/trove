@@ -3,5 +3,6 @@
 # itself only ever issues read-only GETs to the daemon.
 # Dev/compose counterpart is ../../Dockerfile.agent — keep base image/user in sync.
 FROM gcr.io/distroless/static-debian12
-COPY trove-agent-docker /usr/local/bin/trove-agent-docker
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/trove-agent-docker /usr/local/bin/trove-agent-docker
 ENTRYPOINT ["/usr/local/bin/trove-agent-docker"]

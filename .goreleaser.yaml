@@ -80,101 +80,65 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-dockers:
-  # ---- trove-server ----
-  - ids: [trove-server]
-    goos: linux
-    goarch: amd64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.server
-    image_templates: ["ghcr.io/techdox/trove-server:{{ .Version }}-amd64"]
-    build_flag_templates: ["--platform=linux/amd64"]
-  - ids: [trove-server]
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.server
-    image_templates: ["ghcr.io/techdox/trove-server:{{ .Version }}-arm64"]
-    build_flag_templates: ["--platform=linux/arm64"]
-  # ---- trove-agent-docker ----
-  - ids: [trove-agent-docker]
-    goos: linux
-    goarch: amd64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.agent-docker
-    image_templates: ["ghcr.io/techdox/trove-agent-docker:{{ .Version }}-amd64"]
-    build_flag_templates: ["--platform=linux/amd64"]
-  - ids: [trove-agent-docker]
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.agent-docker
-    image_templates: ["ghcr.io/techdox/trove-agent-docker:{{ .Version }}-arm64"]
-    build_flag_templates: ["--platform=linux/arm64"]
-  # ---- trove-agent-k8s ----
-  - ids: [trove-agent-k8s]
-    goos: linux
-    goarch: amd64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.agent-k8s
-    image_templates: ["ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-amd64"]
-    build_flag_templates: ["--platform=linux/amd64"]
-  - ids: [trove-agent-k8s]
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.agent-k8s
-    image_templates: ["ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-arm64"]
-    build_flag_templates: ["--platform=linux/arm64"]
-  # ---- trove-agent-proxmox ----
-  - ids: [trove-agent-proxmox]
-    goos: linux
-    goarch: amd64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.agent-proxmox
-    image_templates: ["ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-amd64"]
-    build_flag_templates: ["--platform=linux/amd64"]
-  - ids: [trove-agent-proxmox]
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: build/docker/Dockerfile.agent-proxmox
-    image_templates: ["ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-arm64"]
-    build_flag_templates: ["--platform=linux/arm64"]
+sboms:
+  - id: release-archives
+    artifacts: archive
+    documents: ["{{ .ArtifactName }}.sbom.spdx.json"]
 
-docker_manifests:
-  - name_template: "ghcr.io/techdox/trove-server:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/techdox/trove-server:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-server:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-server:latest"
-    image_templates:
-      - "ghcr.io/techdox/trove-server:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-server:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-agent-docker:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-agent-docker:latest"
-    image_templates:
-      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-agent-docker:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-agent-k8s:latest"
-    image_templates:
-      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-agent-k8s:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/techdox/trove-agent-proxmox:latest"
-    image_templates:
-      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-amd64"
-      - "ghcr.io/techdox/trove-agent-proxmox:{{ .Version }}-arm64"
+docker_digest:
+  name_template: "digests.txt"
+
+# One buildx invocation per image publishes the amd64/arm64 OCI index directly.
+# BuildKit attaches its SPDX SBOM and provenance attestations to each index.
+dockers_v2:
+  - id: trove-server
+    ids: [trove-server]
+    dockerfile: build/docker/Dockerfile.server
+    images: ["ghcr.io/techdox/trove-server"]
+    tags: ["{{ .Version }}", latest]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: true
+    annotations:
+      "org.opencontainers.image.description": "Trove read-only service catalogue server"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+  - id: trove-agent-docker
+    ids: [trove-agent-docker]
+    dockerfile: build/docker/Dockerfile.agent-docker
+    images: ["ghcr.io/techdox/trove-agent-docker"]
+    tags: ["{{ .Version }}", latest]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: true
+    annotations:
+      "org.opencontainers.image.description": "Trove read-only Docker collector"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+  - id: trove-agent-k8s
+    ids: [trove-agent-k8s]
+    dockerfile: build/docker/Dockerfile.agent-k8s
+    images: ["ghcr.io/techdox/trove-agent-k8s"]
+    tags: ["{{ .Version }}", latest]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: true
+    annotations:
+      "org.opencontainers.image.description": "Trove read-only Kubernetes collector"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+  - id: trove-agent-proxmox
+    ids: [trove-agent-proxmox]
+    dockerfile: build/docker/Dockerfile.agent-proxmox
+    images: ["ghcr.io/techdox/trove-agent-proxmox"]
+    tags: ["{{ .Version }}", latest]
+    platforms: [linux/amd64, linux/arm64]
+    sbom: true
+    annotations:
+      "org.opencontainers.image.description": "Trove read-only Proxmox collector"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
 
 changelog:
   sort: asc

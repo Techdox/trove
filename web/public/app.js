@@ -592,17 +592,23 @@ function serviceRow(host, s, isChild) {
     isChild ? "child" : "",
     key === state.drawerKey ? "open" : "",
   ].filter(Boolean).join(" ");
-  const name = (isChild ? '<span class="tree">└─</span> ' : "") + esc(s.name || s.external_id);
+  const serviceName = s.name || s.external_id;
+  const name = (isChild ? '<span class="tree" aria-hidden="true">└─</span> ' : "") + esc(serviceName);
   const kind = s.kind && s.kind !== "container" ? `<span class="kind">${esc(s.kind)}</span>` : "";
-  return `<tr class="${cls}" tabindex="0" data-agent="${esc(host.agent)}"
+  return `<tr class="${cls}" data-agent="${esc(host.agent)}"
       data-host="${esc(host.hostname)}" data-ext="${esc(s.external_id)}">
-    <td class="svc" title="${esc(s.name || s.external_id)}"><span class="svc-name">${name}</span>${kind}</td>
-    <td class="image">${imageHTML(s.image)}</td>
-    <td class="badgecell">${badge(stateClass(s.state), s.state || "?")}</td>
-    <td class="badgecell">${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
-    <td class="badgecell">${freshnessCell(s)}</td>
-    <td class="ports">${portsHTML(s.ports)}</td>
-    <td class="muted nowrap seen">${esc(relTime(s.last_seen_at))}</td>
+    <td class="svc" data-label="Service">
+      <button type="button" class="service-details" data-service-details aria-haspopup="dialog"
+              aria-controls="drawer" aria-label="View details for ${esc(serviceName)} on ${esc(host.hostname)}">
+        <span class="svc-name">${name}</span>${kind}<span class="service-action" aria-hidden="true">›</span>
+      </button>
+    </td>
+    <td class="image" data-label="Image">${imageHTML(s.image)}</td>
+    <td class="badgecell state-cell" data-label="State">${badge(stateClass(s.state), s.state || "?")}</td>
+    <td class="badgecell health-cell" data-label="Health">${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
+    <td class="badgecell fresh-cell" data-label="Freshness">${freshnessCell(s)}</td>
+    <td class="ports" data-label="Ports">${portsHTML(s.ports)}</td>
+    <td class="muted nowrap seen" data-label="Last seen">${esc(relTime(s.last_seen_at))}</td>
   </tr>`;
 }
 
@@ -658,10 +664,11 @@ function renderHosts() {
     const collapsed = state.collapsed.has(hostKey(h));
     const countLabel = filterActive() && visible.length !== total
       ? `${visible.length}/${total} service(s)` : `${total} service(s)`;
+    const bodyID = `host-services-${sections.length}`;
 
     sections.push(`<div class="host${collapsed ? " collapsed" : ""}" data-hostkey="${esc(hostKey(h))}">
       <div class="host-head">
-        <button type="button" class="host-toggle" data-host-toggle aria-expanded="${!collapsed}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)} services" title="${collapsed ? "Expand" : "Collapse"} services">
+        <button type="button" class="host-toggle" data-host-toggle aria-expanded="${!collapsed}" aria-controls="${bodyID}" aria-label="${collapsed ? "Expand" : "Collapse"} ${esc(h.hostname)} services" title="${collapsed ? "Expand" : "Collapse"} services">
           <span class="chev" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
         </button>
         <button type="button" class="host-name" data-host-details data-hostkey="${esc(hostKey(h))}" aria-label="View ${esc(h.hostname)} host stats">
@@ -678,13 +685,13 @@ function renderHosts() {
           View host stats <span aria-hidden="true">→</span>
         </button>
       </div>
-      <p class="table-scroll-hint">Swipe or scroll horizontally to see all service details <span aria-hidden="true">→</span></p>
-      <div class="host-body">
+      <div class="host-body" id="${bodyID}">
         <table>
+          <caption class="visually-hidden">Services reported for ${esc(h.hostname)}</caption>
           <thead><tr>
-            <th class="w-service">Service</th><th class="w-image">Image</th><th class="w-state">State</th>
-            <th class="w-health">Health</th><th class="w-fresh">Freshness</th>
-            <th class="w-ports">Ports</th><th class="w-seen">Last seen</th>
+            <th scope="col" class="w-service">Service</th><th scope="col" class="w-image">Image</th><th scope="col" class="w-state">State</th>
+            <th scope="col" class="w-health">Health</th><th scope="col" class="w-fresh">Freshness</th>
+            <th scope="col" class="w-ports">Ports</th><th scope="col" class="w-seen">Last seen</th>
           </tr></thead>
           <tbody>${rows || '<tr><td colspan="7" class="empty">nothing to show</td></tr>'}</tbody>
         </table>
@@ -886,7 +893,7 @@ function renderHostDrawer(el, host) {
 
   el.innerHTML = `
     <div class="d-head">
-      <span class="d-name">${esc(host.hostname)}</span>
+      <h2 class="d-name" id="drawer-title">${esc(host.hostname)}</h2>
       <span class="kind">host</span>
       <button class="d-close" aria-label="Close host stats" title="close (esc)">✕</button>
     </div>
@@ -908,6 +915,7 @@ function renderHostDrawer(el, host) {
     </div>
   `;
   el.hidden = false;
+  setPageInert(true);
 }
 
 function renderDrawer() {
@@ -924,6 +932,7 @@ function renderDrawer() {
   if (!state.drawerKey) {
     el.hidden = true;
     el.innerHTML = "";
+    setPageInert(false);
     return;
   }
   const found = findService(state.drawerKey);
@@ -931,6 +940,7 @@ function renderDrawer() {
     state.drawerKey = null;
     el.hidden = true;
     el.innerHTML = "";
+    setPageInert(false);
     return;
   }
   const { host, svc: s } = found;
@@ -955,7 +965,7 @@ function renderDrawer() {
 
   el.innerHTML = `
     <div class="d-head">
-      <span class="d-name">${esc(s.name || s.external_id)}</span>
+      <h2 class="d-name" id="drawer-title">${esc(s.name || s.external_id)}</h2>
       <span class="kind">${esc(s.kind || "")}</span>
       <button class="d-close" aria-label="Close details" title="close (esc)">✕</button>
     </div>
@@ -999,6 +1009,40 @@ function renderDrawer() {
     ${drawerSection("Recent events", events.length ? `<div class="d-events">${events.map(eventRowHTML).join("")}</div>` : "")}
   `;
   el.hidden = false;
+  setPageInert(true);
+}
+
+function setPageInert(inert) {
+  for (const id of ["page-header", "main-content", "page-footer"]) {
+    const element = $(id);
+    if (element) element.inert = inert;
+  }
+  document.body.classList.toggle("drawer-open", inert);
+}
+
+function drawerFocusables() {
+  if ($("drawer").hidden) return [];
+  return Array.from($("drawer").querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )).filter((element) => !element.hidden);
+}
+
+function trapDrawerFocus(event) {
+  const focusable = drawerFocusables();
+  if (focusable.length === 0) {
+    event.preventDefault();
+    $("drawer").focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 // ------------------------------------------------------ keyboard cursor ----
@@ -1090,7 +1134,8 @@ function closeDrawer() {
         .find((button) => button.dataset.hostkey === hostKeyToRestore)?.focus({ preventScroll: true });
       return;
     }
-    visibleRows().find((tr) => rowKey(tr) === serviceKey)?.focus({ preventScroll: true });
+    visibleRows().find((tr) => rowKey(tr) === serviceKey)
+      ?.querySelector("[data-service-details]")?.focus({ preventScroll: true });
   });
 }
 
@@ -1098,6 +1143,10 @@ function closeDrawer() {
 
 function render() {
   if (!state.data.services || !state.data.agents) return;
+  // Polling replaces the drawer markup to refresh relative times and service
+  // data. Remember whether focus was inside it so the 10-second refresh cannot
+  // eject a keyboard or screen-reader user back to document.body.
+  const restoreDrawerFocus = !$("drawer").hidden && $("drawer").contains(document.activeElement);
   renderAttention();
   renderSummary();
   renderChips();
@@ -1106,6 +1155,9 @@ function render() {
   renderEvents();
   renderDrawer();
   applyCursor();
+  if (restoreDrawerFocus) {
+    requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
+  }
 }
 
 // ---------------------------------------------------------- poll loop ----
@@ -1214,6 +1266,9 @@ document.addEventListener("click", (e) => {
   const agentDestination = e.target.closest("[data-agent-destination]");
   if (agentDestination) { openAgentDestination(agentDestination.dataset.agentDestination); return; }
 
+  const serviceDetails = e.target.closest("[data-service-details]");
+  if (serviceDetails) { openDrawer(rowKey(serviceDetails.closest("tr[data-ext]"))); return; }
+
   if (e.target.closest(".d-close")) { closeDrawer(); return; }
   if (e.target.closest("#drawer")) return; // clicks inside the drawer stay put
 
@@ -1235,6 +1290,11 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+
+  if (e.key === "Tab" && (state.drawerKey || state.hostDrawerKey)) {
+    trapDrawerFocus(e);
+    return;
+  }
 
   if (e.key === "/" && !typing) {
     e.preventDefault();

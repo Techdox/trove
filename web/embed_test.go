@@ -41,7 +41,7 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 		"function attentionItems()",
 		"function showAttention(key)",
 		"function focusInvestigationTarget(id)",
-		"Swipe or scroll horizontally to see all service details",
+		`<caption class="visually-hidden">Services reported for`,
 		`const STOPPED_STATES = new Set(["exited", "dead", "failed", "stopped"])`,
 	} {
 		if !strings.Contains(string(app), marker) {
@@ -58,6 +58,89 @@ func TestDashboardAttentionHierarchyIsEmbedded(t *testing.T) {
 		}
 	}
 
+}
+
+func TestDashboardAccessibilityContract(t *testing.T) {
+	t.Parallel()
+
+	assets := FS()
+	index, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		t.Fatalf("read embedded index: %v", err)
+	}
+	for _, marker := range []string{
+		`class="skip-link" href="#main-content"`,
+		`<main id="main-content" tabindex="-1">`,
+		`role="status" aria-live="polite"`,
+		`id="error" role="alert"`,
+		`role="search" aria-label="Filter service catalogue"`,
+		`role="dialog" aria-modal="true"`,
+		`aria-labelledby="drawer-title" tabindex="-1"`,
+	} {
+		if !strings.Contains(string(index), marker) {
+			t.Errorf("dashboard accessibility markup is missing %q", marker)
+		}
+	}
+
+	app, err := fs.ReadFile(assets, "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+	for _, marker := range []string{
+		`class="service-details" data-service-details aria-haspopup="dialog"`,
+		`aria-controls="drawer" aria-label="View details for`,
+		`<h2 class="d-name" id="drawer-title">`,
+		"function setPageInert(inert)",
+		"element.inert = inert;",
+		"function drawerFocusables()",
+		"function trapDrawerFocus(event)",
+		`if (e.key === "Tab" && (state.drawerKey || state.hostDrawerKey))`,
+		`const restoreDrawerFocus = !$("drawer").hidden && $("drawer").contains(document.activeElement);`,
+		`?.querySelector("[data-service-details]")?.focus`,
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("dashboard accessible interaction is missing %q", marker)
+		}
+	}
+	if strings.Contains(string(app), `<tr class="${cls}" tabindex="0"`) {
+		t.Error("service rows must use their explicit button instead of a non-semantic row tab stop")
+	}
+}
+
+func TestDashboardMobileStatusDoesNotRequireHorizontalScrolling(t *testing.T) {
+	t.Parallel()
+
+	app, err := fs.ReadFile(FS(), "app.js")
+	if err != nil {
+		t.Fatalf("read embedded app: %v", err)
+	}
+	for _, marker := range []string{
+		`class="badgecell state-cell" data-label="State"`,
+		`class="badgecell health-cell" data-label="Health"`,
+		`class="badgecell fresh-cell" data-label="Freshness"`,
+	} {
+		if !strings.Contains(string(app), marker) {
+			t.Errorf("mobile service status markup is missing %q", marker)
+		}
+	}
+
+	styles, err := fs.ReadFile(FS(), "styles.css")
+	if err != nil {
+		t.Fatalf("read embedded styles: %v", err)
+	}
+	for _, marker := range []string{
+		`.host-body { overflow-x: visible; }`,
+		`table { min-width: 0; table-layout: auto; }`,
+		`grid-template-areas:`,
+		`"service service service"`,
+		`"state health fresh"`,
+		`tbody tr[data-ext] td.state-cell { grid-area: state; }`,
+		`tbody tr[data-ext] td.health-cell { grid-area: health; }`,
+	} {
+		if !strings.Contains(string(styles), marker) {
+			t.Errorf("mobile status layout is missing %q", marker)
+		}
+	}
 }
 
 func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {

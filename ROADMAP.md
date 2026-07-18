@@ -32,24 +32,28 @@ the read-only contract intact: no deploy/restart/exec/edit paths.
   - [x] Validate a real `v0.15.1` production backup through an isolated
     candidate upgrade/restart and `v0.15.1` restore/rollback, and keep a
     representative backup-lifecycle regression in the suite.
-- [ ] Close the critical integration-coverage gaps.
+- [x] Close the critical integration-coverage gaps.
   - [x] Cover report ingestion edge cases and background-worker supervision.
-  - [ ] Cover the Kubernetes collector and registry authentication,
+  - [x] Cover the Kubernetes collector and registry authentication,
     redirect, SSRF, and digest-fetch flows.
-- [ ] Verify `main` branch protection requires pull requests, review, and the
+- [x] Verify `main` branch protection requires pull requests, review, and the
   release-blocking CI checks.
-- [ ] Finish release supply-chain hardening.
+- [x] Finish release supply-chain hardening.
   - [x] Pin the GoReleaser action and contributor command to `v2.17.0`.
-  - [ ] Migrate deprecated GoReleaser Docker config and decide the `v1.0.0`
+  - [x] Migrate deprecated GoReleaser Docker config and decide the `v1.0.0`
     SBOM/provenance/signing policy.
 - [ ] Complete a short release-candidate soak on the main deployment, including
   an upgrade, backup/restore, and rollback rehearsal.
+  - [x] Complete an isolated candidate smoke/soak and validate the backup,
+    restart, restore, and rollback paths against `v0.15.1` data.
+  - [ ] Deploy the reviewed candidate to the main deployment and observe it
+    before tagging `v0.16.0`.
 
 **Polish while the release candidate soaks:**
 
-- [ ] Improve mobile service status visibility without requiring horizontal
+- [x] Improve mobile service status visibility without requiring horizontal
   scrolling.
-- [ ] Complete the dashboard accessibility pass: landmarks, explicit service
+- [x] Complete the dashboard accessibility pass: landmarks, explicit service
   detail controls, dialog semantics/focus containment, and automated checks.
 - [x] Finish documentation automation.
   - [x] Align troubleshooting wording with the never-seen agent `unknown` state.

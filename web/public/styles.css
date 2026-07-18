@@ -71,6 +71,30 @@ a:hover { color: var(--green); }
 ::selection { background: rgba(139, 112, 255, 0.3); }
 :focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
 .mono { font-family: var(--font-mono); }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--elevated);
+  border: 1px solid var(--purple);
+  transform: translateY(-160%);
+}
+.skip-link:focus { transform: translateY(0); }
 
 .wrap {
   max-width: 1200px;
@@ -494,7 +518,6 @@ header h1 {
   border-color: var(--purple);
   background: rgba(139, 112, 255, 0.2);
 }
-.table-scroll-hint { display: none; }
 .host-body { overflow-x: auto; }
 
 table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 1154px; }
@@ -537,6 +560,27 @@ tbody tr.removed { opacity: 0.5; }
 tbody tr.removed .svc-name { text-decoration: line-through; }
 
 td.svc { overflow-wrap: anywhere; }
+.service-details {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.service-details:hover { background: rgba(139, 112, 255, 0.1); }
+.service-action {
+  margin-left: 8px;
+  color: var(--border-strong);
+  font-weight: 800;
+}
+.service-details:hover .service-action { color: var(--text); }
 /* Badge-only cells (state/health/freshness): tighter padding so the column
    width goes to the badge, not wasted margin. */
 tbody td.badgecell { padding-left: 8px; padding-right: 8px; }
@@ -659,6 +703,7 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
   margin-bottom: 14px;
 }
 .d-head .d-name { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.d-head h2.d-name { margin: 0; line-height: 1.25; }
 .d-close {
   margin-left: auto;
   background: var(--panel);
@@ -787,6 +832,8 @@ footer kbd {
   background: var(--panel);
 }
 
+body.drawer-open { overflow: hidden; }
+
 @media (max-width: 680px) {
   .wrap { padding: 18px 14px 44px; }
   .section-heading { align-items: start; flex-direction: column; gap: 5px; }
@@ -795,14 +842,55 @@ footer kbd {
   .attention-action { grid-column: 2; }
   .host-head .count { margin-left: 0; }
   .host-details { margin-left: auto; }
-  .table-scroll-hint {
-    display: block;
-    margin: 0;
-    padding: 8px 14px;
+  .host-body { overflow-x: visible; }
+  table { min-width: 0; table-layout: auto; }
+  thead { display: none; }
+  tbody { display: block; }
+  tbody tr[data-ext] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "service service service"
+      "state health fresh"
+      "image image image"
+      "ports ports seen";
+    gap: 8px 10px;
+    padding: 12px 13px;
+    border-bottom: 1px solid rgba(59, 54, 85, 0.65);
+  }
+  tbody tr[data-ext]:last-child { border-bottom: 0; }
+  tbody tr[data-ext] td {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    min-width: 0;
+  }
+  tbody tr[data-ext] td.svc { grid-area: service; }
+  tbody tr[data-ext] td.image { grid-area: image; }
+  tbody tr[data-ext] td.state-cell { grid-area: state; }
+  tbody tr[data-ext] td.health-cell { grid-area: health; }
+  tbody tr[data-ext] td.fresh-cell { grid-area: fresh; }
+  tbody tr[data-ext] td.ports { grid-area: ports; align-self: center; }
+  tbody tr[data-ext] td.seen { grid-area: seen; align-self: center; }
+  tbody tr[data-ext] td.image,
+  tbody tr[data-ext] td.ports,
+  tbody tr[data-ext] td.seen { display: flex; gap: 8px; align-items: baseline; text-align: left; }
+  tbody tr[data-ext] td.image::before,
+  tbody tr[data-ext] td.ports::before,
+  tbody tr[data-ext] td.seen::before {
+    content: attr(data-label);
+    flex: none;
     color: var(--subtle);
     font-family: var(--font-mono);
-    font-size: 11px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(15, 14, 25, 0.35);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
+  tbody tr[data-ext] td.seen::after { content: none; }
+  tbody tr.child { padding-left: 24px; }
+  .service-details { width: 100%; }
+  .service-action { margin-left: auto; }
+  .badge { padding: 2px 7px; font-size: 10px; }
+  .drawer { width: 100%; max-width: 100vw; }
 }

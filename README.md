@@ -391,6 +391,10 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
   [Dashboard authentication](#dashboard-authentication-oidc).
 - Agents cannot change anything on the platforms they watch — read-only is
   enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).
+- Tagged binaries and container images ship with checksums, SPDX SBOMs,
+  provenance, and keyless GitHub attestations. See
+  [Release integrity and provenance](docs/release-security.md) for the policy
+  and verification commands.
 
 ## Upgrades & backup
 

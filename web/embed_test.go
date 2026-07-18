@@ -143,6 +143,18 @@ func TestDashboardMobileStatusDoesNotRequireHorizontalScrolling(t *testing.T) {
 	}
 }
 
+func TestDashboardDrawerEventTimestampClearsStatusRail(t *testing.T) {
+	t.Parallel()
+
+	styles, err := fs.ReadFile(FS(), "styles.css")
+	if err != nil {
+		t.Fatalf("read embedded styles: %v", err)
+	}
+	if !strings.Contains(string(styles), `.d-events .event-row { padding: 6px 0 6px 12px;`) {
+		t.Error("drawer event rows must keep the timestamp clear of the inset status rail")
+	}
+}
+
 func TestDashboardBrandAssetsAreEmbedded(t *testing.T) {
 	t.Parallel()
 

@@ -771,7 +771,7 @@ tbody tr[data-ext]:hover td.seen::after { color: var(--text); }
   color: var(--muted);
   background: var(--panel);
 }
-.d-events .event-row { padding: 6px 0; border-bottom: 1px solid rgba(59, 54, 85, 0.45); }
+.d-events .event-row { padding: 6px 0 6px 12px; border-bottom: 1px solid rgba(59, 54, 85, 0.45); }
 .d-kids .krow { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 12.5px; color: var(--muted); }
 .d-empty {
   padding: 12px;

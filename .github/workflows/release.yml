@@ -7,6 +7,8 @@ on:
 permissions:
   contents: write # create the GitHub release
   packages: write # push images to GHCR
+  id-token: write # keyless GitHub artifact attestations
+  attestations: write # store provenance for archives and OCI images
 
 jobs:
   goreleaser:
@@ -23,16 +25,27 @@ jobs:
           version="${TAG#v}"
           expected_assets=(
             "checksums.txt"
+            "digests.txt"
             "trove-agent-docker_${version}_linux_amd64.tar.gz"
+            "trove-agent-docker_${version}_linux_amd64.tar.gz.sbom.spdx.json"
             "trove-agent-docker_${version}_linux_arm64.tar.gz"
+            "trove-agent-docker_${version}_linux_arm64.tar.gz.sbom.spdx.json"
             "trove-agent-k8s_${version}_linux_amd64.tar.gz"
+            "trove-agent-k8s_${version}_linux_amd64.tar.gz.sbom.spdx.json"
             "trove-agent-k8s_${version}_linux_arm64.tar.gz"
+            "trove-agent-k8s_${version}_linux_arm64.tar.gz.sbom.spdx.json"
             "trove-agent-local_${version}_linux_amd64.tar.gz"
+            "trove-agent-local_${version}_linux_amd64.tar.gz.sbom.spdx.json"
             "trove-agent-local_${version}_linux_arm64.tar.gz"
+            "trove-agent-local_${version}_linux_arm64.tar.gz.sbom.spdx.json"
             "trove-agent-proxmox_${version}_linux_amd64.tar.gz"
+            "trove-agent-proxmox_${version}_linux_amd64.tar.gz.sbom.spdx.json"
             "trove-agent-proxmox_${version}_linux_arm64.tar.gz"
+            "trove-agent-proxmox_${version}_linux_arm64.tar.gz.sbom.spdx.json"
             "trove-server_${version}_linux_amd64.tar.gz"
+            "trove-server_${version}_linux_amd64.tar.gz.sbom.spdx.json"
             "trove-server_${version}_linux_arm64.tar.gz"
+            "trove-server_${version}_linux_arm64.tar.gz.sbom.spdx.json"
           )
 
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > /tmp/trove-release-assets.txt 2>/tmp/trove-release-check.err; then
@@ -88,12 +101,39 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Syft v1.44.0
+        id: syft
+        if: steps.existing_release.outputs.skip != 'true'
+        # anchore/sbom-action@v0
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          syft-version: v1.44.0
+      - name: Add Syft to PATH
+        if: steps.existing_release.outputs.skip != 'true'
+        env:
+          SYFT_CMD: ${{ steps.syft.outputs.cmd }}
+        run: |
+          set -euo pipefail
+          test -x "$SYFT_CMD"
+          echo "${SYFT_CMD%/*}" >> "$GITHUB_PATH"
       - name: Run goreleaser
         if: steps.existing_release.outputs.skip != 'true'
         # goreleaser/goreleaser-action@v7
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
         with:
-          version: "~> v2"
+          version: "v2.17.0"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attest release archives and SBOMs
+        if: steps.existing_release.outputs.skip != 'true'
+        # actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        with:
+          subject-checksums: ./dist/checksums.txt
+      - name: Attest container images
+        if: steps.existing_release.outputs.skip != 'true'
+        # actions/attest@v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        with:
+          subject-checksums: ./dist/digests.txt

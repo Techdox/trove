@@ -287,6 +287,12 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "database unreachable")
 		return
 	}
+	if s.backgroundHealth != nil {
+		if err := s.backgroundHealth(); err != nil {
+			writeError(w, http.StatusServiceUnavailable, "background worker unavailable")
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

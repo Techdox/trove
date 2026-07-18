@@ -14,23 +14,25 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to service catalogue</a>
   <div class="wrap">
-    <header>
+    <header id="page-header">
       <a class="brand" href="." aria-label="Trove Homelab service catalogue">
         <img class="mark" src="trove-mark.svg" alt="" width="32" height="32" />
         <h1><img class="wordmark" src="trove-wordmark.svg" alt="Trove" width="104" height="30" /></h1>
       </a>
       <span class="tagline">read-only homelab service catalogue</span>
-      <div class="status-line">
+      <div class="status-line" role="status" aria-live="polite">
         <span id="updated">connecting…</span>
         <span class="pulse" id="pulse" title="live"></span>
       </div>
       <div class="user-chip" id="user-chip" hidden></div>
     </header>
 
-    <div class="error-banner" id="error"></div>
+    <div class="error-banner" id="error" role="alert"></div>
 
-    <section class="dashboard-section attention-section" aria-labelledby="attention-title">
+    <main id="main-content" tabindex="-1">
+      <section class="dashboard-section attention-section" aria-labelledby="attention-title">
       <div class="section-heading">
         <div>
           <div class="eyebrow">Operational overview</div>
@@ -39,9 +41,9 @@
         <p>What needs investigation first. Trove only shows the evidence; follow the link or use your usual tool to fix it.</p>
       </div>
       <div class="attention" id="attention"></div>
-    </section>
+      </section>
 
-    <section class="dashboard-section infrastructure-section" aria-labelledby="infrastructure-title">
+      <section class="dashboard-section infrastructure-section" aria-labelledby="infrastructure-title">
       <div class="section-heading compact">
         <div>
           <div class="eyebrow">Discovered infrastructure</div>
@@ -50,9 +52,9 @@
       </div>
       <div class="summary" id="summary"></div>
       <div class="agents" id="agents"></div>
-    </section>
+      </section>
 
-    <section class="dashboard-section inventory-section" aria-labelledby="inventory-title">
+      <section class="dashboard-section inventory-section" aria-labelledby="inventory-title">
       <div class="section-heading compact">
         <div>
           <div class="eyebrow">Everything reported</div>
@@ -60,15 +62,15 @@
         </div>
         <p>Filter the discovered inventory. Trove never changes a workload.</p>
       </div>
-      <div class="filterbar">
+      <div class="filterbar" role="search" aria-label="Filter service catalogue">
         <input id="q" type="search" placeholder="filter by name, image, host, label…  ( / )"
                autocomplete="off" spellcheck="false" aria-label="Filter services" />
         <div class="chips" id="chips"></div>
       </div>
       <div id="hosts"></div>
-    </section>
+      </section>
 
-    <section class="dashboard-section changes-section" aria-labelledby="changes-title">
+      <section class="dashboard-section changes-section" aria-labelledby="changes-title">
       <div class="section-heading compact">
         <div>
           <div class="eyebrow">History</div>
@@ -77,16 +79,18 @@
         <p>State, health, and agent heartbeat transitions. Quiet reports are intentionally absent.</p>
       </div>
       <div class="events" id="events"></div>
-    </section>
+      </section>
+    </main>
 
-    <footer>
+    <footer id="page-footer">
       Trove by Techdox &middot; read-only by design &middot; auto-refresh 10s &middot;
       click a row (or <kbd>enter</kbd>) for details &middot;
       <kbd>/</kbd> filter &middot; <kbd>j</kbd>/<kbd>k</kbd> move &middot; <kbd>esc</kbd> close
     </footer>
   </div>
 
-  <aside id="drawer" class="drawer" hidden aria-label="Details panel"></aside>
+  <aside id="drawer" class="drawer" hidden role="dialog" aria-modal="true"
+         aria-labelledby="drawer-title" tabindex="-1"></aside>
 
   <script src="app.js"></script>
 </body>

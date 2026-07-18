@@ -127,7 +127,9 @@ The compose files auto-register this first agent from `TROVE_TOKEN` (via
 
 Open <http://localhost:8080>. Your services appear within ~30 seconds. First,
 check **Needs attention**: a healthy first report shows a calm all-clear state;
-an unreachable server or wrong token shows the agent as stale or offline.
+an agent that stops reporting becomes stale and then offline. A newly registered
+agent whose token has never been accepted remains `unknown`; its logs show the
+server's `401` response.
 
 If an agent does not show up, watch it connect with `docker compose logs -f
 agent` (add `-f docker-compose.proxmox.yml` if you used the Proxmox file).
@@ -369,7 +371,7 @@ server, set `TROVE_DB` to the server's database path (see
 | `GET /api/v1/events`    | OIDC or optional API token | Recent state-change events (`?limit=&offset=&kind=&since=`). |
 | `GET /api/v1/me`        | OIDC or optional API token | Current dashboard/API auth state.           |
 | `GET /metrics`          | OIDC or optional API token | Prometheus text metrics.                    |
-| `GET /healthz`          | none   | Liveness + database reachability.           |
+| `GET /healthz`          | none   | Database and enabled-worker health.          |
 
 Pagination, filtering, and metrics details are in [docs/api.md](docs/api.md).
 
@@ -389,14 +391,19 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
   [Dashboard authentication](#dashboard-authentication-oidc).
 - Agents cannot change anything on the platforms they watch — read-only is
   enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).
+- Tagged binaries and container images ship with checksums, SPDX SBOMs,
+  provenance, and keyless GitHub attestations. See
+  [Release integrity and provenance](docs/release-security.md) for the policy
+  and verification commands.
 
 ## Upgrades & backup
 
 Upgrades are a `pull` (or binary swap) and restart away: schema migrations apply
-automatically on startup and are additive, and the server and agents tolerate
-version skew within a minor version. Everything is one SQLite file (`trove.db` /
-the `trove-data` volume) — treat it as durable and back it up with
-`trove-server backup` or `sqlite3 ... ".backup"`. It contains agent token hashes,
+automatically on startup and are additive. Upgrade the server first; agents from
+the immediately previous release may lag while the rollout completes.
+Everything is one SQLite file (`trove.db` / the `trove-data` volume) — treat it
+as durable and back it up with `trove-server backup` or `sqlite3 ... ".backup"`.
+It contains agent token hashes,
 inventory and event history, and alert cursor/delivery state. If it is lost,
 production agents must be recreated and configured with newly issued tokens
 before current inventory can repopulate; event history and prior alert state

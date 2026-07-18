@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/techdox/trove/internal/store"
@@ -19,7 +21,21 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request, agent stor
 	var report model.Report
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(&report); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "report body exceeds 8 MiB limit")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid report body: "+err.Error())
+		return
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "report body exceeds 8 MiB limit")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid report body: trailing data")
 		return
 	}
 	if err := report.Validate(); err != nil {

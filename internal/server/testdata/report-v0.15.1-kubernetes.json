@@ -1,0 +1,32 @@
+{
+  "agent": {
+    "name": "compat-kubernetes",
+    "platform": "kubernetes",
+    "version": "v0.15.1",
+    "interval_seconds": 30
+  },
+  "host": {
+    "hostname": "cluster-v0151",
+    "condition": "normal",
+    "meta": { "kubernetes.version": "v1.33.0" }
+  },
+  "services": [
+    {
+      "external_id": "deployment/default/api",
+      "name": "api",
+      "kind": "deployment",
+      "image": "ghcr.io/example/api:v1",
+      "state": "running",
+      "health": "healthy"
+    },
+    {
+      "external_id": "pod/default/api-7d9f",
+      "parent_external_id": "deployment/default/api",
+      "name": "api-7d9f",
+      "kind": "pod",
+      "image": "ghcr.io/example/api:v1",
+      "state": "running",
+      "health": "healthy"
+    }
+  ]
+}

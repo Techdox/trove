@@ -110,6 +110,11 @@ workflow creates the tag, and goreleaser remains the only thing that creates the
 GitHub Release and its assets, so the tools never race to create the same
 release.
 
+Tagged releases also publish per-archive SPDX SBOMs, BuildKit SBOM/provenance
+for the multi-platform images, and GitHub keyless attestations. The policy and
+consumer verification commands are documented in
+[Release integrity and provenance](docs/release-security.md).
+
 Both release-please and release-tag use the fine-grained PAT in the
 `RELEASE_PLEASE_TOKEN` repo secret, not the default `GITHUB_TOKEN`. GitHub won't
 trigger downstream workflows (CI or tag-triggered releases) for refs created by

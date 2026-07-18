@@ -25,6 +25,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetricType(&b, "trove_reports_accepted_total", "counter")
 	fmt.Fprintf(&b, "trove_reports_accepted_total %d\n", s.reportsAccepted.Load())
 
+	workersHealthy := 1
+	if s.backgroundHealth != nil && s.backgroundHealth() != nil {
+		workersHealthy = 0
+	}
+	writeMetricHelp(&b, "trove_background_workers_healthy", "Whether all enabled background workers are available (1 healthy, 0 unavailable).")
+	writeMetricType(&b, "trove_background_workers_healthy", "gauge")
+	fmt.Fprintf(&b, "trove_background_workers_healthy %d\n", workersHealthy)
+
 	writeMetricHelp(&b, "trove_sqlite_database_size_bytes", "SQLite database size based on page_count * page_size.")
 	writeMetricType(&b, "trove_sqlite_database_size_bytes", "gauge")
 	fmt.Fprintf(&b, "trove_sqlite_database_size_bytes %d\n", snap.DBSizeBytes)

@@ -1,0 +1,29 @@
+{
+  "agent": {
+    "name": "compat-proxmox",
+    "platform": "proxmox",
+    "version": "v0.15.1",
+    "interval_seconds": 60
+  },
+  "host": {
+    "hostname": "pve-v0151",
+    "condition": "warning",
+    "meta": { "proxmox.version": "8.4.1" }
+  },
+  "services": [
+    {
+      "external_id": "qemu/101",
+      "name": "media",
+      "kind": "vm",
+      "state": "running",
+      "health": "healthy"
+    },
+    {
+      "external_id": "lxc/201",
+      "name": "dns",
+      "kind": "lxc",
+      "state": "stopped",
+      "health": "unknown"
+    }
+  ]
+}

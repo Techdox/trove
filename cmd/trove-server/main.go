@@ -21,6 +21,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -35,10 +38,13 @@ import (
 var version = "dev"
 
 const (
-	readHeaderTimeout = 10 * time.Second
-	readTimeout       = 30 * time.Second
-	writeTimeout      = 30 * time.Second
-	idleTimeout       = 120 * time.Second
+	readHeaderTimeout        = 10 * time.Second
+	readTimeout              = 30 * time.Second
+	writeTimeout             = 30 * time.Second
+	idleTimeout              = 120 * time.Second
+	supervisorInitialBackoff = time.Second
+	supervisorMaxBackoff     = time.Minute
+	supervisorStablePeriod   = time.Minute
 )
 
 func main() {
@@ -113,18 +119,120 @@ func openStore() (*store.Store, error) {
 	return store.Open(dbPath)
 }
 
-// runSupervised recovers a panic in a background loop and logs it instead of
-// crashing the whole process (including the HTTP server) for a bug in one
-// unrelated ticker. The loop itself does not restart — a repeatedly panicking
-// loop staying dead is preferable to a tight crash-restart loop with no
-// backoff.
-func runSupervised(log *slog.Logger, name string, fn func()) {
+type workerState uint8
+
+const (
+	workerStarting workerState = iota
+	workerRunning
+	workerBackoff
+	workerStopped
+)
+
+// workerMonitor is shared by the process supervisors and the server health
+// surfaces. Only enabled workers are registered.
+type workerMonitor struct {
+	mu     sync.RWMutex
+	states map[string]workerState
+}
+
+func newWorkerMonitor(names ...string) *workerMonitor {
+	states := make(map[string]workerState, len(names))
+	for _, name := range names {
+		states[name] = workerStarting
+	}
+	return &workerMonitor{states: states}
+}
+
+func (m *workerMonitor) set(name string, state workerState) {
+	m.mu.Lock()
+	m.states[name] = state
+	m.mu.Unlock()
+}
+
+func (m *workerMonitor) health() error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var unavailable []string
+	for name, state := range m.states {
+		if state == workerStarting || state == workerBackoff {
+			unavailable = append(unavailable, name)
+		}
+	}
+	if len(unavailable) == 0 {
+		return nil
+	}
+	sort.Strings(unavailable)
+	return fmt.Errorf("background workers unavailable: %s", strings.Join(unavailable, ", "))
+}
+
+// runSupervised restarts an unexpectedly stopped or panicking background loop
+// with bounded exponential backoff. During backoff the worker monitor makes the
+// failure visible to /healthz and /metrics, allowing an orchestrator or operator
+// to distinguish a fully healthy server from an HTTP-only shell.
+func runSupervised(ctx context.Context, log *slog.Logger, name string, monitor *workerMonitor, fn func()) {
+	runSupervisedWithBackoff(ctx, log, name, monitor, supervisorInitialBackoff, supervisorMaxBackoff, fn)
+}
+
+func runSupervisedWithBackoff(
+	ctx context.Context,
+	log *slog.Logger,
+	name string,
+	monitor *workerMonitor,
+	initialBackoff time.Duration,
+	maxBackoff time.Duration,
+	fn func(),
+) {
+	backoff := initialBackoff
+	for {
+		monitor.set(name, workerRunning)
+		startedAt := time.Now()
+		panicked, panicValue := runWorker(fn)
+		if ctx.Err() != nil {
+			monitor.set(name, workerStopped)
+			return
+		}
+
+		if time.Since(startedAt) >= supervisorStablePeriod {
+			backoff = initialBackoff
+		}
+		monitor.set(name, workerBackoff)
+		if panicked {
+			log.Error("background loop panicked, restarting after backoff",
+				"loop", name, "panic", panicValue, "backoff", backoff)
+		} else {
+			log.Error("background loop stopped unexpectedly, restarting after backoff",
+				"loop", name, "backoff", backoff)
+		}
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			monitor.set(name, workerStopped)
+			return
+		case <-timer.C:
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
+}
+
+func runWorker(fn func()) (panicked bool, panicValue any) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error("background loop panicked, it will not restart", "loop", name, "panic", r)
+			panicked = true
+			panicValue = r
 		}
 	}()
 	fn()
+	return false, nil
 }
 
 func runServe() error {
@@ -147,8 +255,11 @@ func runServe() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv.ConfigureFreshness(server.LoadFreshnessConfigFromEnv())
+	freshnessCfg := server.LoadFreshnessConfigFromEnv()
+	srv.ConfigureFreshness(freshnessCfg)
 	srv.ConfigureRetention(server.LoadRetentionConfigFromEnv())
+	alertCfg := alert.LoadConfigFromEnv()
+	digestCfg := alert.LoadDigestConfigFromEnv(logger)
 
 	// Configure OIDC if all required env vars are set. Partial configuration
 	// fails startup; when all auth settings are absent, behavior is unchanged
@@ -157,11 +268,36 @@ func runServe() error {
 		return fmt.Errorf("configure oidc: %w", err)
 	}
 
-	go runSupervised(logger, "staleness", func() { srv.RunStalenessLoop(ctx) })
-	go runSupervised(logger, "freshness", func() { srv.RunFreshnessLoop(ctx) })
-	go runSupervised(logger, "maintenance", func() { srv.RunMaintenanceLoop(ctx) })
-	go runSupervised(logger, "alert", func() { alert.NewEngine(st, logger, alert.LoadConfigFromEnv()).Run(ctx) })
-	go runSupervised(logger, "digest", func() { alert.NewDigester(st, logger, alert.LoadDigestConfigFromEnv(logger)).Run(ctx) })
+	workerNames := []string{"staleness", "maintenance"}
+	if freshnessCfg.Enabled {
+		workerNames = append(workerNames, "freshness")
+	}
+	if alertCfg.Enabled() {
+		workerNames = append(workerNames, "alert")
+	}
+	if digestCfg.Enabled() {
+		workerNames = append(workerNames, "digest")
+	}
+	workers := newWorkerMonitor(workerNames...)
+	srv.ConfigureBackgroundHealth(workers.health)
+
+	go runSupervised(ctx, logger, "staleness", workers, func() { srv.RunStalenessLoop(ctx) })
+	go runSupervised(ctx, logger, "maintenance", workers, func() { srv.RunMaintenanceLoop(ctx) })
+	if freshnessCfg.Enabled {
+		go runSupervised(ctx, logger, "freshness", workers, func() { srv.RunFreshnessLoop(ctx) })
+	} else {
+		logger.Info("image freshness checking disabled")
+	}
+	if alertCfg.Enabled() {
+		go runSupervised(ctx, logger, "alert", workers, func() { alert.NewEngine(st, logger, alertCfg).Run(ctx) })
+	} else {
+		logger.Info("alerting disabled (no channel configured)")
+	}
+	if digestCfg.Enabled() {
+		go runSupervised(ctx, logger, "digest", workers, func() { alert.NewDigester(st, logger, digestCfg).Run(ctx) })
+	} else {
+		logger.Info("email digest disabled")
+	}
 
 	httpSrv := &http.Server{
 		Addr:              addr,

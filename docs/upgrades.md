@@ -1,9 +1,12 @@
 # Upgrading Trove
 
-Upgrades are meant to be boring. All state is one SQLite file; schema migrations
-apply automatically on startup and are additive; and the server and agents
-tolerate version skew **within a minor version**, so you don't have to upgrade
-everything in lockstep. Pick the section that matches how you run the server.
+Upgrades are meant to be boring. All state is one SQLite file and schema
+migrations apply automatically on startup and are additive. For a rolling
+upgrade, update the server first; agents from the immediately previous release
+may lag while the rollout completes. Trove tests previous-release agent report
+fixtures against the current server. Newer agents against an older server, or
+larger version gaps, are not guaranteed. Pick the section that matches how you
+run the server.
 
 ## Before you upgrade
 
@@ -60,8 +63,9 @@ installed.)
 
 ## Agents
 
-Agents and the server tolerate version skew within a minor version, so upgrade
-agents whenever convenient — they don't have to move in lockstep with the server.
+Upgrade the server first, then upgrade agents. Agents from the immediately
+previous release may continue reporting during the rollout; do not upgrade an
+agent ahead of its server or assume compatibility across larger release gaps.
 
 - **Docker agent (compose):** `docker compose pull && docker compose up -d`.
 - **Docker agent (`docker run`):** `docker pull ghcr.io/techdox/trove-agent-docker:latest`, then recreate the container.

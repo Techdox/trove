@@ -10,15 +10,54 @@ Both pinned decisions are resolved: D2 (parent/child) shipped with Phase 3, D1
 (retention) with Phase 4. Trove is MIT licensed and public. See the
 [README](README.md) for what exists today.
 
-## Current milestone
+## Current milestone — `v0.16.0` hardening
 
-The path to `v1.0.0` is now a confidence pass, not a large feature push:
+There is no remaining pre-`v1.0.0` feature work. `v0.16.0` is a focused
+reliability, security, compatibility, and release-confidence milestone. Keep
+the read-only contract intact: no deploy/restart/exec/edit paths.
 
-- Repeat the production Authentik OIDC setup in Dev and verify browser and API
-  token access there as a release gate.
-- Validate the public docs, wiki, example config, and upgrade notes against that
-  deployment.
-- Keep the read-only contract intact: no deploy/restart/exec/edit paths.
+**Release gates:**
+
+- [x] Validate Authentik OIDC across production and Dev: browser login,
+  callback, logout, session access, `TROVE_API_TOKEN`, unaffected agent ingest
+  and `/healthz`, and the supporting docs/wiki/example/upgrade guidance.
+- [x] Restart panicking background workers with bounded backoff and make worker
+  failure visible to health checks and metrics.
+- [x] Add dashboard/API security headers and prevent authenticated or dynamic
+  responses from being cached.
+- [x] Reject oversized and trailing-data agent reports with stable HTTP errors.
+- [x] Prove the supported upgrade compatibility contract.
+  - [x] Define the server-first, previous-release-agent policy and test frozen
+    `v0.15.1` Docker/Kubernetes/Proxmox report fixtures through ingest.
+  - [x] Validate a real `v0.15.1` production backup through an isolated
+    candidate upgrade/restart and `v0.15.1` restore/rollback, and keep a
+    representative backup-lifecycle regression in the suite.
+- [x] Close the critical integration-coverage gaps.
+  - [x] Cover report ingestion edge cases and background-worker supervision.
+  - [x] Cover the Kubernetes collector and registry authentication,
+    redirect, SSRF, and digest-fetch flows.
+- [x] Verify `main` branch protection requires pull requests, review, and the
+  release-blocking CI checks.
+- [x] Finish release supply-chain hardening.
+  - [x] Pin the GoReleaser action and contributor command to `v2.17.0`.
+  - [x] Migrate deprecated GoReleaser Docker config and decide the `v1.0.0`
+    SBOM/provenance/signing policy.
+- [ ] Complete a short release-candidate soak on the main deployment, including
+  an upgrade, backup/restore, and rollback rehearsal.
+  - [x] Complete an isolated candidate smoke/soak and validate the backup,
+    restart, restore, and rollback paths against `v0.15.1` data.
+  - [ ] Deploy the reviewed candidate to the main deployment and observe it
+    before tagging `v0.16.0`.
+
+**Polish while the release candidate soaks:**
+
+- [x] Improve mobile service status visibility without requiring horizontal
+  scrolling.
+- [x] Complete the dashboard accessibility pass: landmarks, explicit service
+  detail controls, dialog semantics/focus containment, and automated checks.
+- [x] Finish documentation automation.
+  - [x] Align troubleshooting wording with the never-seen agent `unknown` state.
+  - [x] Add automated local Markdown link checking to CI.
 
 Post-`v1.0.0`, the next roadmap items are Helm packaging and cert-expiry
 monitoring.
@@ -123,12 +162,15 @@ design (targets, SNI, self-signed policy); slated after `v1.0.0`.
   are never gated. When OIDC is not configured, the dashboard is open
   (backward compatible with Phase 1).
 
-**Remaining:**
+**Validated for `v1.0.0`:**
 
-- **Dev OIDC and documentation confidence pass** before `v1.0.0`: Authentik has
-  been exercised on the production deployment; reproduce that setup in Dev,
-  confirm the API-token path, and keep the repo docs/wiki/example config aligned
-  with the tested setup.
+- **OIDC and documentation confidence pass — complete.** Authentik is in use on
+  the main Trove deployment and has been tested across the deployments. Browser
+  authentication and session flows, API-token access, agent ingest, `/healthz`,
+  and the supporting docs/wiki/example/upgrade guidance have been verified.
+
+**Remaining after `v1.0.0`:**
+
 - **Helm chart** for Kubernetes deployment (natural companion to the Phase 3 K8s
   agent), planned after `v1.0.0`.
 - **Certificate-expiry monitoring** for HTTPS targets, including target config,

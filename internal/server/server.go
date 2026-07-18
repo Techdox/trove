@@ -23,6 +23,12 @@ type Server struct {
 	log   *slog.Logger
 	mux   *http.ServeMux
 
+	// backgroundHealth reports whether the process-level workers started by
+	// cmd/trove-server are available. It is configured before serving and lets
+	// /healthz and /metrics detect a server whose HTTP surface is alive while a
+	// critical background loop is stuck in crash backoff.
+	backgroundHealth func() error
+
 	// stalenessInterval is how often the background ticker re-evaluates agent
 	// and host heartbeats and flags services on stale hosts.
 	stalenessInterval time.Duration
@@ -88,7 +94,13 @@ func (s *Server) ConfigureOIDC(cfg OIDCConfig) error {
 
 // Handler returns the HTTP handler for the whole server.
 func (s *Server) Handler() http.Handler {
-	return withRecover(s.log, s.mux)
+	return withSecurityHeaders(withRecover(s.log, s.mux))
+}
+
+// ConfigureBackgroundHealth connects process-level worker supervision to the
+// HTTP health surfaces. Configure it before the server starts listening.
+func (s *Server) ConfigureBackgroundHealth(check func() error) {
+	s.backgroundHealth = check
 }
 
 func (s *Server) routes() {

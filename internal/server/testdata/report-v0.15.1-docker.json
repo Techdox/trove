@@ -1,0 +1,26 @@
+{
+  "agent": {
+    "name": "compat-docker",
+    "platform": "docker",
+    "version": "v0.15.1",
+    "interval_seconds": 30
+  },
+  "host": {
+    "hostname": "docker-v0151",
+    "condition": "normal",
+    "meta": { "docker.version": "28.0.0" }
+  },
+  "services": [
+    {
+      "external_id": "7a9c1e",
+      "name": "homepage",
+      "kind": "container",
+      "image": "ghcr.io/example/homepage:latest",
+      "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "state": "running",
+      "health": "healthy",
+      "ports": [{ "host": 3000, "container": 3000, "proto": "tcp" }],
+      "labels": { "com.docker.compose.project": "homepage" }
+    }
+  ]
+}

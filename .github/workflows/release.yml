@@ -47,6 +47,7 @@ jobs:
             "trove-server_${version}_linux_arm64.tar.gz"
             "trove-server_${version}_linux_arm64.tar.gz.sbom.spdx.json"
           )
+          printf '%s\n' "${expected_assets[@]}" > "$RUNNER_TEMP/trove-expected-release-assets.txt"
 
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > /tmp/trove-release-assets.txt 2>/tmp/trove-release-check.err; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -125,6 +126,28 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify published release assets
+        if: steps.existing_release.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/trove-release-assets.txt"
+
+          missing=0
+          while IFS= read -r asset; do
+            if ! grep -Fxq "$asset" "$RUNNER_TEMP/trove-release-assets.txt"; then
+              echo "::error::Published release $TAG is missing expected asset: $asset"
+              missing=1
+            fi
+          done < "$RUNNER_TEMP/trove-expected-release-assets.txt"
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Release $TAG was published without its complete artifact set."
+            exit 1
+          fi
       - name: Attest release archives and SBOMs
         if: steps.existing_release.outputs.skip != 'true'
         # actions/attest@v4

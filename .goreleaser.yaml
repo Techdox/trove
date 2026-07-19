@@ -146,6 +146,10 @@ changelog:
     exclude: ["^docs:", "^chore:", "^ci:"]
 
 release:
+  # docker_digest is generated during the publish phase but is not an
+  # uploadable artifact unless it is explicitly added to the release.
+  extra_files:
+    - glob: ./dist/digests.txt
   # Preserve the exact tagged commit in GitHub release metadata. Release Please
   # uses that reference to identify the latest release boundary.
   target_commitish: "{{ .Commit }}"

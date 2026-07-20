@@ -49,7 +49,7 @@ jobs:
       # the built-in token, which would leave the release PR permanently
       # unable to satisfy main's required "test" check. See CONTRIBUTING.md.
       # googleapis/release-please-action@v5
-      - uses: googleapis/release-please-action@0dfd8538845b8e92600d271a895a5372865d4062
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
         if: steps.release_merge.outputs.skip != 'true'
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

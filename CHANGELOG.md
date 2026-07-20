@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/Techdox/trove/compare/v0.16.0...v0.16.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* publish container digests with releases ([#98](https://github.com/Techdox/trove/issues/98)) ([7e62a51](https://github.com/Techdox/trove/commit/7e62a5197e7067202bc873851a6e049af1ae1cbc))
+
 ## [0.16.0](https://github.com/Techdox/trove/compare/v0.15.1...v0.16.0) (2026-07-18)
 
 

@@ -428,8 +428,9 @@ into the server binary.
 
 ## Roadmap & contributing
 
-Planned next: Helm chart, cert-expiry monitoring — see
-[ROADMAP.md](ROADMAP.md) for the reasoning and sequencing. Contributions
+Current focus: operator confidence and the stability contract on the path to
+`v1.0.0`. Helm packaging and certificate-expiry monitoring remain post-1.0 —
+see [ROADMAP.md](ROADMAP.md) for the gates and sequencing. Contributions
 welcome: start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License

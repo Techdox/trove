@@ -1,66 +1,122 @@
 # Trove Roadmap
 
-**Status:** `v0.16.1` is the current public release. <!-- x-release-please-version --> Phases 1–4 are shipped on
-`main` — Docker/Kubernetes/Proxmox/bare-metal agents, per-agent token auth,
-heartbeat/staleness, image freshness, the parent/child model, configurable
-retention, and alerting (webhook/Discord/ntfy + email digest — see
-[docs/alerts.md](docs/alerts.md)). Phase 5 is partially delivered: OIDC auth
-for the dashboard and read APIs shipped in an earlier release; observability/API hardening has shipped; Helm packaging remains.
-Both pinned decisions are resolved: D2 (parent/child) shipped with Phase 3, D1
-(retention) with Phase 4. Trove is MIT licensed and public. See the
-[README](README.md) for what exists today.
+**Status:** `v0.16.1` is the current public release. <!-- x-release-please-version --> The core product is
+delivered: Docker/Kubernetes/Proxmox/bare-metal agents, per-agent token auth,
+heartbeat/staleness, image freshness, parent/child workloads, host condition
+and resources, configurable retention, alerting, OIDC, observability APIs, and
+the read-only dashboard. See the [README](README.md) for the current feature
+surface.
 
-## Current milestone — `v0.16.0` hardening
+There is no remaining pre-`v1.0.0` headline feature work. The path to 1.0 is
+about day-two operations, compatibility promises, scale evidence, and time in
+real deployments. Helm packaging and certificate-expiry monitoring remain
+post-1.0 work so they do not expand the support surface during stabilization.
 
-There is no remaining pre-`v1.0.0` feature work. `v0.16.0` is a focused
-reliability, security, compatibility, and release-confidence milestone. Keep
-the read-only contract intact: no deploy/restart/exec/edit paths.
+## `v0.16` hardening ✅ delivered
 
-**Release gates:**
+`v0.16.0` and the `v0.16.1` release fix completed the reliability, security,
+compatibility, UI, documentation, and release-confidence milestone:
 
-- [x] Validate Authentik OIDC across production and Dev: browser login,
-  callback, logout, session access, `TROVE_API_TOKEN`, unaffected agent ingest
-  and `/healthz`, and the supporting docs/wiki/example/upgrade guidance.
-- [x] Restart panicking background workers with bounded backoff and make worker
-  failure visible to health checks and metrics.
-- [x] Add dashboard/API security headers and prevent authenticated or dynamic
-  responses from being cached.
-- [x] Reject oversized and trailing-data agent reports with stable HTTP errors.
-- [x] Prove the supported upgrade compatibility contract.
-  - [x] Define the server-first, previous-release-agent policy and test frozen
-    `v0.15.1` Docker/Kubernetes/Proxmox report fixtures through ingest.
-  - [x] Validate a real `v0.15.1` production backup through an isolated
-    candidate upgrade/restart and `v0.15.1` restore/rollback, and keep a
-    representative backup-lifecycle regression in the suite.
-- [x] Close the critical integration-coverage gaps.
-  - [x] Cover report ingestion edge cases and background-worker supervision.
-  - [x] Cover the Kubernetes collector and registry authentication,
-    redirect, SSRF, and digest-fetch flows.
-- [x] Verify `main` branch protection requires pull requests, review, and the
-  release-blocking CI checks.
-- [x] Finish release supply-chain hardening.
-  - [x] Pin the GoReleaser action and contributor command to `v2.17.0`.
-  - [x] Migrate deprecated GoReleaser Docker config and decide the `v1.0.0`
-    SBOM/provenance/signing policy.
-- [ ] Complete a short release-candidate soak on the main deployment, including
-  an upgrade, backup/restore, and rollback rehearsal.
-  - [x] Complete an isolated candidate smoke/soak and validate the backup,
-    restart, restore, and rollback paths against `v0.15.1` data.
-  - [ ] Deploy the reviewed candidate to the main deployment and observe it
-    before tagging `v0.16.0`.
+- Authentik OIDC was validated across the deployments, including browser
+  login/callback/logout/session flows, `TROVE_API_TOKEN`, agent ingest, and
+  `/healthz`.
+- Background workers gained bounded restart supervision and health/metrics
+  visibility; HTTP responses gained security and cache controls; report ingest
+  gained bounded-body and trailing-data rejection.
+- Frozen previous-release reports and a real `v0.15.1` database proved the
+  server-first upgrade, restart, backup, restore, and rollback paths. The
+  representative lifecycle remains covered in the test suite.
+- Kubernetes collection and registry authentication, redirect, SSRF, and
+  digest-fetch behavior gained integration coverage.
+- Mobile service status, dashboard accessibility, troubleshooting guidance,
+  and automated Markdown link checking were completed.
+- Release archives and multi-platform images now ship with checksums, SBOMs,
+  provenance, digest records, and keyless GitHub attestations.
+- `main` requires pull requests, up-to-date `test` and `security` checks, and
+  resolved review conversations. A separate approving reviewer is not required
+  for the current solo-maintainer workflow.
 
-**Polish while the release candidate soaks:**
+## Current milestone — `v0.17.0` operator confidence
 
-- [x] Improve mobile service status visibility without requiring horizontal
-  scrolling.
-- [x] Complete the dashboard accessibility pass: landmarks, explicit service
-  detail controls, dialog semantics/focus containment, and automated checks.
-- [x] Finish documentation automation.
-  - [x] Align troubleshooting wording with the never-seen agent `unknown` state.
-  - [x] Add automated local Markdown link checking to CI.
+**Goal:** make routine ownership boring before declaring the interfaces stable.
+This milestone does not add another monitored platform or any control path.
 
-Post-`v1.0.0`, the next roadmap items are Helm packaging and cert-expiry
-monitoring.
+### Agent credential rotation
+
+- [ ] Add `trove-server agent rotate <name>` to issue a one-time replacement
+  token without deleting the agent, its hosts, services, or history.
+- [ ] Invalidate the previous token when rotation succeeds, never persist the
+  replacement in plaintext, and cover the CLI/store behavior with tests.
+- [ ] Document a maintenance-window rotation flow for Compose, Kubernetes,
+  Proxmox, and systemd agents, including the expected temporary `401` state.
+
+### Diagnostics and recovery
+
+- [ ] Add a sanitized `trove-server doctor` command covering database access
+  and integrity, migration state, configuration validation, and non-secret
+  operational facts suitable for a bug report.
+- [ ] Add a supported backup-verification command or workflow that checks
+  SQLite integrity and proves the backup can be opened without modifying it.
+- [ ] Publish cron and systemd-timer backup examples with retention guidance,
+  plus a short restore-rehearsal checklist.
+
+### UI and documentation regression protection
+
+- [ ] Add automated desktop/tablet/mobile browser coverage for the dashboard's
+  highest-risk layouts: long Kubernetes names and kind labels, event dates and
+  status colors, drawers, filters, and the no-horizontal-scroll mobile view.
+- [ ] Keep the browser suite test-only; the shipped dashboard remains vanilla
+  JavaScript/CSS with no frontend build or runtime dependency.
+- [ ] Make repository docs the source of truth, define what belongs in the
+  wiki, and prevent duplicated upgrade/authentication guidance from drifting.
+
+**Exit:** complete the gates above, exercise the resulting commands against a
+copy of real deployment data, and run the candidate on the main deployment
+without changing Trove's observation-only boundary.
+
+## Following milestone — `v0.18.0` stability contract
+
+**Goal:** define what 1.0 promises and prove Trove operates comfortably beyond
+the current deployment.
+
+- [ ] Publish machine-readable schemas for the agent report and `/api/v1`
+  responses, with compatibility tests for additive evolution.
+- [ ] Turn the server-first, immediately-previous-agent guarantee into a clear
+  version support matrix and test it on every release candidate.
+- [ ] Add a reproducible scale scenario covering at least 50 agents, 10,000
+  services, and 100,000 retained events. Record ingest latency, API response
+  size/time, database growth, maintenance duration, and restart time.
+- [ ] Protect the current coverage baseline and raise useful coverage in the
+  agent framework, server CLI, and store failure paths; do not chase a global
+  percentage with low-value tests.
+- [ ] Validate fresh installs and upgrades with several independent operators
+  across Docker, Kubernetes, Proxmox, and bare-metal Linux.
+
+## `v1.0.0` release gates
+
+- [ ] Freeze headline features during the release-candidate period; accept only
+  documentation, compatibility, security, and regression fixes.
+- [ ] Complete a 4–6 week candidate soak with no unresolved serious regression,
+  worker instability, data-integrity failure, or alert-delivery failure.
+- [ ] Rehearse supported upgrades, backup/restore, and rollback with production-
+  representative data and published artifacts.
+- [ ] Finalize API/report compatibility, upgrade, security, release-integrity,
+  and maintainer-support statements.
+- [ ] Confirm every install path and example pins or discovers the intended
+  release, and that release assets/images/attestations are complete.
+
+## After `v1.0.0`
+
+Prioritize these only after the stability contract is proven:
+
+- Helm chart for the server and Kubernetes agent.
+- Certificate-expiry monitoring with explicit target, SNI, timeout, and
+  self-signed-certificate policies.
+- Named, independently rotatable read-only API tokens.
+- Saved/shareable dashboard filters and read-only deep links to the systems
+  that own workloads.
+- Additional agents only when real operator demand justifies their long-term
+  support cost.
 
 ## Principles carried forward
 

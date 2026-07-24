@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -98,6 +99,84 @@ func TestRunSupervisedMarksWorkerUnavailableDuringBackoff(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("supervisor did not leave backoff after context cancellation")
 	}
+}
+
+func TestRunAgentRotateReplacesToken(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "trove.db")
+	t.Setenv("TROVE_DB", dbPath)
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	oldToken, agent, err := st.CreateAgent(ctx, "docker-a")
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	output, err := captureStdout(t, func() error {
+		return runAgent([]string{"rotate", agent.Name})
+	})
+	if err != nil {
+		t.Fatalf("run rotate: %v", err)
+	}
+	if !strings.Contains(output, `Rotated token for agent "docker-a"`) || !strings.Contains(output, "previous token stopped working immediately") {
+		t.Fatalf("rotate output = %q", output)
+	}
+	newToken := firstToken(output)
+	if newToken == "" || newToken == oldToken {
+		t.Fatalf("replacement token = %q, want new token", newToken)
+	}
+	if _, err := st.AuthenticateByToken(ctx, oldToken); !errors.Is(err, store.ErrAgentNotFound) {
+		t.Fatalf("old token auth error = %v, want ErrAgentNotFound", err)
+	}
+	got, err := st.AuthenticateByToken(ctx, newToken)
+	if err != nil {
+		t.Fatalf("new token auth: %v", err)
+	}
+	if got.ID != agent.ID {
+		t.Fatalf("rotated agent id = %d, want %d", got.ID, agent.ID)
+	}
+	if err := runAgent([]string{"rotate"}); err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Fatalf("rotate without name error = %v, want usage", err)
+	}
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+	previous := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+	}
+	os.Stdout = writer
+	t.Cleanup(func() {
+		os.Stdout = previous
+		_ = reader.Close()
+		_ = writer.Close()
+	})
+
+	callErr := fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stdout pipe: %v", err)
+	}
+	os.Stdout = previous
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stdout pipe: %v", err)
+	}
+	return string(output), callErr
+}
+
+func firstToken(output string) string {
+	for _, field := range strings.Fields(output) {
+		if strings.HasPrefix(field, "trove_") {
+			return field
+		}
+	}
+	return ""
 }
 
 type compatibilitySnapshot struct {

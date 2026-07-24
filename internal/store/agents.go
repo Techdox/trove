@@ -79,6 +79,44 @@ func (s *Store) CreateAgent(ctx context.Context, name string) (token string, age
 	return token, Agent{ID: id, Name: name, CreatedAt: now}, nil
 }
 
+// RotateAgentToken replaces an agent's bearer token and returns the one-time
+// plaintext replacement. The old token stops authenticating as soon as this
+// method succeeds. The plaintext is never stored.
+func (s *Store) RotateAgentToken(ctx context.Context, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ErrAgentNotFound
+	}
+
+	// A collision between independently generated 256-bit tokens is
+	// extraordinarily unlikely, but token_hash is unique, so retry rather than
+	// ever returning a token that was not stored.
+	for attempt := 0; attempt < 3; attempt++ {
+		token, err := generateToken()
+		if err != nil {
+			return "", err
+		}
+		res, err := s.db.ExecContext(ctx,
+			`UPDATE agents SET token_hash = ? WHERE name = ?`, HashToken(token), name,
+		)
+		if err != nil {
+			if isUniqueViolation(err) {
+				continue
+			}
+			return "", fmt.Errorf("rotate agent token: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return "", fmt.Errorf("rotate agent token: %w", err)
+		}
+		if n == 0 {
+			return "", ErrAgentNotFound
+		}
+		return token, nil
+	}
+	return "", errors.New("rotate agent token: generated token collision")
+}
+
 // EnsureAgentWithToken creates an agent with a caller-supplied token when no
 // agent of that name exists yet, and reports whether it created one. This
 // backs the docker-compose dev bootstrap (TROVE_BOOTSTRAP_*); production mints

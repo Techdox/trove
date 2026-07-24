@@ -18,6 +18,9 @@ docker compose exec server trove-server agent create docker-nuc01
 
 Copy the `trove_...` token — it is shown once.
 
+To replace an exposed or retired token without deleting this agent's history,
+follow the [agent-token rotation guide](rotation.md).
+
 ## 2. Run the agent
 
 ```sh

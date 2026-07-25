@@ -19,6 +19,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
       - name: gofmt
         run: |
           out=$(gofmt -l .)
@@ -48,6 +53,12 @@ jobs:
           echo "Total: $total" >> "$GITHUB_STEP_SUMMARY"
       - name: go test race detector
         run: go test -race ./...
+      - name: Install dashboard browser test dependencies
+        run: npm ci
+      - name: Install Chromium for dashboard browser tests
+        run: npx playwright install --with-deps chromium
+      - name: Dashboard browser regressions
+        run: npm run test:browser
       - name: cross-compile all binaries (linux amd64 + arm64)
         run: make build
       - name: GoReleaser config check

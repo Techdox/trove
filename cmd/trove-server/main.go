@@ -8,6 +8,7 @@
 //	trove-server agent list              list agents and last-seen
 //	trove-server agent rotate <name>     replace an agent bearer token
 //	trove-server agent delete <name>     remove an agent and its data
+//	trove-server backup verify <path>    inspect an existing SQLite backup read-only
 //	trove-server doctor                  inspect local configuration and SQLite health
 //
 // Config (serve): TROVE_ADDR (default :8080), TROVE_DB (default trove.db).
@@ -95,6 +96,7 @@ Commands:
   agent delete <name>       remove an agent and all its data
   alert test                send a test notification through configured channels
   backup [path]             write a consistent SQLite backup (default timestamped file)
+  backup verify <path>      verify an existing SQLite backup without modifying it
   healthcheck               probe /healthz on the local server (exit 0/1)
   doctor                    inspect local configuration and SQLite health (read-only)
 
@@ -361,8 +363,11 @@ func bootstrapAgent(ctx context.Context, st *store.Store, logger *slog.Logger) e
 // overwrite an existing file; backups are rollback points, not disposable temp
 // files.
 func runBackup(args []string) error {
+	if len(args) > 0 && args[0] == "verify" {
+		return runBackupVerify(args[1:])
+	}
 	if len(args) > 1 {
-		return errors.New("usage: trove-server backup [path]")
+		return errors.New("usage: trove-server backup [path]\n       trove-server backup verify <path>")
 	}
 	dst := ""
 	if len(args) == 1 {

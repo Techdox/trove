@@ -430,7 +430,8 @@ before current inventory can repopulate; event history and prior alert state
 cannot be rebuilt.
 
 See **[docs/upgrades.md](docs/upgrades.md)** for per-method upgrade steps (Docker
-Compose, bare metal, `go install`, agents), version pinning, backup commands,
+Compose, bare metal, `go install`, agents), version pinning, backup creation and
+read-only verification, cron/systemd retention examples, restore rehearsals,
 and how to roll back.
 
 ## Building from source

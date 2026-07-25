@@ -76,6 +76,9 @@ docker compose exec server trove-server agent create proxmox
 # bare-metal server: sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create proxmox
 ```
 
+To replace an exposed or retired token without deleting this agent's history,
+follow the [agent-token rotation guide](rotation.md).
+
 ## 3. Run the agent
 
 ### With Docker Compose (server + agent together)

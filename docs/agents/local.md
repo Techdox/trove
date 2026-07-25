@@ -21,6 +21,9 @@ docker compose exec server trove-server agent create nas01
 # bare-metal server: sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create nas01
 ```
 
+To replace an exposed or retired token without deleting this agent's history,
+follow the [agent-token rotation guide](rotation.md).
+
 ## 2. Install the binary + unit
 
 ```sh

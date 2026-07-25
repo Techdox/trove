@@ -24,6 +24,9 @@ docker compose exec server trove-server agent create k8s-homelab
 # bare-metal server: sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create k8s-homelab
 ```
 
+To replace an exposed or retired token without deleting this agent's history,
+follow the [agent-token rotation guide](rotation.md).
+
 ## 2. Create the namespace + token secret
 
 ```sh

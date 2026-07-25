@@ -128,6 +128,16 @@ async function loadDashboard(page) {
   await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(3);
 }
 
+async function expectNoHorizontalPageOverflow(page) {
+  const widths = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+    viewport: window.innerWidth,
+  }));
+  expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+  expect(widths.body).toBeLessThanOrEqual(widths.viewport);
+}
+
 test("long Kubernetes labels remain readable and the drawer keeps event timestamps clear", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await loadDashboard(page);
@@ -177,7 +187,9 @@ test("tablet catalogue preserves each Kubernetes kind label", async ({ page }) =
   await page.setViewportSize({ width: 900, height: 1000 });
   await loadDashboard(page);
 
-  await expect(page.locator("#hosts .kind")).toHaveText(["deployment", "pod", "deployment"]);
+  const kinds = page.locator("#hosts .kind");
+  await expect(kinds).toHaveText(["deployment", "pod", "deployment"]);
+  for (const kind of await kinds.all()) await expect(kind).toBeVisible();
   const overflow = await page.locator("#hosts tr[data-ext]").evaluateAll((rows) => rows.map((row) => ({
     clientWidth: row.clientWidth,
     scrollWidth: row.scrollWidth,
@@ -190,13 +202,7 @@ test("mobile dashboard and drawer do not create horizontal page overflow", async
   await loadDashboard(page);
 
   await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(3);
-  const pageWidth = await page.evaluate(() => ({
-    document: document.documentElement.scrollWidth,
-    body: document.body.scrollWidth,
-    viewport: window.innerWidth,
-  }));
-  expect(pageWidth.document).toBeLessThanOrEqual(pageWidth.viewport);
-  expect(pageWidth.body).toBeLessThanOrEqual(pageWidth.viewport);
+  await expectNoHorizontalPageOverflow(page);
 
   await page.locator('[data-ext="authentik-server-deployment"] [data-service-details]').click();
   const drawer = page.locator("#drawer");
@@ -204,4 +210,10 @@ test("mobile dashboard and drawer do not create horizontal page overflow", async
   const drawerBox = await drawer.boundingBox();
   expect(drawerBox).not.toBeNull();
   expect(drawerBox.x + drawerBox.width).toBeLessThanOrEqual(391);
+  const drawerWidth = await drawer.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(drawerWidth.scrollWidth).toBeLessThanOrEqual(drawerWidth.clientWidth + 1);
+  await expectNoHorizontalPageOverflow(page);
 });

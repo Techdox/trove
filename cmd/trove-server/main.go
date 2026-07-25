@@ -8,6 +8,7 @@
 //	trove-server agent list              list agents and last-seen
 //	trove-server agent rotate <name>     replace an agent bearer token
 //	trove-server agent delete <name>     remove an agent and its data
+//	trove-server doctor                  inspect local configuration and SQLite health
 //
 // Config (serve): TROVE_ADDR (default :8080), TROVE_DB (default trove.db).
 package main
@@ -67,6 +68,8 @@ func main() {
 		err = runBackup(args[1:])
 	case "healthcheck":
 		err = runHealthcheck()
+	case "doctor":
+		err = runDoctor()
 	case "version", "-v", "--version":
 		fmt.Println("trove-server", version)
 	case "help", "-h", "--help":
@@ -93,6 +96,7 @@ Commands:
   alert test                send a test notification through configured channels
   backup [path]             write a consistent SQLite backup (default timestamped file)
   healthcheck               probe /healthz on the local server (exit 0/1)
+  doctor                    inspect local configuration and SQLite health (read-only)
 
 Environment:
   TROVE_ADDR              listen address (default ":8080")

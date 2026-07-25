@@ -74,7 +74,7 @@ func New(st *store.Store, log *slog.Logger) *Server {
 // configuration is partial or OIDC discovery fails (e.g. the issuer is
 // unreachable).
 func (s *Server) ConfigureOIDC(cfg OIDCConfig) error {
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return err
 	}
 	if !cfg.Enabled() {

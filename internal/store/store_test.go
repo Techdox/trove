@@ -1,9 +1,11 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -40,6 +42,60 @@ func svc(id, state string, health model.Health) model.ReportService {
 }
 
 func pointer[T any](v T) *T { return &v }
+
+func TestOpenReadOnlyInspectsWithoutWriting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trove.db")
+	rw, err := Open(path)
+	if err != nil {
+		t.Fatalf("open writable store: %v", err)
+	}
+	if err := rw.Close(); err != nil {
+		t.Fatalf("close writable store: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read database before inspection: %v", err)
+	}
+
+	ro, err := OpenReadOnly(path)
+	if err != nil {
+		t.Fatalf("open read-only store: %v", err)
+	}
+	if integrity, err := ro.CheckIntegrity(context.Background()); err != nil || integrity != "ok" {
+		t.Fatalf("integrity = %q, %v; want ok", integrity, err)
+	}
+	status, err := ro.MigrationStatus(context.Background())
+	if err != nil {
+		t.Fatalf("migration status: %v", err)
+	}
+	if len(status.Pending) != 0 || len(status.Unknown) != 0 || len(status.Applied) == 0 {
+		t.Fatalf("migration status = %+v, want all current", status)
+	}
+	if _, err := ro.DB().Exec(`CREATE TABLE doctor_must_not_write (id INTEGER)`); err == nil {
+		t.Fatal("read-only store unexpectedly accepted a write")
+	}
+	if err := ro.Close(); err != nil {
+		t.Fatalf("close read-only store: %v", err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read database after inspection: %v", err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("read-only inspection changed the database file")
+	}
+}
+
+func TestOpenReadOnlyDoesNotCreateMissingDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.db")
+	if _, err := OpenReadOnly(path); err == nil {
+		t.Fatal("read-only open unexpectedly created a missing database")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing database state = %v, want not exist", err)
+	}
+}
 
 func TestImagesDueForCheckRequiresRunningDigest(t *testing.T) {
 	st, _ := newTestStore(t)

@@ -101,6 +101,13 @@ func (c OIDCConfig) validate() error {
 	return nil
 }
 
+// Validate checks local OIDC settings without contacting the issuer. It is
+// used by diagnostics before a server starts, so it never exposes credentials
+// or performs network I/O.
+func (c OIDCConfig) Validate() error {
+	return c.validate()
+}
+
 // LoadOIDCConfigFromEnv reads OIDC configuration from the environment.
 func LoadOIDCConfigFromEnv() OIDCConfig {
 	cfg := OIDCConfig{

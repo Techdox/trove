@@ -102,6 +102,106 @@ equivalent:
 sqlite3 /var/lib/trove/trove.db ".backup '/var/backups/trove.db'"
 ```
 
+### Verify a backup
+
+Verify every new backup before relying on it. This command opens the backup
+with SQLite read-only mode, runs `PRAGMA integrity_check`, reports its migration
+record, and hashes the file before and after inspection. It never creates a
+database, applies migrations, or changes the backup.
+
+```sh
+# Bare metal / a copied Compose backup on the host
+trove-server backup verify /var/backups/trove/trove-20260725T021700Z.db
+
+# Before copying a Compose backup out of the container
+docker compose exec server trove-server backup verify /data/backups/trove-20260725T021700Z.db
+```
+
+`result: ok (backup opened and unchanged)` means that the file was readable and
+internally consistent at verification time. It does not make an older server
+binary compatible with a newer schema; follow the rollback procedure below.
+
+### Scheduled backups and retention
+
+Keep backups outside the live database volume and retain more than one recovery
+point. The example below keeps 14 daily copies. Run the `find` command without
+`-delete` once first to confirm exactly which files would age out; keep an
+additional encrypted off-host copy for failures affecting the server itself.
+
+Create a root-owned helper, changing the database and backup paths to match
+your installation:
+
+```sh
+sudo install -d -o trove -g trove -m 0700 /var/backups/trove
+sudo tee /usr/local/sbin/trove-backup >/dev/null <<'EOF'
+#!/bin/sh
+set -eu
+
+backup_dir=/var/backups/trove
+retention_days=14
+backup="$backup_dir/trove-$(date -u +%Y%m%dT%H%M%SZ).db"
+
+TROVE_DB=/var/lib/trove/trove.db /usr/local/bin/trove-server backup "$backup"
+/usr/local/bin/trove-server backup verify "$backup"
+find "$backup_dir" -maxdepth 1 -type f -name 'trove-*.db' -mtime +"$retention_days" -print -delete
+EOF
+sudo chown root:trove /usr/local/sbin/trove-backup
+sudo chmod 0750 /usr/local/sbin/trove-backup
+```
+
+For cron, add this line to `/etc/cron.d/trove-backup` to run it daily at
+02:17 UTC. The script verifies a new backup before pruning old ones.
+
+```cron
+17 2 * * * trove /usr/local/sbin/trove-backup
+```
+
+For systemd, use the same helper and install these units instead of cron:
+
+```ini
+# /etc/systemd/system/trove-backup.service
+[Unit]
+Description=Create and verify a Trove SQLite backup
+
+[Service]
+Type=oneshot
+User=trove
+Group=trove
+ExecStart=/usr/local/sbin/trove-backup
+```
+
+```ini
+# /etc/systemd/system/trove-backup.timer
+[Unit]
+Description=Run the Trove backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:17:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable and inspect it with:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now trove-backup.timer
+systemctl list-timers trove-backup.timer
+```
+
+### Restore rehearsal
+
+Rehearse recovery before an upgrade and at least quarterly:
+
+1. Create and verify a fresh backup; retain its SHA-256 output with the backup record.
+2. Copy the backup to an isolated test path or host. Never start a server against the only backup copy.
+3. Run `TROVE_DB=/srv/trove-rehearsal/trove.db trove-server doctor` against the copy.
+4. Start the candidate server against that copy on loopback only, for example `TROVE_ADDR=127.0.0.1:18081 TROVE_DB=/srv/trove-rehearsal/trove.db trove-server`, then confirm `curl -fsS http://127.0.0.1:18081/healthz` returns `200`.
+5. Check representative agents, hosts, services, and recent events in the test dashboard/API; stop the test server and keep the original backup unchanged.
+
 Do not treat the database as disposable. In addition to current inventory and
 event history, it contains agent token hashes, image-freshness cache state, and
 alert cursor, cooldown, and per-channel delivery state. If the database is lost,

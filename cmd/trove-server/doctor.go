@@ -83,6 +83,11 @@ func validateDoctorConfig() []string {
 	if addr := envOr("TROVE_ADDR", ":8080"); !validListenAddress(addr) {
 		problems = append(problems, "TROVE_ADDR must be a valid host:port address")
 	}
+	bootstrapAgent := os.Getenv("TROVE_BOOTSTRAP_AGENT")
+	bootstrapToken := os.Getenv("TROVE_BOOTSTRAP_TOKEN")
+	if (bootstrapAgent == "") != (bootstrapToken == "") {
+		problems = append(problems, "TROVE_BOOTSTRAP_AGENT and TROVE_BOOTSTRAP_TOKEN must both be set")
+	}
 	if err := server.LoadOIDCConfigFromEnv().Validate(); err != nil {
 		problems = append(problems, err.Error())
 	}
@@ -182,10 +187,21 @@ func doctorAlertsStatus() string {
 }
 
 func doctorDigestStatus() string {
-	if strings.TrimSpace(os.Getenv("TROVE_SMTP_HOST")) != "" &&
-		strings.TrimSpace(os.Getenv("TROVE_SMTP_FROM")) != "" &&
-		strings.TrimSpace(os.Getenv("TROVE_SMTP_TO")) != "" {
-		return "configured"
+	if strings.TrimSpace(os.Getenv("TROVE_SMTP_HOST")) == "" ||
+		strings.TrimSpace(os.Getenv("TROVE_SMTP_FROM")) == "" ||
+		strings.TrimSpace(os.Getenv("TROVE_SMTP_TO")) == "" {
+		return "disabled"
 	}
-	return "disabled"
+	schedule := os.Getenv("TROVE_DIGEST")
+	if schedule == "" {
+		schedule = "daily@08:00"
+	}
+	parsed, err := alert.ParseSchedule(schedule)
+	if err != nil {
+		return "invalid"
+	}
+	if parsed.Off {
+		return "disabled"
+	}
+	return "configured"
 }

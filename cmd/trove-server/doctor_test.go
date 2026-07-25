@@ -52,6 +52,39 @@ func TestRunDoctorReportsInvalidConfiguration(t *testing.T) {
 	}
 }
 
+func TestRunDoctorReportsPartialBootstrapConfiguration(t *testing.T) {
+	path := newDoctorDatabase(t)
+	clearDoctorEnv(t)
+	t.Setenv("TROVE_DB", path)
+	t.Setenv("TROVE_BOOTSTRAP_AGENT", "quickstart-agent")
+
+	output, err := captureDoctorOutput(t, runDoctor)
+	if err == nil {
+		t.Fatal("doctor accepted a partial bootstrap configuration")
+	}
+	if !strings.Contains(output, "TROVE_BOOTSTRAP_AGENT and TROVE_BOOTSTRAP_TOKEN must both be set") {
+		t.Errorf("doctor output did not explain partial bootstrap configuration:\n%s", output)
+	}
+}
+
+func TestRunDoctorReportsDisabledDigest(t *testing.T) {
+	path := newDoctorDatabase(t)
+	clearDoctorEnv(t)
+	t.Setenv("TROVE_DB", path)
+	t.Setenv("TROVE_SMTP_HOST", "smtp.example")
+	t.Setenv("TROVE_SMTP_FROM", "trove@example")
+	t.Setenv("TROVE_SMTP_TO", "operator@example")
+	t.Setenv("TROVE_DIGEST", "off")
+
+	output, err := captureDoctorOutput(t, runDoctor)
+	if err != nil {
+		t.Fatalf("run doctor: %v", err)
+	}
+	if !strings.Contains(output, "digest=disabled") {
+		t.Errorf("doctor output did not report disabled digest:\n%s", output)
+	}
+}
+
 func newDoctorDatabase(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "trove.db")
@@ -68,7 +101,7 @@ func newDoctorDatabase(t *testing.T) string {
 func clearDoctorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"TROVE_ADDR", "TROVE_DB", "TROVE_OIDC_ISSUER", "TROVE_OIDC_CLIENT_ID", "TROVE_OIDC_CLIENT_SECRET", "TROVE_OIDC_REDIRECT_URL", "TROVE_API_TOKEN", "TROVE_OIDC_SESSION_MAX_AGE", "TROVE_HEALTH_DETAILS_ENABLED", "TROVE_FRESHNESS_ENABLED", "TROVE_FRESHNESS_INTERVAL", "TROVE_FRESHNESS_TTL", "TROVE_EVENT_RETENTION", "TROVE_REMOVED_RETENTION", "TROVE_HOST_RETENTION", "TROVE_ALERT_COOLDOWN", "TROVE_REGISTRY_AUTHS", "TROVE_SMTP_PORT", "TROVE_DIGEST", "TROVE_ALERT_EVENTS", "TROVE_ALERT_WEBHOOK_URL", "TROVE_ALERT_DISCORD_URL", "TROVE_ALERT_NTFY_URL", "TROVE_SMTP_HOST", "TROVE_SMTP_FROM", "TROVE_SMTP_TO",
+		"TROVE_ADDR", "TROVE_DB", "TROVE_BOOTSTRAP_AGENT", "TROVE_BOOTSTRAP_TOKEN", "TROVE_OIDC_ISSUER", "TROVE_OIDC_CLIENT_ID", "TROVE_OIDC_CLIENT_SECRET", "TROVE_OIDC_REDIRECT_URL", "TROVE_API_TOKEN", "TROVE_OIDC_SESSION_MAX_AGE", "TROVE_HEALTH_DETAILS_ENABLED", "TROVE_FRESHNESS_ENABLED", "TROVE_FRESHNESS_INTERVAL", "TROVE_FRESHNESS_TTL", "TROVE_EVENT_RETENTION", "TROVE_REMOVED_RETENTION", "TROVE_HOST_RETENTION", "TROVE_ALERT_COOLDOWN", "TROVE_REGISTRY_AUTHS", "TROVE_SMTP_PORT", "TROVE_DIGEST", "TROVE_ALERT_EVENTS", "TROVE_ALERT_WEBHOOK_URL", "TROVE_ALERT_DISCORD_URL", "TROVE_ALERT_NTFY_URL", "TROVE_SMTP_HOST", "TROVE_SMTP_FROM", "TROVE_SMTP_TO",
 	} {
 		t.Setenv(key, "")
 	}

@@ -28,47 +28,18 @@ OIDC does **not** protect these routes:
 | `GET` | `/oauth2/callback` | Receives the provider callback. |
 | `POST` | `/oauth2/logout` | Clears the local Trove session and redirects to provider logout when available. |
 
-## Required environment variables
+## Configuration source
 
-Set these on the `trove-server` process:
+The canonical list of OIDC variables, defaults, and startup-validation rules is
+the [README configuration reference](../README.md#configuration-reference).
+This guide owns provider setup and operational verification, so it deliberately
+does not duplicate that configuration table.
 
-| Variable | Purpose |
-| --- | --- |
-| `TROVE_OIDC_ISSUER` | OIDC issuer/discovery URL. Example: `https://auth.example.com/application/o/trove/` |
-| `TROVE_OIDC_CLIENT_ID` | OAuth2/OIDC client ID from the provider. |
-| `TROVE_OIDC_CLIENT_SECRET` | OAuth2/OIDC client secret from the provider. |
-| `TROVE_OIDC_REDIRECT_URL` | Trove callback URL. Example: `https://trove.example.com/oauth2/callback` |
-
-All four settings are required together. Trove performs OIDC discovery during startup with a ten-second timeout; invalid, unreachable, or incomplete configuration prevents the server from listening.
-
-Optional:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `TROVE_API_TOKEN` | unset | Static bearer token for scripts/API clients that cannot use browser OIDC. Must be at least 32 characters and randomly generated. |
-| `TROVE_OIDC_SESSION_MAX_AGE` | `8h` | Signed dashboard session lifetime. Uses Go duration syntax such as `4h`, `12h`, or `30m`. |
-
-Example:
-
-```env
-TROVE_OIDC_ISSUER=https://auth.example.com/application/o/trove/
-TROVE_OIDC_CLIENT_ID=trove
-TROVE_OIDC_CLIENT_SECRET=OIDC_CLIENT_SECRET_VALUE
-TROVE_OIDC_REDIRECT_URL=https://trove.example.com/oauth2/callback
-TROVE_OIDC_SESSION_MAX_AGE=8h
-```
-
-Only configure programmatic API access when it is needed. Generate its token
-instead of inventing or copying one:
-
-```sh
-openssl rand -hex 32
-```
-
-Store that command's output in `TROVE_API_TOKEN`. Trove rejects short tokens,
-leading/trailing whitespace, and known documentation placeholders at startup.
-
-The session cookie is signed using the OIDC client secret. It is `HttpOnly`, `SameSite=Lax`, and marked `Secure` when the configured redirect URL is HTTPS.
+Configure all required OIDC settings together. Trove performs discovery during
+startup with a ten-second timeout; invalid, unreachable, or incomplete
+configuration prevents the server from listening. The session cookie is signed
+using the OIDC client secret. It is `HttpOnly`, `SameSite=Lax`, and marked
+`Secure` when the configured redirect URL is HTTPS.
 
 ## Authentik setup
 

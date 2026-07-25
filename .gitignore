@@ -6,6 +6,7 @@ coverage.txt
 node_modules/
 test-results/
 playwright-report/
+__pycache__/
 # stray binaries from `go build ./cmd/<x>` in the repo root
 /trove-server
 /trove-agent-docker

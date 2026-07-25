@@ -87,6 +87,47 @@ func TestOpenReadOnlyInspectsWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestMigrationStatusRecognizesRetiredMigration(t *testing.T) {
+	st, _ := newTestStore(t)
+	if _, err := st.DB().Exec(
+		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
+		"0008_runtime_settings.sql",
+		time.Now().Unix(),
+	); err != nil {
+		t.Fatalf("insert retired migration: %v", err)
+	}
+
+	status, err := st.MigrationStatus(context.Background())
+	if err != nil {
+		t.Fatalf("migration status: %v", err)
+	}
+	if len(status.Pending) != 0 || len(status.Unknown) != 0 {
+		t.Fatalf("migration status = %+v, want no pending or unknown migrations", status)
+	}
+	if len(status.Retired) != 1 || status.Retired[0] != "0008_runtime_settings.sql" {
+		t.Fatalf("retired migrations = %v, want 0008_runtime_settings.sql", status.Retired)
+	}
+}
+
+func TestMigrationStatusStillReportsUnknownMigration(t *testing.T) {
+	st, _ := newTestStore(t)
+	if _, err := st.DB().Exec(
+		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
+		"9999_unknown.sql",
+		time.Now().Unix(),
+	); err != nil {
+		t.Fatalf("insert unknown migration: %v", err)
+	}
+
+	status, err := st.MigrationStatus(context.Background())
+	if err != nil {
+		t.Fatalf("migration status: %v", err)
+	}
+	if len(status.Unknown) != 1 || status.Unknown[0] != "9999_unknown.sql" {
+		t.Fatalf("unknown migrations = %v, want 9999_unknown.sql", status.Unknown)
+	}
+}
+
 func TestOpenReadOnlyDoesNotCreateMissingDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.db")
 	if _, err := OpenReadOnly(path); err == nil {

@@ -54,9 +54,14 @@ func runDoctor() error {
 		if len(migrations.Unknown) != 0 {
 			problems = append(problems, "database has migrations unknown to this binary")
 		}
-		fmt.Printf("migrations: not current (%d/%d applied)\n", len(migrations.Applied), len(migrations.Applied)+len(migrations.Pending))
+		fmt.Printf("migrations: not current (%d/%d applied, %d retired, %d unknown)\n",
+			len(migrations.Applied),
+			len(migrations.Applied)+len(migrations.Pending),
+			len(migrations.Retired),
+			len(migrations.Unknown),
+		)
 	} else {
-		fmt.Printf("migrations: current (%d applied)\n", len(migrations.Applied))
+		fmt.Printf("migrations: current (%d applied, %d retired)\n", len(migrations.Applied), len(migrations.Retired))
 	}
 
 	configProblems := validateDoctorConfig()

@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -85,7 +86,7 @@ func main() {
 	}
 }
 
-func usage(w *os.File) {
+func usage(w io.Writer) {
 	fmt.Fprint(w, `trove-server — read-only service catalog + health monitor
 
 Commands:
@@ -364,7 +365,15 @@ func bootstrapAgent(ctx context.Context, st *store.Store, logger *slog.Logger) e
 // files.
 func runBackup(args []string) error {
 	if len(args) > 0 && args[0] == "verify" {
+		if len(args) == 2 && isHelpFlag(args[1]) {
+			backupUsage(os.Stdout)
+			return nil
+		}
 		return runBackupVerify(args[1:])
+	}
+	if len(args) == 1 && isHelpFlag(args[0]) {
+		backupUsage(os.Stdout)
+		return nil
 	}
 	if len(args) > 1 {
 		return errors.New("usage: trove-server backup [path]\n       trove-server backup verify <path>")
@@ -402,6 +411,19 @@ func runBackup(args []string) error {
 	}
 	fmt.Printf("backup written to %s\n", dst)
 	return nil
+}
+
+func isHelpFlag(arg string) bool {
+	return arg == "-h" || arg == "--help"
+}
+
+func backupUsage(w io.Writer) {
+	fmt.Fprint(w, `Usage:
+  trove-server backup [path]
+  trove-server backup verify <path>
+
+Create a consistent SQLite backup, or inspect an existing backup read-only.
+`)
 }
 
 // runAlertCmd handles `trove-server alert test`: it pushes a test

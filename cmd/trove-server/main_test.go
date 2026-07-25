@@ -179,6 +179,39 @@ func firstToken(output string) string {
 	return ""
 }
 
+func TestRunBackupHelpDoesNotCreateFiles(t *testing.T) {
+	for _, args := range [][]string{
+		{"-h"},
+		{"--help"},
+		{"verify", "-h"},
+		{"verify", "--help"},
+	} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			t.Setenv("TROVE_DB", filepath.Join(dir, "must-not-be-created.db"))
+
+			output, err := captureStdout(t, func() error {
+				return runBackup(args)
+			})
+			if err != nil {
+				t.Fatalf("run backup help: %v", err)
+			}
+			if !strings.Contains(output, "trove-server backup [path]") ||
+				!strings.Contains(output, "trove-server backup verify <path>") {
+				t.Fatalf("backup help output = %q, want backup usage", output)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("read test directory: %v", err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("backup help created files: %v", entries)
+			}
+		})
+	}
+}
+
 type compatibilitySnapshot struct {
 	agents         int
 	hosts          int

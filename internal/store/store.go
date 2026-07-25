@@ -49,6 +49,22 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// OpenReadOnly opens an existing database without creating it or applying
+// migrations. It is for diagnostics and backup verification commands that
+// must not change the database they inspect.
+func OpenReadOnly(path string) (*Store, error) {
+	db, err := sql.Open("sqlite", buildReadOnlyDSN(path))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite read-only: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	if err := db.PingContext(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open sqlite read-only: %w", err)
+	}
+	return &Store{db: db, now: func() time.Time { return time.Now().UTC() }}, nil
+}
+
 func buildDSN(path string) string {
 	// modernc accepts PRAGMAs via the DSN query string.
 	q := url.Values{}
@@ -60,12 +76,85 @@ func buildDSN(path string) string {
 	return "file:" + path + "?" + q.Encode()
 }
 
+func buildReadOnlyDSN(path string) string {
+	q := url.Values{}
+	q.Set("mode", "ro")
+	q.Add("_pragma", "busy_timeout(5000)")
+	// query_only is connection-local. It is redundant with mode=ro, but keeps
+	// the diagnostic connection unable to write if the driver ever changes how
+	// it handles read-only URI mode.
+	q.Add("_pragma", "query_only(1)")
+	return "file:" + path + "?" + q.Encode()
+}
+
 // Close closes the underlying database.
 func (s *Store) Close() error { return s.db.Close() }
 
 // DB exposes the raw handle for health checks (Ping). Callers must not run
 // schema-mutating statements through it.
 func (s *Store) DB() *sql.DB { return s.db }
+
+// CheckIntegrity runs SQLite's integrity check without changing the database.
+// A healthy database returns "ok".
+func (s *Store) CheckIntegrity(ctx context.Context) (string, error) {
+	var result string
+	if err := s.db.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&result); err != nil {
+		return "", fmt.Errorf("integrity check: %w", err)
+	}
+	return result, nil
+}
+
+// MigrationStatus describes the migrations recorded by a database relative to
+// the migrations embedded in this binary.
+type MigrationStatus struct {
+	Applied []string
+	Pending []string
+	Unknown []string
+}
+
+// MigrationStatus reads migration state without applying any migrations.
+func (s *Store) MigrationStatus(ctx context.Context) (MigrationStatus, error) {
+	expected, err := migrationNames()
+	if err != nil {
+		return MigrationStatus{}, err
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT version FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return MigrationStatus{}, fmt.Errorf("read schema migrations: %w", err)
+	}
+	defer rows.Close()
+
+	recorded := make(map[string]bool, len(expected))
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			return MigrationStatus{}, fmt.Errorf("read schema migration: %w", err)
+		}
+		recorded[version] = true
+	}
+	if err := rows.Err(); err != nil {
+		return MigrationStatus{}, fmt.Errorf("read schema migrations: %w", err)
+	}
+
+	status := MigrationStatus{}
+	expectedSet := make(map[string]bool, len(expected))
+	for _, name := range expected {
+		expectedSet[name] = true
+		if recorded[name] {
+			status.Applied = append(status.Applied, name)
+		} else {
+			status.Pending = append(status.Pending, name)
+		}
+	}
+	for name := range recorded {
+		if !expectedSet[name] {
+			status.Unknown = append(status.Unknown, name)
+		}
+	}
+	sort.Strings(status.Unknown)
+	return status, nil
+}
 
 func (s *Store) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -75,17 +164,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	names, err := migrationNames()
 	if err != nil {
-		return fmt.Errorf("read migrations: %w", err)
+		return err
 	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names) // lexical order == apply order (0001_, 0002_, ...)
 
 	for _, name := range names {
 		var exists int
@@ -121,4 +203,19 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func migrationNames() ([]string, error) {
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("read migrations: %w", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names) // lexical order == apply order (0001_, 0002_, ...)
+	return names, nil
 }

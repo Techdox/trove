@@ -401,6 +401,20 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 Upgrades are a `pull` (or binary swap) and restart away: schema migrations apply
 automatically on startup and are additive. Upgrade the server first; agents from
 the immediately previous release may lag while the rollout completes.
+
+Before an upgrade or when collecting a safe support report, run
+`trove-server doctor` on the server. It checks the configured database and
+local configuration without contacting external services, creating a database,
+applying migrations, or printing credentials:
+
+```sh
+# Docker Compose
+docker compose exec server trove-server doctor
+
+# Bare metal
+sudo TROVE_DB=/var/lib/trove/trove.db trove-server doctor
+```
+
 Everything is one SQLite file (`trove.db` / the `trove-data` volume) — treat it
 as durable and back it up with `trove-server backup` or `sqlite3 ... ".backup"`.
 It contains agent token hashes,

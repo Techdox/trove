@@ -17,6 +17,24 @@ run the server.
 - In anything you care about, pin a specific version (e.g. `0.16.1`) <!-- x-release-please-version --> rather than
   `latest`, so upgrades are a deliberate change you control.
 
+### Doctor preflight
+
+Before upgrading—or when collecting a safe support report—run
+`trove-server doctor` against the live server database. It checks database
+access and integrity, migration state, local configuration, binary details, and
+worker-relevant facts. The command is strictly read-only: it does not contact
+external services, create a database, apply migrations, or print credentials.
+
+```sh
+# Docker Compose
+docker compose exec server trove-server doctor
+
+# Bare metal / systemd
+sudo TROVE_DB=/var/lib/trove/trove.db trove-server doctor
+```
+
+Resolve any reported problem before proceeding with the upgrade.
+
 ## Docker Compose
 
 From the directory holding your compose file and `.env`:

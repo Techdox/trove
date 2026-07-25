@@ -183,6 +183,28 @@ test("service filtering updates the real catalogue rows", async ({ page }) => {
   await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(3);
 });
 
+test("health and freshness status colors remain semantically distinct", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+
+  const badges = {
+    healthy: page.locator('[data-ext="authentik-server-deployment"] .health-cell .badge'),
+    unhealthy: page.locator('[data-ext="authentik-worker-deployment"] .health-cell .badge'),
+    current: page.locator('[data-ext="authentik-server-deployment"] .fresh-cell .badge'),
+    outdated: page.locator('[data-ext="authentik-worker-deployment"] .fresh-cell .badge'),
+  };
+  await expect(badges.healthy).toHaveClass(/b-green/);
+  await expect(badges.unhealthy).toHaveClass(/b-red/);
+  await expect(badges.current).toHaveClass(/b-blue/);
+  await expect(badges.outdated).toHaveClass(/b-peach/);
+
+  const signatures = await Promise.all(Object.values(badges).map((badge) => badge.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return [style.color, style.backgroundColor, style.borderColor].join("|");
+  })));
+  expect(new Set(signatures).size).toBe(4);
+});
+
 test("tablet catalogue preserves each Kubernetes kind label", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 1000 });
   await loadDashboard(page);

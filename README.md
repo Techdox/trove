@@ -64,6 +64,22 @@ not a feature toggle, and it's the project's one hard rule.
   storage, automatic schema migrations, push-model agents that work from
   behind NAT.
 
+## Documentation
+
+Use this README for installation, quickstarts, and the configuration reference.
+Versioned operational guidance lives in the repository:
+
+- [Documentation index](docs/README.md) — ownership and the complete guide map.
+- [Authentication](docs/authentication.md) and [API](docs/api.md).
+- [Upgrades, backup, and recovery](docs/upgrades.md).
+- [Security model](SECURITY.md) and
+  [release verification](docs/release-security.md).
+
+The [wiki](https://github.com/Techdox/trove/wiki) is for discoverable
+walkthroughs, screenshots, and community-oriented guides. It links back to the
+repository for version-specific commands, configuration, authentication,
+upgrades, and security details.
+
 ## Quickstart (5 minutes)
 
 Trove is a **server** (the dashboard + API) plus one **agent per platform** you
@@ -284,38 +300,11 @@ server fails startup and names the missing variables instead of leaving the
 dashboard open. `TROVE_API_TOKEN` is valid only alongside a complete OIDC
 configuration.
 
-When OIDC is enabled, browser requests without a session are redirected to
-your IdP's login page. After login, Trove sets a signed session cookie. API
-requests with a bearer token matching `TROVE_API_TOKEN` bypass OIDC for script
-access. See the safe, copyable example in
-[docs/authentication.md](docs/authentication.md#programmatic-api-access).
-Generate this optional token with `openssl rand -hex 32`; Trove rejects short
-tokens and known documentation placeholders at startup.
-
-Logout clears Trove's local session cookie and, when the provider exposes an
-OIDC `end_session_endpoint`, redirects through provider logout so users are not
-silently signed straight back in by an upstream SSO session.
-
-Agent ingest (`POST /api/v1/report`) and `/healthz` are never gated by OIDC.
-
-**Authentik setup:** create an OAuth2/OpenID provider with these settings:
-
-- Redirect URI: `https://trove.example.com/oauth2/callback`
-- Post-logout redirect/return URI: `https://trove.example.com/`
-- Client type: Confidential
-- Scopes: `openid`, `profile`, `email`
-
-Then set the env vars:
-
-```sh
-TROVE_OIDC_ISSUER=https://auth.example.com/application/o/trove/
-TROVE_OIDC_CLIENT_ID=trove
-TROVE_OIDC_CLIENT_SECRET=OIDC_CLIENT_SECRET_VALUE
-TROVE_OIDC_REDIRECT_URL=https://trove.example.com/oauth2/callback
-```
-
-Full setup, logout behaviour, verification commands, and troubleshooting live
-in [docs/authentication.md](docs/authentication.md).
+Generate the optional API token with `openssl rand -hex 32`; Trove rejects
+short tokens and known documentation placeholders at startup. Provider setup,
+login/logout behaviour, API-token examples, verification, and troubleshooting
+are owned by [docs/authentication.md](docs/authentication.md). Agent ingest
+(`POST /api/v1/report`) and `/healthz` remain outside OIDC.
 
 Private registry / Docker Hub credentials for freshness checks:
 
@@ -404,35 +393,14 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Upgrades & backup
 
-Upgrades are a `pull` (or binary swap) and restart away: schema migrations apply
-automatically on startup and are additive. Upgrade the server first; agents from
-the immediately previous release may lag while the rollout completes.
+Schema migrations are automatic and additive, but the SQLite database is
+durable state and a verified backup is the rollback path. Upgrade the server
+before its agents.
 
-Before an upgrade or when collecting a safe support report, run
-`trove-server doctor` on the server. It checks the configured database and
-local configuration without contacting external services, creating a database,
-applying migrations, or printing credentials:
-
-```sh
-# Docker Compose
-docker compose exec server trove-server doctor
-
-# Bare metal
-sudo TROVE_DB=/var/lib/trove/trove.db trove-server doctor
-```
-
-Everything is one SQLite file (`trove.db` / the `trove-data` volume) — treat it
-as durable and back it up with `trove-server backup` or `sqlite3 ... ".backup"`.
-It contains agent token hashes,
-inventory and event history, and alert cursor/delivery state. If it is lost,
-production agents must be recreated and configured with newly issued tokens
-before current inventory can repopulate; event history and prior alert state
-cannot be rebuilt.
-
-See **[docs/upgrades.md](docs/upgrades.md)** for per-method upgrade steps (Docker
-Compose, bare metal, `go install`, agents), version pinning, backup creation and
-read-only verification, cron/systemd retention examples, restore rehearsals,
-and how to roll back.
+The canonical procedure is [docs/upgrades.md](docs/upgrades.md): it owns the
+Compose, systemd, and `go install` commands; `trove-server doctor`; backup
+creation and read-only verification; retention examples; restore rehearsal;
+and rollback.
 
 ## Building from source
 

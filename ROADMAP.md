@@ -43,36 +43,39 @@ This milestone does not add another monitored platform or any control path.
 
 ### Agent credential rotation
 
-- [ ] Add `trove-server agent rotate <name>` to issue a one-time replacement
+- [x] Add `trove-server agent rotate <name>` to issue a one-time replacement
   token without deleting the agent, its hosts, services, or history.
-- [ ] Invalidate the previous token when rotation succeeds, never persist the
+- [x] Invalidate the previous token when rotation succeeds, never persist the
   replacement in plaintext, and cover the CLI/store behavior with tests.
-- [ ] Document a maintenance-window rotation flow for Compose, Kubernetes,
+- [x] Document a maintenance-window rotation flow for Compose, Kubernetes,
   Proxmox, and systemd agents, including the expected temporary `401` state.
 
 ### Diagnostics and recovery
 
-- [ ] Add a sanitized `trove-server doctor` command covering database access
+- [x] Add a sanitized `trove-server doctor` command covering database access
   and integrity, migration state, configuration validation, and non-secret
   operational facts suitable for a bug report.
-- [ ] Add a supported backup-verification command or workflow that checks
+- [x] Add a supported backup-verification command or workflow that checks
   SQLite integrity and proves the backup can be opened without modifying it.
-- [ ] Publish cron and systemd-timer backup examples with retention guidance,
+- [x] Publish cron and systemd-timer backup examples with retention guidance,
   plus a short restore-rehearsal checklist.
 
 ### UI and documentation regression protection
 
-- [ ] Add automated desktop/tablet/mobile browser coverage for the dashboard's
+- [x] Add automated desktop/tablet/mobile browser coverage for the dashboard's
   highest-risk layouts: long Kubernetes names and kind labels, event dates and
   status colors, drawers, filters, and the no-horizontal-scroll mobile view.
-- [ ] Keep the browser suite test-only; the shipped dashboard remains vanilla
+- [x] Keep the browser suite test-only; the shipped dashboard remains vanilla
   JavaScript/CSS with no frontend build or runtime dependency.
-- [ ] Make repository docs the source of truth, define what belongs in the
+- [x] Make repository docs the source of truth, define what belongs in the
   wiki, and prevent duplicated upgrade/authentication guidance from drifting.
 
-**Exit:** complete the gates above, exercise the resulting commands against a
-copy of real deployment data, and run the candidate on the main deployment
-without changing Trove's observation-only boundary.
+### Exit evidence
+
+- [ ] Exercise the resulting commands against a copy of real deployment data.
+- [ ] Run the candidate on the main deployment and confirm agent ingest,
+  dashboard/read APIs, OIDC, `/healthz`, and background workers remain healthy
+  without changing Trove's observation-only boundary.
 
 ## Following milestone — `v0.18.0` stability contract
 

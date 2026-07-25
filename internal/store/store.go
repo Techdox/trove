@@ -53,7 +53,19 @@ func Open(path string) (*Store, error) {
 // migrations. It is for diagnostics and backup verification commands that
 // must not change the database they inspect.
 func OpenReadOnly(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", buildReadOnlyDSN(path))
+	return openReadOnly(path, false)
+}
+
+// OpenImmutableReadOnly opens a complete SQLite backup without creating or
+// consulting WAL sidecar files. It is for standalone backup verification only;
+// use OpenReadOnly for diagnostics against a live database, which may have an
+// active WAL.
+func OpenImmutableReadOnly(path string) (*Store, error) {
+	return openReadOnly(path, true)
+}
+
+func openReadOnly(path string, immutable bool) (*Store, error) {
+	db, err := sql.Open("sqlite", buildReadOnlyDSN(path, immutable))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite read-only: %w", err)
 	}
@@ -73,18 +85,28 @@ func buildDSN(path string) string {
 	if path != ":memory:" {
 		q.Add("_pragma", "journal_mode(WAL)")
 	}
-	return "file:" + path + "?" + q.Encode()
+	return buildFileDSN(path, q)
 }
 
-func buildReadOnlyDSN(path string) string {
+func buildReadOnlyDSN(path string, immutable bool) string {
 	q := url.Values{}
 	q.Set("mode", "ro")
+	if immutable {
+		q.Set("immutable", "1")
+	}
 	q.Add("_pragma", "busy_timeout(5000)")
 	// query_only is connection-local. It is redundant with mode=ro, but keeps
 	// the diagnostic connection unable to write if the driver ever changes how
 	// it handles read-only URI mode.
 	q.Add("_pragma", "query_only(1)")
-	return "file:" + path + "?" + q.Encode()
+	return buildFileDSN(path, q)
+}
+
+func buildFileDSN(path string, q url.Values) string {
+	// Constructing a SQLite URI by string concatenation would let a legal
+	// filename containing ? or # change the URI query or fragment. URL escapes
+	// the filesystem path independently from SQLite's connection parameters.
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}).String()
 }
 
 // Close closes the underlying database.

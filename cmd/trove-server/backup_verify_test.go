@@ -62,3 +62,33 @@ func TestRunBackupVerifyRequiresPath(t *testing.T) {
 		t.Fatalf("verify without path error = %v, want usage error", err)
 	}
 }
+
+func TestRunBackupVerifyDoesNotCreateWALSidecars(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trove-backup.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("create backup database: %v", err)
+	}
+	if _, err := st.DB().Exec(`PRAGMA journal_mode=WAL`); err != nil {
+		t.Fatalf("enable WAL: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close backup database: %v", err)
+	}
+	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
+		if err := os.Remove(sidecar); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove %s: %v", sidecar, err)
+		}
+	}
+
+	if _, err := captureDoctorOutput(t, func() error {
+		return runBackupVerify([]string{path})
+	}); err != nil {
+		t.Fatalf("verify WAL-mode backup: %v", err)
+	}
+	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
+		if _, err := os.Lstat(sidecar); !os.IsNotExist(err) {
+			t.Errorf("verification created sidecar %s", sidecar)
+		}
+	}
+}

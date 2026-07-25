@@ -63,7 +63,7 @@ func runBackupVerify(args []string) error {
 }
 
 func inspectBackupReadOnly(ctx context.Context, path string) (store.MigrationStatus, error) {
-	st, err := store.OpenReadOnly(path)
+	st, err := store.OpenImmutableReadOnly(path)
 	if err != nil {
 		return store.MigrationStatus{}, fmt.Errorf("open backup read-only: %w", err)
 	}

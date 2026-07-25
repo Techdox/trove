@@ -97,6 +97,37 @@ func TestOpenReadOnlyDoesNotCreateMissingDatabase(t *testing.T) {
 	}
 }
 
+func TestOpenReadOnlyEscapesURIPath(t *testing.T) {
+	dir := t.TempDir()
+	wantPath := filepath.Join(dir, "backup?verified#copy.db")
+	otherPath := filepath.Join(dir, "backup")
+	for path, value := range map[string]string{wantPath: "wanted", otherPath: "other"} {
+		st, err := Open(path)
+		if err != nil {
+			t.Fatalf("open %q: %v", path, err)
+		}
+		if _, err := st.DB().Exec(`CREATE TABLE marker (value TEXT); INSERT INTO marker(value) VALUES (?)`, value); err != nil {
+			t.Fatalf("write marker to %q: %v", path, err)
+		}
+		if err := st.Close(); err != nil {
+			t.Fatalf("close %q: %v", path, err)
+		}
+	}
+
+	ro, err := OpenReadOnly(wantPath)
+	if err != nil {
+		t.Fatalf("open escaped path read-only: %v", err)
+	}
+	defer ro.Close()
+	var got string
+	if err := ro.DB().QueryRow(`SELECT value FROM marker`).Scan(&got); err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if got != "wanted" {
+		t.Fatalf("read marker = %q, want %q", got, "wanted")
+	}
+}
+
 func TestImagesDueForCheckRequiresRunningDigest(t *testing.T) {
 	st, _ := newTestStore(t)
 	ctx := context.Background()

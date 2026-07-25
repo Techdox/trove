@@ -158,6 +158,76 @@ func TestAgentCreateAndAuthenticate(t *testing.T) {
 	}
 }
 
+func TestRotateAgentTokenPreservesAgentData(t *testing.T) {
+	st, _ := newTestStore(t)
+	ctx := context.Background()
+
+	oldToken, agent, err := st.CreateAgent(ctx, "docker-a")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := st.ApplyReport(ctx, agent.ID, report(svc("c1", "running", model.HealthHealthy))); err != nil {
+		t.Fatalf("apply report: %v", err)
+	}
+	beforeHosts, err := st.ListHosts(ctx)
+	if err != nil {
+		t.Fatalf("list hosts before rotation: %v", err)
+	}
+	beforeServices, err := st.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("list services before rotation: %v", err)
+	}
+	beforeEvents, err := st.RecentEvents(ctx, 100)
+	if err != nil {
+		t.Fatalf("list events before rotation: %v", err)
+	}
+
+	newToken, err := st.RotateAgentToken(ctx, " docker-a ")
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if newToken == "" || newToken == oldToken {
+		t.Fatalf("replacement token = %q, want new non-empty token", newToken)
+	}
+	if _, err := st.AuthenticateByToken(ctx, oldToken); !errors.Is(err, ErrAgentNotFound) {
+		t.Fatalf("old token auth error = %v, want ErrAgentNotFound", err)
+	}
+	got, err := st.AuthenticateByToken(ctx, newToken)
+	if err != nil {
+		t.Fatalf("new token auth: %v", err)
+	}
+	if got.ID != agent.ID || got.Name != agent.Name {
+		t.Fatalf("rotated agent = %+v, want id=%d name=%q", got, agent.ID, agent.Name)
+	}
+
+	var storedHash string
+	if err := st.db.QueryRowContext(ctx, `SELECT token_hash FROM agents WHERE id = ?`, agent.ID).Scan(&storedHash); err != nil {
+		t.Fatalf("read stored token hash: %v", err)
+	}
+	if storedHash != HashToken(newToken) || storedHash == newToken {
+		t.Fatalf("stored token hash = %q, want hash only", storedHash)
+	}
+
+	afterHosts, err := st.ListHosts(ctx)
+	if err != nil {
+		t.Fatalf("list hosts after rotation: %v", err)
+	}
+	afterServices, err := st.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("list services after rotation: %v", err)
+	}
+	afterEvents, err := st.RecentEvents(ctx, 100)
+	if err != nil {
+		t.Fatalf("list events after rotation: %v", err)
+	}
+	if len(afterHosts) != len(beforeHosts) || len(afterServices) != len(beforeServices) || len(afterEvents) != len(beforeEvents) {
+		t.Fatalf("rotation changed stored data: hosts %d->%d services %d->%d events %d->%d", len(beforeHosts), len(afterHosts), len(beforeServices), len(afterServices), len(beforeEvents), len(afterEvents))
+	}
+	if _, err := st.RotateAgentToken(ctx, "missing"); !errors.Is(err, ErrAgentNotFound) {
+		t.Fatalf("missing agent error = %v, want ErrAgentNotFound", err)
+	}
+}
+
 func TestApplyReportUpsertAndEvents(t *testing.T) {
 	st, clock := newTestStore(t)
 	ctx := context.Background()

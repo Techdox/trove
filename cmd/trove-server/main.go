@@ -6,6 +6,7 @@
 //	trove-server [serve]                 run the server (default)
 //	trove-server agent create <name>     mint a bearer token for a new agent
 //	trove-server agent list              list agents and last-seen
+//	trove-server agent rotate <name>     replace an agent bearer token
 //	trove-server agent delete <name>     remove an agent and its data
 //	trove-server doctor                  inspect local configuration and SQLite health
 //
@@ -90,6 +91,7 @@ Commands:
   serve                     run the server (default)
   agent create <name>       mint a bearer token for a new agent
   agent list                list agents with last-seen status
+  agent rotate <name>       replace an agent bearer token
   agent delete <name>       remove an agent and all its data
   alert test                send a test notification through configured channels
   backup [path]             write a consistent SQLite backup (default timestamped file)
@@ -468,7 +470,7 @@ func runHealthcheck() error {
 
 func runAgent(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: trove-server agent <create|list|delete> ...")
+		return errors.New("usage: trove-server agent <create|list|rotate|delete> ...")
 	}
 	st, err := openStore()
 	if err != nil {
@@ -485,6 +487,11 @@ func runAgent(args []string) error {
 		return agentCreate(ctx, st, args[1])
 	case "list":
 		return agentList(ctx, st)
+	case "rotate":
+		if len(args) != 2 {
+			return errors.New("usage: trove-server agent rotate <name>")
+		}
+		return agentRotate(ctx, st, args[1])
 	case "delete", "rm":
 		if len(args) < 2 {
 			return errors.New("usage: trove-server agent delete <name>")
@@ -546,6 +553,24 @@ func agentList(ctx context.Context, st *store.Store) error {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", a.Name, platform, ver, status, lastSeenStr)
 	}
 	return tw.Flush()
+}
+
+func agentRotate(ctx context.Context, st *store.Store, name string) error {
+	token, err := st.RotateAgentToken(ctx, name)
+	if err != nil {
+		return err
+	}
+	fmt.Printf(`Rotated token for agent %q.
+
+  Replacement token (shown once — store it now, it is not recoverable):
+
+      %s
+
+  The previous token stopped working immediately. Update the agent's
+  TROVE_TOKEN and restart or redeploy it now.
+
+`, strings.TrimSpace(name), token)
+	return nil
 }
 
 func agentDelete(ctx context.Context, st *store.Store, name string) error {

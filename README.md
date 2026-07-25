@@ -159,6 +159,12 @@ sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create <name>
 # e.g. <name> = docker-nas, k8s-homelab, proxmox
 ```
 
+If an agent token is exposed or the host changes hands, rotate it with
+`trove-server agent rotate <name>`. Rotation immediately invalidates the old
+token, without deleting the agent or its history. Follow the platform-specific
+[maintenance-window rotation guide](docs/agents/rotation.md) before running the
+command.
+
 Then follow the guide for the platform:
 
 | Platform                | Agent                 | Guide                                             |

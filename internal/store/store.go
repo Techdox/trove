@@ -131,7 +131,16 @@ func (s *Store) CheckIntegrity(ctx context.Context) (string, error) {
 type MigrationStatus struct {
 	Applied []string
 	Pending []string
+	Retired []string
 	Unknown []string
+}
+
+// retiredMigrations are historical migration records that may remain in
+// databases created by pre-release builds. Keep these exact names recognized
+// without applying them to new databases or weakening detection of migrations
+// created by a genuinely newer binary.
+var retiredMigrations = map[string]struct{}{
+	"0008_runtime_settings.sql": {},
 }
 
 // MigrationStatus reads migration state without applying any migrations.
@@ -170,10 +179,13 @@ func (s *Store) MigrationStatus(ctx context.Context) (MigrationStatus, error) {
 		}
 	}
 	for name := range recorded {
-		if !expectedSet[name] {
+		if _, retired := retiredMigrations[name]; retired {
+			status.Retired = append(status.Retired, name)
+		} else if !expectedSet[name] {
 			status.Unknown = append(status.Unknown, name)
 		}
 	}
+	sort.Strings(status.Retired)
 	sort.Strings(status.Unknown)
 	return status, nil
 }

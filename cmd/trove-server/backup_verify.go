@@ -57,7 +57,17 @@ func runBackupVerify(args []string) error {
 	fmt.Printf("backup: %s (%d bytes)\n", absPath, info.Size())
 	fmt.Printf("sha256: %x\n", before)
 	fmt.Println("database: ok (read-only integrity check)")
-	fmt.Printf("migrations: %d applied, %d pending, %d unknown\n", len(migrations.Applied), len(migrations.Pending), len(migrations.Unknown))
+	fmt.Printf("migrations: %d applied, %d pending, %d retired, %d unknown\n",
+		len(migrations.Applied),
+		len(migrations.Pending),
+		len(migrations.Retired),
+		len(migrations.Unknown),
+	)
+	if len(migrations.Pending) == 0 && len(migrations.Unknown) == 0 {
+		fmt.Println("compatibility: migration history recognized by this binary")
+	} else {
+		fmt.Println("compatibility: migration history requires review with trove-server doctor")
+	}
 	fmt.Println("result: ok (backup opened and unchanged)")
 	return nil
 }

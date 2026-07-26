@@ -34,6 +34,10 @@ sudo TROVE_DB=/var/lib/trove/trove.db trove-server doctor
 ```
 
 Resolve any reported problem before proceeding with the upgrade.
+Migration records from recognized pre-release builds are reported as `retired`
+and do not fail the check. A migration reported as `unknown` still blocks the
+upgrade because the database may have been used by a newer, incompatible
+binary.
 
 ## Docker Compose
 
@@ -136,8 +140,10 @@ docker compose exec server trove-server backup verify /data/backups/trove-202607
 ```
 
 `result: ok (backup opened and unchanged)` means that the file was readable and
-internally consistent at verification time. It does not make an older server
-binary compatible with a newer schema; follow the rollback procedure below.
+internally consistent at verification time. Check the separate `compatibility`
+line for whether this binary recognizes the migration history. Verification
+does not make an older server binary compatible with a newer schema; follow the
+rollback procedure below.
 
 ### Scheduled backups and retention
 

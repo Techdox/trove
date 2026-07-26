@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/techdox/trove/internal/store"
 )
@@ -46,6 +47,80 @@ func TestRunBackupVerifyReadsBackupWithoutChangingIt(t *testing.T) {
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatal("backup changed during verification")
+	}
+}
+
+func TestRunBackupVerifyRecognizesRetiredMigrationWithoutChangingBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trove-backup.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("create backup database: %v", err)
+	}
+	if _, err := st.DB().Exec(
+		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
+		"0008_runtime_settings.sql",
+		time.Now().Unix(),
+	); err != nil {
+		_ = st.Close()
+		t.Fatalf("insert retired migration: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close backup database: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read backup before verification: %v", err)
+	}
+
+	output, err := captureDoctorOutput(t, func() error {
+		return runBackupVerify([]string{path})
+	})
+	if err != nil {
+		t.Fatalf("verify backup: %v", err)
+	}
+	for _, want := range []string{
+		"0 pending, 1 retired, 0 unknown",
+		"compatibility: migration history recognized by this binary",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("verification output missing %q:\n%s", want, output)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read backup after verification: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("backup changed during verification")
+	}
+}
+
+func TestRunBackupVerifyWarnsAboutUnknownMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trove-backup.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("create backup database: %v", err)
+	}
+	if _, err := st.DB().Exec(
+		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
+		"9999_unknown.sql",
+		time.Now().Unix(),
+	); err != nil {
+		_ = st.Close()
+		t.Fatalf("insert unknown migration: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close backup database: %v", err)
+	}
+
+	output, err := captureDoctorOutput(t, func() error {
+		return runBackupVerify([]string{path})
+	})
+	if err != nil {
+		t.Fatalf("verify backup: %v", err)
+	}
+	if !strings.Contains(output, "compatibility: migration history requires review with trove-server doctor") {
+		t.Errorf("verification output did not flag migration review:\n%s", output)
 	}
 }
 

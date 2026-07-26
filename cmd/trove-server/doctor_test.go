@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/techdox/trove/internal/store"
 )
@@ -34,6 +35,39 @@ func TestRunDoctorReportsReadOnlyHealthyStateWithoutSecrets(t *testing.T) {
 		if strings.Contains(output, secret) {
 			t.Errorf("doctor output exposed a secret: %q", secret)
 		}
+	}
+}
+
+func TestRunDoctorAcceptsRetiredMigrationHistory(t *testing.T) {
+	path := newDoctorDatabase(t)
+	addDoctorMigration(t, path, "0008_runtime_settings.sql")
+	clearDoctorEnv(t)
+	t.Setenv("TROVE_DB", path)
+
+	output, err := captureDoctorOutput(t, runDoctor)
+	if err != nil {
+		t.Fatalf("run doctor: %v", err)
+	}
+	if !strings.Contains(output, "1 retired") {
+		t.Errorf("doctor output did not report retired migration:\n%s", output)
+	}
+	if !strings.Contains(output, "result: ok") {
+		t.Errorf("doctor output did not report success:\n%s", output)
+	}
+}
+
+func TestRunDoctorRejectsUnknownMigrationHistory(t *testing.T) {
+	path := newDoctorDatabase(t)
+	addDoctorMigration(t, path, "9999_unknown.sql")
+	clearDoctorEnv(t)
+	t.Setenv("TROVE_DB", path)
+
+	output, err := captureDoctorOutput(t, runDoctor)
+	if err == nil {
+		t.Fatal("doctor accepted an unknown migration")
+	}
+	if !strings.Contains(output, "migrations: not current") || !strings.Contains(output, "1 unknown") {
+		t.Errorf("doctor output did not report unknown migration:\n%s", output)
 	}
 }
 
@@ -96,6 +130,25 @@ func newDoctorDatabase(t *testing.T) string {
 		t.Fatalf("close doctor database: %v", err)
 	}
 	return path
+}
+
+func addDoctorMigration(t *testing.T, path, version string) {
+	t.Helper()
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("open doctor database: %v", err)
+	}
+	if _, err := st.DB().Exec(
+		`INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)`,
+		version,
+		time.Now().Unix(),
+	); err != nil {
+		_ = st.Close()
+		t.Fatalf("insert doctor migration: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close doctor database: %v", err)
+	}
 }
 
 func clearDoctorEnv(t *testing.T) {

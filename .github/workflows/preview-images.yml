@@ -62,7 +62,7 @@ jobs:
       version: ${{ steps.tag.outputs.version }}
     steps:
       # actions/checkout@v7
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Derive image tag and runtime version
         id: tag
@@ -112,7 +112,7 @@ jobs:
             extra_build_args: CMD=trove-agent-proxmox
     steps:
       # actions/checkout@v7
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # docker/setup-qemu-action@v4
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8

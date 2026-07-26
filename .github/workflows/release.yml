@@ -78,7 +78,7 @@ jobs:
           printf '%s\n' "$TAG is already published; no duplicate release work needed."
 
       # actions/checkout@v7
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         if: steps.existing_release.outputs.skip != 'true'
         with:
           fetch-depth: 0 # goreleaser needs tags/history for the changelog

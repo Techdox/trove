@@ -72,10 +72,17 @@ This milestone does not add another monitored platform or any control path.
 
 ### Exit evidence
 
-- [ ] Exercise the resulting commands against a copy of real deployment data.
-- [ ] Run the candidate on the main deployment and confirm agent ingest,
+- [x] Exercise the resulting commands against a copy of real deployment data.
+- [x] Run the candidate on the main deployment and confirm agent ingest,
   dashboard/read APIs, OIDC, `/healthz`, and background workers remain healthy
   without changing Trove's observation-only boundary.
+
+The immutable `44eab10` candidate passed isolated backup, doctor, credential-
+rotation, restart, and rollback validation against a fresh production-data
+copy, then completed a 24-hour main-deployment soak with zero restarts. All
+five agents remained fresh, OIDC and read-only API authentication passed,
+background workers remained healthy, desktop/mobile dashboard checks passed,
+and SQLite integrity and foreign-key checks remained clean.
 
 ## Following milestone — `v0.18.0` stability contract
 

@@ -66,6 +66,83 @@ func TestBuildMIMEHeadersAndUniqueBoundary(t *testing.T) {
 	}
 }
 
+func TestRenderDigestHTMLUsesStructuredResponsiveLayout(t *testing.T) {
+	htmlBody := renderDigestHTML(digestView{
+		GeneratedAt: time.Date(2026, 7, 27, 7, 0, 0, 0, time.Local),
+		Since:       time.Date(2026, 7, 26, 7, 0, 0, 0, time.Local),
+		Services:    208,
+		Agents:      5,
+		Running:     127,
+		Unhealthy:   1,
+		Outdated:    1,
+		BadAgents:   []string{"remote-agent (offline)"},
+		BadServices: []digestService{{Name: "gluetun", Host: "techdox", State: "exited"}},
+		Updates:     []digestService{{Name: "paperless-web", Host: "homelab", Image: "paperless:latest"}},
+		Activity: []digestActivity{{
+			At:      time.Date(2026, 7, 27, 6, 34, 0, 0, time.Local),
+			Subject: "gluetun",
+			From:    "running",
+			To:      "removed",
+		}},
+		MoreEvents: 4,
+	})
+
+	for _, want := range []string{
+		`name="viewport"`,
+		`role="presentation"`,
+		"2 items need your attention",
+		"Unhealthy services",
+		"Updates available",
+		"Recent activity",
+		"paperless:latest",
+		"…and 4 more events",
+		"Read-only fleet visibility",
+	} {
+		if !strings.Contains(htmlBody, want) {
+			t.Errorf("HTML digest missing %q", want)
+		}
+	}
+	if strings.Contains(htmlBody, "<pre") {
+		t.Error("HTML digest must not fall back to an unstructured preformatted text block")
+	}
+}
+
+func TestRenderDigestHTMLEscapesFleetData(t *testing.T) {
+	htmlBody := renderDigestHTML(digestView{
+		GeneratedAt: time.Now(),
+		Since:       time.Now().Add(-24 * time.Hour),
+		Services:    1,
+		Agents:      1,
+		BadServices: []digestService{{
+			Name:  `<img src=x onerror="alert(1)">`,
+			Host:  "host&site",
+			State: "<failed>",
+		}},
+		Updates: []digestService{{
+			Name:  "service",
+			Host:  "host",
+			Image: `<script>alert("x")</script>`,
+		}},
+		Activity: []digestActivity{{
+			At:      time.Now(),
+			Subject: "<b>service</b>",
+			From:    "<none>",
+			To:      "<running>",
+		}},
+	})
+
+	for _, unsafe := range []string{"<img", "<script", "<b>service</b>", `onerror="`} {
+		if strings.Contains(htmlBody, unsafe) {
+			t.Errorf("HTML digest contains unescaped fleet data %q", unsafe)
+		}
+	}
+	for _, escaped := range []string{"&lt;img", "host&amp;site", "&lt;script&gt;", "&lt;b&gt;service&lt;/b&gt;"} {
+		if !strings.Contains(htmlBody, escaped) {
+			t.Errorf("HTML digest missing escaped fleet data %q", escaped)
+		}
+	}
+}
+
 func TestDigesterTickCatchUpOnce(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

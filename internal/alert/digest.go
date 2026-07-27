@@ -151,6 +151,35 @@ type Digester struct {
 	now   func() time.Time
 }
 
+type digestService struct {
+	Name  string
+	Host  string
+	State string
+	Image string
+}
+
+type digestActivity struct {
+	At      time.Time
+	Subject string
+	From    string
+	To      string
+}
+
+type digestView struct {
+	GeneratedAt time.Time
+	Since       time.Time
+	Services    int
+	Agents      int
+	Running     int
+	Unhealthy   int
+	Outdated    int
+	BadAgents   []string
+	BadServices []digestService
+	Updates     []digestService
+	Activity    []digestActivity
+	MoreEvents  int
+}
+
 // NewDigester builds a digester using the SMTP sender.
 func NewDigester(st *store.Store, log *slog.Logger, cfg DigestConfig) *Digester {
 	return &Digester{
@@ -240,7 +269,7 @@ func (d *Digester) build(ctx context.Context, since time.Time) (subject, text, h
 	}
 
 	var total, running, unhealthyN int
-	var unhealthy, outdated []string
+	var unhealthy, outdated []digestService
 	for i := range rows {
 		r := &rows[i]
 		if r.State == "removed" {
@@ -252,10 +281,10 @@ func (d *Digester) build(ctx context.Context, since time.Time) (subject, text, h
 		}
 		if r.Health == "unhealthy" {
 			unhealthyN++
-			unhealthy = append(unhealthy, fmt.Sprintf("%s @ %s (%s)", r.Name, r.Hostname, r.State))
+			unhealthy = append(unhealthy, digestService{Name: r.Name, Host: r.Hostname, State: r.State})
 		}
 		if r.FreshnessVerdict() == "outdated" {
-			outdated = append(outdated, fmt.Sprintf("%s @ %s — %s", r.Name, r.Hostname, r.Image))
+			outdated = append(outdated, digestService{Name: r.Name, Host: r.Hostname, Image: r.Image})
 		}
 	}
 	var badAgents []string
@@ -290,8 +319,22 @@ func (d *Digester) build(ctx context.Context, since time.Time) (subject, text, h
 		b.WriteString("\n")
 	}
 	section("Agents not reporting", badAgents)
-	section("Unhealthy services", unhealthy)
-	section("Updates available", outdated)
+	if len(unhealthy) > 0 {
+		b.WriteString("Unhealthy services:\n")
+		for _, svc := range unhealthy {
+			fmt.Fprintf(&b, "  - %s @ %s (%s)\n", svc.Name, svc.Host, svc.State)
+		}
+		b.WriteString("\n")
+	}
+	if len(outdated) > 0 {
+		b.WriteString("Updates available:\n")
+		for _, svc := range outdated {
+			fmt.Fprintf(&b, "  - %s @ %s — %s\n", svc.Name, svc.Host, svc.Image)
+		}
+		b.WriteString("\n")
+	}
+	var activity []digestActivity
+	moreEvents := 0
 	if len(recent) > 0 {
 		fmt.Fprintf(&b, "Activity since %s (%d events):\n", since.Format("2 Jan 15:04"), len(recent))
 		max := len(recent)
@@ -306,21 +349,220 @@ func (d *Digester) build(ctx context.Context, since time.Time) (subject, text, h
 			case store.EventKindHost:
 				subjectName = "host " + e.Hostname
 			}
+			activity = append(activity, digestActivity{
+				At:      time.Unix(e.At, 0),
+				Subject: subjectName,
+				From:    orNone(e.FromState),
+				To:      e.ToState,
+			})
 			fmt.Fprintf(&b, "  - %s  %s %s → %s\n",
 				time.Unix(e.At, 0).Format("2 Jan 15:04"), subjectName, orNone(e.FromState), e.ToState)
 		}
 		if len(recent) > max {
-			fmt.Fprintf(&b, "  … and %d more\n", len(recent)-max)
+			moreEvents = len(recent) - max
+			fmt.Fprintf(&b, "  … and %d more\n", moreEvents)
 		}
 	} else {
 		b.WriteString("No state changes since the last digest.\n")
 	}
 	text = b.String()
 
-	// Minimal HTML alternative: the text body in a styled <pre>.
-	htmlBody = fmt.Sprintf(
-		`<html><body style="background:#1e1e2e;color:#cdd6f4;padding:16px">`+
-			`<pre style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5">%s</pre>`+
-			`</body></html>`, html.EscapeString(text))
+	htmlBody = renderDigestHTML(digestView{
+		GeneratedAt: d.now(),
+		Since:       since,
+		Services:    total,
+		Agents:      len(agents),
+		Running:     running,
+		Unhealthy:   unhealthyN,
+		Outdated:    len(outdated),
+		BadAgents:   badAgents,
+		BadServices: unhealthy,
+		Updates:     outdated,
+		Activity:    activity,
+		MoreEvents:  moreEvents,
+	})
 	return subject, text, htmlBody, nil
+}
+
+// renderDigestHTML builds a self-contained, table-based email. Inline styles
+// keep the layout readable in clients with limited CSS support (notably
+// Outlook), while the small media query stacks summary cards on narrow screens.
+func renderDigestHTML(v digestView) string {
+	var b strings.Builder
+	esc := html.EscapeString
+	fmt.Fprintf(&b, `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Trove fleet digest</title>
+<style>
+@media only screen and (max-width:620px) {
+  .shell { width:100%% !important; }
+  .pad { padding-left:20px !important; padding-right:20px !important; }
+  .stat { display:inline-block !important; width:50%% !important; box-sizing:border-box !important; }
+  .hide-mobile { display:none !important; }
+}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f3f5f9;color:#182230;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">%d services across %d agents · %d unhealthy · %d updates available</div>
+<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f5f9;">
+<tr><td align="center" style="padding:28px 12px;">
+<table role="presentation" class="shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(16,24,40,.08);">
+<tr><td class="pad" style="padding:34px 36px;background:#111827;color:#ffffff;">
+  <div style="font-size:12px;line-height:18px;font-weight:700;letter-spacing:1.6px;color:#a7f3d0;">TROVE&nbsp;&nbsp;/&nbsp;&nbsp;FLEET DIGEST</div>
+  <div style="margin-top:17px;font-size:28px;line-height:35px;font-weight:750;">%s</div>
+  <div style="margin-top:8px;font-size:14px;line-height:21px;color:#cbd5e1;">%s · Activity since %s</div>
+</td></tr>`,
+		v.Services, v.Agents, v.Unhealthy, v.Outdated,
+		digestHeadline(v), v.GeneratedAt.Format("Monday, 2 January 2006 at 15:04"), v.Since.Format("2 Jan at 15:04"))
+
+	b.WriteString(`<tr><td class="pad" style="padding:28px 36px 8px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>`)
+	statCard(&b, "Services", v.Services, "#2563eb", true)
+	statCard(&b, "Running", v.Running, "#059669", true)
+	statCard(&b, "Unhealthy", v.Unhealthy, "#dc2626", v.Unhealthy > 0)
+	statCard(&b, "Updates", v.Outdated, "#d97706", v.Outdated > 0)
+	fmt.Fprintf(&b, `</tr></table>
+<div style="padding:11px 0 20px;font-size:13px;line-height:20px;color:#667085;">Reporting from <strong style="color:#344054;">%d agents</strong></div>
+</td></tr>`, v.Agents)
+
+	if len(v.BadAgents) == 0 && len(v.BadServices) == 0 {
+		b.WriteString(`<tr><td class="pad" style="padding:4px 36px 20px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ecfdf3;border:1px solid #abefc6;border-radius:10px;">
+<tr><td style="padding:14px 16px;font-size:14px;line-height:20px;color:#067647;"><strong>✓ Core fleet health looks good</strong><br><span style="color:#357a5b;">All agents are reporting and no services are unhealthy.</span></td></tr>
+</table></td></tr>`)
+	}
+
+	if len(v.BadAgents) > 0 {
+		sectionTitle(&b, "Agents not reporting", len(v.BadAgents), "#b42318", "#fef3f2")
+		b.WriteString(`<tr><td class="pad" style="padding:0 36px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #fecdca;border-radius:10px;">`)
+		for i, agent := range v.BadAgents {
+			border := ""
+			if i > 0 {
+				border = "border-top:1px solid #fee4e2;"
+			}
+			fmt.Fprintf(&b, `<tr><td style="padding:13px 15px;%sfont-size:14px;color:#344054;">%s</td></tr>`, border, esc(agent))
+		}
+		b.WriteString(`</table></td></tr>`)
+	}
+
+	if len(v.BadServices) > 0 {
+		sectionTitle(&b, "Unhealthy services", len(v.BadServices), "#b42318", "#fef3f2")
+		b.WriteString(`<tr><td class="pad" style="padding:0 36px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #fecdca;border-radius:10px;">`)
+		for i, svc := range v.BadServices {
+			serviceRow(&b, svc, i > 0, "#b42318", "#fef3f2", svc.State)
+		}
+		b.WriteString(`</table></td></tr>`)
+	}
+
+	if len(v.Updates) > 0 {
+		sectionTitle(&b, "Updates available", len(v.Updates), "#b54708", "#fffaeb")
+		b.WriteString(`<tr><td class="pad" style="padding:0 36px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e4e7ec;border-radius:10px;">`)
+		for i, svc := range v.Updates {
+			serviceRow(&b, svc, i > 0, "#b54708", "#fffaeb", "update")
+		}
+		b.WriteString(`</table></td></tr>`)
+	}
+
+	sectionTitle(&b, "Recent activity", len(v.Activity)+v.MoreEvents, "#344054", "#f2f4f7")
+	b.WriteString(`<tr><td class="pad" style="padding:0 36px 32px;">`)
+	if len(v.Activity) == 0 {
+		b.WriteString(`<div style="padding:18px;border:1px solid #e4e7ec;border-radius:10px;font-size:14px;color:#667085;text-align:center;">No state changes since the last digest.</div>`)
+	} else {
+		b.WriteString(`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e4e7ec;border-radius:10px;">`)
+		for i, event := range v.Activity {
+			border := ""
+			if i > 0 {
+				border = "border-top:1px solid #eaecf0;"
+			}
+			fmt.Fprintf(&b, `<tr>
+<td class="hide-mobile" width="88" style="padding:12px 8px 12px 14px;%sfont-size:12px;line-height:18px;color:#667085;white-space:nowrap;">%s</td>
+<td style="padding:12px 8px;%sfont-size:14px;line-height:20px;color:#344054;word-break:break-word;"><strong>%s</strong></td>
+<td align="right" style="padding:12px 14px 12px 8px;%sfont-size:12px;line-height:18px;white-space:nowrap;"><span style="color:#667085;">%s</span>&nbsp; <span style="color:#98a2b3;">→</span>&nbsp; <strong style="color:%s;">%s</strong></td>
+</tr>`, border, event.At.Format("2 Jan 15:04"), border, esc(event.Subject), border,
+				esc(event.From), stateColor(event.To), esc(event.To))
+		}
+		b.WriteString(`</table>`)
+		if v.MoreEvents > 0 {
+			fmt.Fprintf(&b, `<div style="padding-top:12px;text-align:center;font-size:13px;color:#667085;">…and %d more events</div>`, v.MoreEvents)
+		}
+	}
+
+	b.WriteString(`</td></tr>
+<tr><td class="pad" style="padding:20px 36px;background:#f9fafb;border-top:1px solid #eaecf0;font-size:12px;line-height:18px;color:#667085;">
+Automatically generated by <strong style="color:#344054;">Trove</strong> · Read-only fleet visibility
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`)
+	return b.String()
+}
+
+func digestHeadline(v digestView) string {
+	problems := len(v.BadAgents) + v.Unhealthy
+	switch {
+	case problems == 0 && v.Outdated == 0:
+		return "Everything looks current"
+	case problems == 0:
+		return fmt.Sprintf("%d updates ready to review", v.Outdated)
+	case problems == 1:
+		return "1 item needs your attention"
+	default:
+		return fmt.Sprintf("%d items need your attention", problems)
+	}
+}
+
+func statCard(b *strings.Builder, label string, value int, color string, emphasize bool) {
+	background := "#f8fafc"
+	if emphasize {
+		background = color + "0d"
+	}
+	fmt.Fprintf(b, `<td class="stat" width="25%%" valign="top" style="padding:0 5px 0 0;">
+<div style="padding:14px 12px;background:%s;border:1px solid #e4e7ec;border-radius:10px;">
+<div style="font-size:12px;line-height:18px;color:#667085;">%s</div>
+<div style="margin-top:2px;font-size:23px;line-height:29px;font-weight:750;color:%s;">%d</div>
+</div></td>`, background, label, color, value)
+}
+
+func sectionTitle(b *strings.Builder, title string, count int, color, background string) {
+	fmt.Fprintf(b, `<tr><td class="pad" style="padding:4px 36px 10px;">
+<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0"><tr>
+<td style="font-size:16px;line-height:24px;font-weight:700;color:#182230;">%s</td>
+<td align="right"><span style="display:inline-block;padding:2px 9px;border-radius:999px;background:%s;color:%s;font-size:12px;line-height:18px;font-weight:700;">%d</span></td>
+</tr></table></td></tr>`, html.EscapeString(title), background, color, count)
+}
+
+func serviceRow(b *strings.Builder, svc digestService, bordered bool, color, background, badge string) {
+	border := ""
+	if bordered {
+		border = "border-top:1px solid #eaecf0;"
+	}
+	image := ""
+	if svc.Image != "" {
+		image = fmt.Sprintf(`<div style="margin-top:3px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:17px;color:#667085;word-break:break-all;">%s</div>`, html.EscapeString(svc.Image))
+	}
+	fmt.Fprintf(b, `<tr>
+<td style="padding:13px 14px;%s">
+  <div style="font-size:14px;line-height:20px;font-weight:650;color:#344054;word-break:break-word;">%s</div>
+  <div style="font-size:12px;line-height:18px;color:#667085;">%s</div>%s
+</td>
+<td align="right" valign="top" style="padding:13px 14px;%swhite-space:nowrap;"><span style="display:inline-block;padding:2px 8px;border-radius:999px;background:%s;color:%s;font-size:11px;line-height:17px;font-weight:700;">%s</span></td>
+</tr>`, border, html.EscapeString(svc.Name), html.EscapeString(svc.Host), image,
+		border, background, color, html.EscapeString(badge))
+}
+
+func stateColor(state string) string {
+	switch strings.ToLower(state) {
+	case "running", "healthy", "online", "current", "succeeded":
+		return "#067647"
+	case "removed", "stopped", "exited", "offline", "unhealthy", "failed":
+		return "#b42318"
+	case "created", "starting", "prelaunch":
+		return "#b54708"
+	default:
+		return "#344054"
+	}
 }

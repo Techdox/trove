@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/Techdox/trove/compare/v0.17.0...v0.17.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* improve digest email design ([ba3b663](https://github.com/Techdox/trove/commit/ba3b663eee851fba58db6bf5a27a5372235ac3ec))
+
 ## [0.17.0](https://github.com/Techdox/trove/compare/v0.16.1...v0.17.0) (2026-07-27)
 
 

@@ -1,6 +1,6 @@
 # Trove Roadmap
 
-**Status:** `v0.16.1` is the current public release. <!-- x-release-please-version --> The core product is
+**Status:** `v0.17.0` is the current public release. <!-- x-release-please-version --> The core product is
 delivered: Docker/Kubernetes/Proxmox/bare-metal agents, per-agent token auth,
 heartbeat/staleness, image freshness, parent/child workloads, host condition
 and resources, configurable retention, alerting, OIDC, observability APIs, and

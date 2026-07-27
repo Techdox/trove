@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.0](https://github.com/Techdox/trove/compare/v0.16.1...v0.17.0) (2026-07-27)
+
+
+### Features
+
+* add diagnostic doctor command ([012d62c](https://github.com/Techdox/trove/commit/012d62cdf25665ab6fe3e913beed549690db285b))
+* rotate agent credentials ([1ff4f87](https://github.com/Techdox/trove/commit/1ff4f87fd3ccae9dc1a7cded766451969caef2de))
+* verify SQLite backups ([#107](https://github.com/Techdox/trove/issues/107)) ([4e35b05](https://github.com/Techdox/trove/commit/4e35b05faa093c2b36a471903d3120b8994fa00e))
+
+
+### Bug Fixes
+
+* harden backup diagnostics and help handling ([#110](https://github.com/Techdox/trove/issues/110)) ([5ff77ad](https://github.com/Techdox/trove/commit/5ff77ade6e8f495769a0435762dbd23326faf28b))
+
 ## [0.16.1](https://github.com/Techdox/trove/compare/v0.16.0...v0.16.1) (2026-07-19)
 
 

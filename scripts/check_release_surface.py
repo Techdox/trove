@@ -12,13 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / ".release-please-manifest.json"
 CONFIG = ROOT / "release-please-config.json"
 MARKER = "x-release-please-version"
-EXPECTED_FILES = {
+MARKER_FILES = {
     "README.md",
     "ROADMAP.md",
     "docs/agents/local.md",
     "docs/upgrades.md",
     "deploy/kubernetes/trove-agent.yaml",
 }
+JSONPATH_FILES = {"docs/compatibility-matrix.json": "current_release"}
+EXPECTED_FILES = MARKER_FILES | set(JSONPATH_FILES)
 VERSION_RE = re.compile(r"(?<![0-9])v?(\d+\.\d+\.\d+)(?![0-9])")
 
 
@@ -55,7 +57,7 @@ def main() -> int:
             f"got {sorted(configured)}, want {sorted(EXPECTED_FILES)}"
         )
 
-    for relative in sorted(EXPECTED_FILES):
+    for relative in sorted(MARKER_FILES):
         path = ROOT / relative
         marker_lines = [
             (line_number, line)
@@ -72,6 +74,11 @@ def main() -> int:
                     f"{relative}:{line_number}: annotated version does not match manifest "
                     f"{version!r}: {line.strip()}"
                 )
+
+    for relative, field in JSONPATH_FILES.items():
+        value = json.loads((ROOT / relative).read_text(encoding="utf-8")).get(field)
+        if value != version:
+            errors.append(f"{relative}: {field} is {value!r}, want manifest version {version!r}")
 
     if errors:
         print("release surface check failed:", file=sys.stderr)

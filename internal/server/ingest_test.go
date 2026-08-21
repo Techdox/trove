@@ -55,12 +55,12 @@ func TestHandleReportRejectsOversizedBody(t *testing.T) {
 }
 
 func TestPreviousReleaseReportFixturesRemainCompatible(t *testing.T) {
-	files, err := filepath.Glob("testdata/report-v0.15.1-*.json")
+	files, err := filepath.Glob("testdata/report-v0.17.0-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 3 {
-		t.Fatalf("previous-release fixtures = %d, want 3", len(files))
+	if len(files) != 4 {
+		t.Fatalf("previous-release fixtures = %d, want 4", len(files))
 	}
 
 	for _, file := range files {

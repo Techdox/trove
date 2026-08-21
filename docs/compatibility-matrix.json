@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "current_release": "0.17.1",
+  "previous_release": "0.17.0",
+  "guarantee": "server-first-immediately-previous-agent",
+  "upgrade_order": ["server", "agents"],
+  "platforms": {
+    "docker": {
+      "agent_image": "ghcr.io/techdox/trove-agent-docker:{version}",
+      "previous_artifact": "ghcr.io/techdox/trove-agent-docker:0.17.0",
+      "previous_report": "internal/server/testdata/report-v0.17.0-docker.json",
+      "server_first": true,
+      "rollback": "restore-server-and-database-backup"
+    },
+    "kubernetes": {
+      "agent_image": "ghcr.io/techdox/trove-agent-k8s:{version}",
+      "previous_artifact": "ghcr.io/techdox/trove-agent-k8s:0.17.0",
+      "previous_report": "internal/server/testdata/report-v0.17.0-kubernetes.json",
+      "server_first": true,
+      "rollback": "restore-server-and-database-backup"
+    },
+    "proxmox": {
+      "agent_image": "ghcr.io/techdox/trove-agent-proxmox:{version}",
+      "previous_artifact": "ghcr.io/techdox/trove-agent-proxmox:0.17.0",
+      "previous_report": "internal/server/testdata/report-v0.17.0-proxmox.json",
+      "server_first": true,
+      "rollback": "restore-server-and-database-backup"
+    },
+    "local": {
+      "agent_archive": "trove-agent-local_{version}_{os}_{arch}.tar.gz",
+      "previous_artifact": "trove-agent-local_0.17.0_linux_amd64.tar.gz",
+      "previous_report": "internal/server/testdata/report-v0.17.0-local.json",
+      "server_first": true,
+      "rollback": "restore-server-and-database-backup"
+    }
+  },
+  "supported_skew": {
+    "current_server_previous_agent": "supported",
+    "previous_server_current_agent": "unsupported",
+    "current_server_older_than_previous_agent": "unsupported",
+    "current_server_newer_than_previous_agent": "unsupported",
+    "same_release": "supported"
+  },
+  "failure_messages": {
+    "upgrade_order": "upgrade the server before upgrading agents; the immediately previous agent may report during rollout",
+    "rollback": "schema migrations are forward-only; stop the server and restore the pre-upgrade database backup before starting the older release"
+  }
+}

@@ -8,6 +8,58 @@ fixtures against the current server. Newer agents against an older server, or
 larger version gaps, are not guaranteed. Pick the section that matches how you
 run the server.
 
+## Compatibility matrix
+
+The release contract is deliberately narrow:
+
+| Server | Agent | Docker | Kubernetes | Proxmox | Local |
+|---|---|---:|---:|---:|---:|
+| Current release | Current release | Supported | Supported | Supported | Supported |
+| Current release | Immediately previous release | Supported | Supported | Supported | Supported |
+| Previous release | Current release | Not supported | Not supported | Not supported | Not supported |
+| Current release | Older than immediately previous | Not supported | Not supported | Not supported | Not supported |
+| Current release | Newer than server | Not supported | Not supported | Not supported | Not supported |
+
+“Supported” means the server can ingest the previous agent's frozen report
+shape during a normal server-first rollout. It does not promise that a newer
+agent can talk to an older server, or that arbitrary release gaps are safe.
+The machine-readable source and frozen fixtures are in
+[`docs/compatibility-matrix.json`](compatibility-matrix.json) and
+`internal/server/testdata/report-v0.15.1-*.json`.
+
+### Upgrade order and release gate
+
+1. Back up and verify the database.
+2. Upgrade the server to the target release and wait for `/healthz`.
+3. Leave agents on the immediately previous release while the server rollout
+   settles; confirm fresh reports from each platform.
+4. Upgrade Docker, Kubernetes, Proxmox, and local agents one at a time, then
+   confirm each fresh report and its platform identity.
+
+The release candidate gate is reproducible without production access:
+
+```sh
+python3 scripts/check_compatibility_matrix.py
+```
+
+CI runs this gate against all four frozen previous-release reports. A failed
+fixture, missing platform, or unsafe skew entry fails the release candidate
+rather than silently widening the support promise. The same check is suitable
+for a release checklist before publishing images and archives.
+
+### Rollback and failure messages
+
+The server-first guarantee is not a downgrade mechanism. If the candidate
+server has already applied a migration, stop it and restore the verified
+pre-upgrade SQLite backup before starting the older server and agents. Do not
+point an older binary at a database migrated by a newer release.
+
+Operators should see actionable errors: upgrade the server before upgrading
+agents; the immediately previous agent may report during rollout. For rollback,
+restore the pre-upgrade database backup because schema migrations are
+forward-only. If the candidate fails before any migration ran, reverting the
+server and agents may be sufficient, but restore the backup whenever unsure.
+
 ## Before you upgrade
 
 - Skim the [release notes](https://github.com/techdox/trove/releases) /

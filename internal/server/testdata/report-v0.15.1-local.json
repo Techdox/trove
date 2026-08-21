@@ -1,0 +1,23 @@
+{
+  "agent": {
+    "name": "compat-local",
+    "platform": "local",
+    "version": "v0.15.1",
+    "interval_seconds": 30
+  },
+  "host": {
+    "hostname": "local-v0151",
+    "condition": "normal",
+    "meta": { "os": "linux", "arch": "amd64" }
+  },
+  "services": [
+    {
+      "external_id": "systemd-homepage",
+      "name": "homepage.service",
+      "kind": "service",
+      "state": "running",
+      "health": "unknown",
+      "labels": { "systemd.load_state": "loaded" }
+    }
+  ]
+}

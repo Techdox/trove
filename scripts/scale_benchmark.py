@@ -105,7 +105,9 @@ def main():
     WORK.mkdir(exist_ok=True)
     for p in WORK.glob("trove.db*"):
         p.unlink()
-    env = os.environ.copy()
+    # Keep the process environment needed to run the binary, but remove any
+    # inherited Trove configuration so the benchmark workload is reproducible.
+    env = {key: value for key, value in os.environ.items() if not key.startswith("TROVE_")}
     env.update({"TROVE_ADDR": ":18080", "TROVE_DB": str(DB), "TROVE_HOST_RETENTION": "8760h"})
     server_binary = os.environ.get("TROVE_SERVER_BINARY")
     if server_binary:
@@ -136,7 +138,7 @@ def main():
                 if status != 200:
                     raise RuntimeError(f"ingest failed: {status}")
                 ingest_ms.append(elapsed)
-        cpu_end = proc_stats(server.pid)
+        cpu_after_ingest = proc_stats(server.pid)
 
         api = {}
         for path in ["/api/v1/agents", "/api/v1/services?limit=500", "/api/v1/events?limit=500"]:
@@ -149,6 +151,7 @@ def main():
                 samples.append(elapsed)
                 sizes.append(len(payload))
             api[path] = {"p50_ms": percentile(samples, 50), "p95_ms": percentile(samples, 95), "response_bytes": statistics.median(sizes)}
+        cpu_end = proc_stats(server.pid)
 
         # Stop before inspecting SQLite so WAL and main-file sizes are stable.
         server.send_signal(signal.SIGTERM)
@@ -174,7 +177,7 @@ def main():
             "benchmark": {"agents": AGENTS, "services": AGENTS * SERVICES_PER_AGENT, "retained_events_target": TARGET_EVENTS, "rounds": 12},
             "counts": counts,
             "integrity": integrity,
-            "ingest": {"requests": len(ingest_ms), "p50_ms": percentile(ingest_ms, 50), "p95_ms": percentile(ingest_ms, 95), "max_ms": max(ingest_ms), "cpu_ticks": cpu_end.get("cpu_ticks", 0) - cpu_start.get("cpu_ticks", 0), "rss_kib": cpu_end.get("rss_kib")},
+            "ingest": {"requests": len(ingest_ms), "p50_ms": percentile(ingest_ms, 50), "p95_ms": percentile(ingest_ms, 95), "max_ms": max(ingest_ms), "cpu_ticks": cpu_after_ingest.get("cpu_ticks", 0) - cpu_start.get("cpu_ticks", 0), "rss_kib": cpu_end.get("rss_kib")},
             "api": api,
             "sqlite_files_bytes": sizes,
             "restart_ms": round(restart_ms, 2),

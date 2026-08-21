@@ -159,16 +159,115 @@
     "type": "object"
   },
   "report.json": {
+    "$defs": {
+      "service": {
+        "additionalProperties": true,
+        "properties": {
+          "external_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "health": {
+            "enum": [
+              "healthy",
+              "unhealthy",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "health_detail": {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "image": {
+            "maxLength": 2048,
+            "type": "string"
+          },
+          "image_digest": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "container",
+              "pod",
+              "vm",
+              "lxc",
+              "process",
+              "deployment",
+              "statefulset",
+              "daemonset"
+            ],
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "parent_external_id": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "ports": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "container": {
+                  "type": "integer"
+                },
+                "host": {
+                  "type": "integer"
+                },
+                "proto": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "host",
+                "container",
+                "proto"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "state": {
+            "maxLength": 128,
+            "minLength": 1,
+            "not": {
+              "const": "removed"
+            },
+            "type": "string"
+          }
+        },
+        "required": [
+          "external_id",
+          "kind",
+          "state",
+          "health"
+        ],
+        "type": "object"
+      }
+    },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": true,
     "properties": {
       "agent": {
+        "additionalProperties": true,
         "properties": {
           "interval_seconds": {
             "minimum": 0,
             "type": "integer"
           },
           "name": {
+            "maxLength": 255,
+            "minLength": 1,
             "type": "string"
           },
           "platform": {
@@ -181,6 +280,7 @@
             "type": "string"
           },
           "version": {
+            "maxLength": 255,
             "type": "string"
           }
         },
@@ -192,14 +292,26 @@
         "type": "object"
       },
       "host": {
+        "additionalProperties": true,
         "properties": {
           "condition": {
+            "enum": [
+              "normal",
+              "warning",
+              "critical",
+              "unknown"
+            ],
             "type": "string"
           },
           "hostname": {
+            "maxLength": 255,
+            "minLength": 1,
             "type": "string"
           },
           "meta": {
+            "additionalProperties": {
+              "type": "string"
+            },
             "type": "object"
           },
           "metrics": {
@@ -213,7 +325,7 @@
       },
       "services": {
         "items": {
-          "type": "object"
+          "$ref": "#/$defs/service"
         },
         "type": "array"
       }

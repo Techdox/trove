@@ -5,8 +5,66 @@
   "additionalProperties": true,
   "required": ["agent", "host", "services"],
   "properties": {
-    "agent": {"type":"object", "required":["name","platform","version"], "properties":{"name":{"type":"string"},"platform":{"type":"string","enum":["docker","kubernetes","proxmox","local"]},"version":{"type":"string"},"interval_seconds":{"type":"integer","minimum":0}}},
-    "host": {"type":"object", "required":["hostname"], "properties":{"hostname":{"type":"string"},"condition":{"type":"string"},"metrics":{"type":"object"},"meta":{"type":"object"}}},
-    "services": {"type":"array", "items":{"type":"object"}}
+    "agent": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "platform", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 255},
+        "platform": {"type": "string", "enum": ["docker", "kubernetes", "proxmox", "local"]},
+        "version": {"type": "string", "maxLength": 255},
+        "interval_seconds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["hostname"],
+      "properties": {
+        "hostname": {"type": "string", "minLength": 1, "maxLength": 255},
+        "condition": {"type": "string", "enum": ["normal", "warning", "critical", "unknown"]},
+        "metrics": {"type": "object"},
+        "meta": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/service"}
+    }
+  },
+  "$defs": {
+    "service": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["external_id", "kind", "state", "health"],
+      "properties": {
+        "external_id": {"type": "string", "minLength": 1, "maxLength": 512},
+        "parent_external_id": {"type": "string", "maxLength": 512},
+        "name": {"type": "string", "maxLength": 255},
+        "kind": {
+          "type": "string",
+          "enum": ["container", "pod", "vm", "lxc", "process", "deployment", "statefulset", "daemonset"]
+        },
+        "image": {"type": "string", "maxLength": 2048},
+        "image_digest": {"type": "string"},
+        "state": {"type": "string", "minLength": 1, "maxLength": 128, "not": {"const": "removed"}},
+        "health": {"type": "string", "enum": ["healthy", "unhealthy", "unknown"]},
+        "health_detail": {"type": "string", "maxLength": 4096},
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["host", "container", "proto"],
+            "properties": {
+              "host": {"type": "integer"},
+              "container": {"type": "integer"},
+              "proto": {"type": "string"}
+            }
+          }
+        },
+        "labels": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    }
   }
 }

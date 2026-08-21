@@ -16,22 +16,55 @@ def props(schema):
     return set(schema.get("properties", {}))
 
 
+def compare_schema(old, current, path, failures):
+    """Compare every nested schema object represented in the frozen baseline."""
+    if not isinstance(old, dict):
+        return
+    if not isinstance(current, dict):
+        failures.append(f"{path}: schema node was removed or changed shape")
+        return
+
+    old_type = old.get("type")
+    new_type = current.get("type")
+    if old_type != new_type:
+        failures.append(f"{path}: changed type {old_type!r} -> {new_type!r}")
+
+    old_props = old.get("properties", {})
+    new_props = current.get("properties", {})
+    missing = set(old_props) - set(new_props)
+    if missing:
+        failures.append(f"{path}: removed properties: {sorted(missing)}")
+    newly_required = set(current.get("required", [])) - set(old.get("required", []))
+    if newly_required:
+        failures.append(f"{path}: newly required fields: {sorted(newly_required)}")
+    for field in set(old_props) & set(new_props):
+        compare_schema(old_props[field], new_props[field], f"{path}.properties.{field}", failures)
+
+    old_defs = old.get("$defs", {})
+    new_defs = current.get("$defs", {})
+    missing_defs = set(old_defs) - set(new_defs)
+    if missing_defs:
+        failures.append(f"{path}: removed definitions: {sorted(missing_defs)}")
+    for name in set(old_defs) & set(new_defs):
+        compare_schema(old_defs[name], new_defs[name], f"{path}.$defs.{name}", failures)
+
+    if "items" in old:
+        if "items" not in current:
+            failures.append(f"{path}: removed array item schema")
+        else:
+            compare_schema(old["items"], current["items"], f"{path}.items", failures)
+
+    old_enum = set(old.get("enum", []))
+    new_enum = set(current.get("enum", []))
+    if old_enum and not old_enum.issubset(new_enum):
+        failures.append(f"{path}: removed enum values: {sorted(old_enum - new_enum)}")
+
+
 def check_additive():
     baseline = json.loads(BASELINE.read_text())
     failures = []
     for name, old in baseline.items():
-        current = load(name)
-        missing = props(old) - props(current)
-        if missing:
-            failures.append(f"{name}: removed properties: {sorted(missing)}")
-        required_missing = set(old.get("required", [])) - set(current.get("required", []))
-        if required_missing:
-            failures.append(f"{name}: baseline required fields changed: {sorted(required_missing)}")
-        for field in props(old) & props(current):
-            old_type = old["properties"][field].get("type")
-            new_type = current["properties"][field].get("type")
-            if old_type != new_type:
-                failures.append(f"{name}.{field}: changed type {old_type!r} -> {new_type!r}")
+        compare_schema(old, load(name), name, failures)
     return failures
 
 

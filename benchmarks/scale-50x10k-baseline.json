@@ -1,0 +1,50 @@
+{
+  "api": {
+    "/api/v1/agents": {
+      "p50_ms": 1.0179679957218468,
+      "p95_ms": 2.9403180014924146,
+      "response_bytes": 8601
+    },
+    "/api/v1/events?limit=500": {
+      "p50_ms": 208.92024700151524,
+      "p95_ms": 213.88495399878593,
+      "response_bytes": 100620
+    },
+    "/api/v1/services?limit=500": {
+      "p50_ms": 215.87448899663286,
+      "p95_ms": 223.1117470000754,
+      "response_bytes": 170107
+    }
+  },
+  "benchmark": {
+    "agents": 50,
+    "retained_events_target": 100000,
+    "rounds": 12,
+    "services": 10000
+  },
+  "counts": {
+    "agents": 50,
+    "events": 120000,
+    "hosts": 50,
+    "services": 10000
+  },
+  "ingest": {
+    "cpu_ticks": 1727,
+    "max_ms": 136.6364209970925,
+    "p50_ms": 33.021217001078185,
+    "p95_ms": 72.3174789964105,
+    "requests": 600,
+    "rss_kib": 23304
+  },
+  "integrity": "ok",
+  "maintenance_delete_all_events_ms": 643.44,
+  "notes": [
+    "Profiled the unmodified server binary before any optimization.",
+    "The benchmark does not alter Store.Open's intentional SetMaxOpenConns(1).",
+    "Maintenance timing uses the same DELETE predicate on a stopped benchmark DB; production Prune also handles removed services and hosts."
+  ],
+  "restart_ms": 104.53,
+  "sqlite_files_bytes": {
+    "trove.db": 21049344
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trove agent report v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["agent", "host", "services"],
+  "properties": {
+    "agent": {"type":"object", "required":["name","platform","version"], "properties":{"name":{"type":"string"},"platform":{"type":"string","enum":["docker","kubernetes","proxmox","local"]},"version":{"type":"string"},"interval_seconds":{"type":"integer","minimum":0}}},
+    "host": {"type":"object", "required":["hostname"], "properties":{"hostname":{"type":"string"},"condition":{"type":"string"},"metrics":{"type":"object"},"meta":{"type":"object"}}},
+    "services": {"type":"array", "items":{"type":"object"}}
+  }
+}

@@ -1,0 +1,387 @@
+{
+  "agents.json": {
+    "$defs": {
+      "agent": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "interval_seconds": {
+            "type": "integer"
+          },
+          "last_seen_at": {},
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "platform",
+          "version",
+          "interval_seconds",
+          "status",
+          "created_at",
+          "last_seen_at"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "properties": {
+      "agents": {
+        "items": {
+          "$ref": "#/$defs/agent"
+        },
+        "type": "array"
+      },
+      "generated_at": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "generated_at",
+      "agents"
+    ],
+    "title": "Trove agents response v1",
+    "type": "object"
+  },
+  "events.json": {
+    "$defs": {
+      "event": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "from_state": {
+            "type": "string"
+          },
+          "host_id": {},
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "service_id": {},
+          "to_state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "from_state",
+          "to_state",
+          "at"
+        ],
+        "type": "object"
+      },
+      "pagination": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "next_offset": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "offset",
+          "count"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "properties": {
+      "events": {
+        "items": {
+          "$ref": "#/$defs/event"
+        },
+        "type": "array"
+      },
+      "generated_at": {
+        "type": "string"
+      },
+      "pagination": {
+        "$ref": "#/$defs/pagination"
+      }
+    },
+    "required": [
+      "generated_at",
+      "events"
+    ],
+    "title": "Trove events response v1",
+    "type": "object"
+  },
+  "report-ack.json": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "services": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "ok",
+      "services"
+    ],
+    "title": "Trove report acknowledgement v1",
+    "type": "object"
+  },
+  "report.json": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "properties": {
+      "agent": {
+        "properties": {
+          "interval_seconds": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "docker",
+              "kubernetes",
+              "proxmox",
+              "local"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "platform",
+          "version"
+        ],
+        "type": "object"
+      },
+      "host": {
+        "properties": {
+          "condition": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "meta": {
+            "type": "object"
+          },
+          "metrics": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "hostname"
+        ],
+        "type": "object"
+      },
+      "services": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "agent",
+      "host",
+      "services"
+    ],
+    "title": "Trove agent report v1",
+    "type": "object"
+  },
+  "services.json": {
+    "$defs": {
+      "host": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "agent_status": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "last_seen_at": {},
+          "meta": {},
+          "metrics": {},
+          "platform": {
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/$defs/service"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "hostname",
+          "platform",
+          "status",
+          "last_seen_at",
+          "agent_status",
+          "condition",
+          "metrics",
+          "meta",
+          "services"
+        ],
+        "type": "object"
+      },
+      "pagination": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "next_offset": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "offset",
+          "count"
+        ],
+        "type": "object"
+      },
+      "service": {
+        "properties": {
+          "external_id": {
+            "type": "string"
+          },
+          "first_seen_at": {
+            "type": "string"
+          },
+          "freshness": {
+            "type": "string"
+          },
+          "health": {
+            "type": "string"
+          },
+          "health_detail": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "image": {
+            "type": "string"
+          },
+          "image_digest": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "labels": {},
+          "last_seen_at": {
+            "type": "string"
+          },
+          "latest_digest": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_external_id": {
+            "type": "string"
+          },
+          "ports": {},
+          "state": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "external_id",
+          "name",
+          "kind",
+          "image",
+          "state",
+          "health",
+          "freshness",
+          "ports",
+          "labels",
+          "first_seen_at",
+          "last_seen_at",
+          "updated_at"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": true,
+    "properties": {
+      "generated_at": {
+        "type": "string"
+      },
+      "hosts": {
+        "items": {
+          "$ref": "#/$defs/host"
+        },
+        "type": "array"
+      },
+      "pagination": {
+        "$ref": "#/$defs/pagination"
+      }
+    },
+    "required": [
+      "generated_at",
+      "hosts"
+    ],
+    "title": "Trove services response v1",
+    "type": "object"
+  }
+}

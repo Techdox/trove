@@ -1,0 +1,12 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Trove services response v1",
+  "type":"object","additionalProperties":true,
+  "required":["generated_at","hosts"],
+  "properties":{"generated_at":{"type":"string"},"hosts":{"type":"array","items":{"$ref":"#/$defs/host"}},"pagination":{"$ref":"#/$defs/pagination"}},
+  "$defs":{
+    "host":{"type":"object","required":["agent","hostname","platform","status","last_seen_at","agent_status","condition","metrics","meta","services"],"properties":{"agent":{"type":"string"},"hostname":{"type":"string"},"platform":{"type":"string"},"status":{"type":"string"},"last_seen_at":{},"agent_status":{"type":"string"},"condition":{"type":"string"},"metrics":{},"meta":{},"services":{"type":"array","items":{"$ref":"#/$defs/service"}}}},
+    "service":{"type":"object","required":["id","external_id","name","kind","image","state","health","freshness","ports","labels","first_seen_at","last_seen_at","updated_at"],"properties":{"id":{"type":"integer"},"external_id":{"type":"string"},"parent_external_id":{"type":"string"},"name":{"type":"string"},"kind":{"type":"string"},"image":{"type":"string"},"image_digest":{"type":"string"},"state":{"type":"string"},"health":{"type":"string"},"health_detail":{"type":"string"},"freshness":{"type":"string"},"latest_digest":{"type":"string"},"ports":{},"labels":{},"first_seen_at":{"type":"string"},"last_seen_at":{"type":"string"},"updated_at":{"type":"string"}}},
+    "pagination":{"type":"object","required":["offset","count"],"properties":{"limit":{"type":"integer"},"offset":{"type":"integer"},"count":{"type":"integer"},"next_offset":{"type":"integer"}}}
+  }
+}

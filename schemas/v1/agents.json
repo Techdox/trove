@@ -1,0 +1,7 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Trove agents response v1","type":"object","additionalProperties":true,
+  "required":["generated_at","agents"],
+  "properties":{"generated_at":{"type":"string"},"agents":{"type":"array","items":{"$ref":"#/$defs/agent"}}},
+  "$defs":{"agent":{"type":"object","required":["name","platform","version","interval_seconds","status","created_at","last_seen_at"],"properties":{"name":{"type":"string"},"platform":{"type":"string"},"version":{"type":"string"},"interval_seconds":{"type":"integer"},"status":{"type":"string"},"created_at":{"type":"string"},"last_seen_at":{}}}}
+}

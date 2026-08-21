@@ -40,6 +40,8 @@ jobs:
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.10
       - name: Release surface check
         run: python3 ./scripts/check_release_surface.py
+      - name: API schema compatibility and DTO drift check
+        run: python3 ./scripts/check_api_schema.py
       - name: Markdown link check
         run: python3 ./scripts/check_markdown_links.py
       - name: Documentation ownership check

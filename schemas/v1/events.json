@@ -1,0 +1,7 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Trove events response v1","type":"object","additionalProperties":true,
+  "required":["generated_at","events"],
+  "properties":{"generated_at":{"type":"string"},"events":{"type":"array","items":{"$ref":"#/$defs/event"}},"pagination":{"$ref":"#/$defs/pagination"}},
+  "$defs":{"event":{"type":"object","required":["id","kind","from_state","to_state","at"],"properties":{"id":{"type":"integer"},"service_id":{},"host_id":{},"kind":{"type":"string"},"service":{"type":"string"},"hostname":{"type":"string"},"agent":{"type":"string"},"from_state":{"type":"string"},"to_state":{"type":"string"},"at":{"type":"string"}}},"pagination":{"type":"object","required":["offset","count"],"properties":{"limit":{"type":"integer"},"offset":{"type":"integer"},"count":{"type":"integer"},"next_offset":{"type":"integer"}}}}
+}

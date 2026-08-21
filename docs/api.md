@@ -111,6 +111,16 @@ curl --oauth2-bearer "$TROVE_API_TOKEN" \
   'https://trove.example/api/v1/events?kind=health&limit=50&offset=50'
 ```
 
+## Machine-readable schemas and compatibility
+
+The versioned JSON Schemas in [`schemas/v1/`](../schemas/v1/) are the source of truth for the agent report and JSON API response shapes. They cover `POST /api/v1/report`, its acknowledgement, and the `services`, `agents`, and `events` responses. The schemas are published with the repository so clients can validate payloads without running Trove.
+
+Trove follows additive evolution within `v1`: new optional response or report fields may be added, but existing field meanings, JSON types, and required fields are preserved. Clients must ignore unknown fields. Removing a field, changing its JSON type or meaning, or making an optional field required requires a new API version and a migration note. This is a compatibility guarantee for the documented JSON shapes, not a promise that undocumented fields, ordering, pagination totals, timestamps, or operational limits never change.
+
+`schemas/v1/baseline.json` records the supported v1 surface. CI fails if a baseline property is removed or changes type, if a current server DTO drifts from its schema, or if the frozen previous-release report fixtures stop being accepted. The Go compatibility tests exercise the v0.15.1 report fixtures against the current ingest path; keep a fixture for each supported previous release when changing the wire model.
+
+Upgrade agents only after the server is upgraded. The server accepts the immediately previous agent report shape, and rollback means restoring the previous server and agents together. A newer agent may send additive fields that an older server does not understand, so do not use that combination as a supported rollback path.
+
 ## Prometheus metrics
 
 `GET /metrics` exposes Prometheus text format and is protected like the other read APIs when OIDC/API-token auth is enabled.

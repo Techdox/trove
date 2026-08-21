@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "docs" / "compatibility-matrix.json"
+RELEASE_MANIFEST = ROOT / ".release-please-manifest.json"
 
 
 def fail(message: str) -> None:
@@ -16,7 +17,13 @@ def fail(message: str) -> None:
 
 def main() -> int:
     matrix = json.loads(MATRIX.read_text())
+    current = matrix["current_release"]
+    manifest_current = json.loads(RELEASE_MANIFEST.read_text())["."]
+    if current != manifest_current:
+        fail(f"current release is {current}, release manifest is {manifest_current}")
     previous = matrix["previous_release"]
+    if previous == current:
+        fail("previous release must differ from the current release")
     platforms = matrix["platforms"]
     expected = {"docker", "kubernetes", "proxmox", "local"}
     if set(platforms) != expected:

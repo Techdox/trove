@@ -14,7 +14,7 @@
     {
       "external_id": "systemd-homepage",
       "name": "homepage.service",
-      "kind": "service",
+      "kind": "process",
       "state": "running",
       "health": "unknown",
       "labels": { "systemd.load_state": "loaded" }

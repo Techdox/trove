@@ -12,6 +12,11 @@
         {
           "type": "generic",
           "path": "deploy/kubernetes/trove-agent.yaml"
+        },
+        {
+          "type": "json",
+          "path": "docs/compatibility-matrix.json",
+          "jsonpath": "$.current_release"
         }
       ]
     }

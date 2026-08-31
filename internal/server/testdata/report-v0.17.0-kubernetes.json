@@ -2,7 +2,7 @@
   "agent": {
     "name": "compat-kubernetes",
     "platform": "kubernetes",
-    "version": "v0.15.1",
+    "version": "v0.17.0",
     "interval_seconds": 30
   },
   "host": {

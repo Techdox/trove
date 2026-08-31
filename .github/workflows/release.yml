@@ -106,7 +106,7 @@ jobs:
         id: syft
         if: steps.existing_release.outputs.skip != 'true'
         # anchore/sbom-action@v0
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           syft-version: v1.44.0
       - name: Add Syft to PATH

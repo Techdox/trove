@@ -94,8 +94,8 @@ func TestDashboardAccessibilityContract(t *testing.T) {
 		"element.inert = inert;",
 		"function drawerFocusables()",
 		"function trapDrawerFocus(event)",
-		`if (e.key === "Tab" && (state.drawerKey || state.hostDrawerKey))`,
-		`const restoreDrawerFocus = !$("drawer").hidden && $("drawer").contains(document.activeElement);`,
+		`if (e.key === "Tab" && drawerOpen())`,
+		`const restoreDrawerFocus = drawerOpen() && $("drawer").contains(active);`,
 		`?.querySelector("[data-service-details]")?.focus`,
 	} {
 		if !strings.Contains(string(app), marker) {
@@ -337,6 +337,10 @@ func TestDashboardHostNavigationAndPlatformMarks(t *testing.T) {
 		"function platformIdentity(platform)",
 		"function platformIconHTML(platform)",
 		"function openAgentDestination(name)",
+		"function drawerOpen()",
+		"function serviceGroup(s)",
+		"function portHref(host, p)",
+		"function openAddAgent()",
 		"function openHostDrawerFromAgent(key, returnAgent)",
 		`data-agent-destination="${esc(a.name)}"`,
 		`class="host-name" data-host-details`,

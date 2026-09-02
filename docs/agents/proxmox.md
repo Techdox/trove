@@ -72,6 +72,7 @@ server:
 
 ```sh
 # Docker Compose server:
+# dashboard: Add agent → Proxmox VE, or:
 docker compose exec server trove-server agent create proxmox
 # bare-metal server: sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create proxmox
 ```

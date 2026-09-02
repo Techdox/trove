@@ -16,12 +16,14 @@ const $ = (id) => document.getElementById(id);
 const state = {
   q: "",                 // filter text
   chips: new Set(),      // active quick filters (keys of CHIP_DEFS)
+  groups: new Set(),     // compose stack / k8s namespace keys
   showRemoved: false,    // include soft-removed services
   removedOnly: false,    // limit the catalogue to soft-removed services
   collapsed: new Set(),  // collapsed host keys
   drawerKey: null,       // key of the service open in the drawer
   hostDrawerKey: null,   // key of the host open in the drawer
   hostDrawerReturnAgent: null, // agent card to refocus when it opened a host
+  addAgent: null,        // add-agent drawer model, or null
   cursorKey: null,       // key of the keyboard-cursor row
   data: { services: null, agents: null, events: null },
 };
@@ -368,15 +370,73 @@ function fmtPort(p) {
   return (p.host ? `${p.host}→${p.container}` : `${p.container}`) + `/${p.proto || "tcp"}`;
 }
 
+function portHref(host, p) {
+  if (!p || !p.host) return "";
+  const proto = String(p.proto || "tcp").toLowerCase();
+  if (proto !== "tcp") return "";
+  const hostname = String(host?.hostname || "").trim();
+  if (!hostname) return "";
+  const scheme = Number(p.host) === 443 ? "https" : "http";
+  const hostPart = hostname.includes(":") ? `[${hostname}]` : hostname;
+  return `${scheme}://${hostPart}:${p.host}`;
+}
+
+function portChipHTML(host, p) {
+  const label = esc(fmtPort(p));
+  const href = portHref(host, p);
+  if (!href) return label;
+  return `<a class="port-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="Open ${esc(href)}">${label}</a>`;
+}
+
+function serviceOpenURL(s) {
+  const labels = s?.labels && typeof s.labels === "object" ? s.labels : {};
+  const raw = labels["trove.url"] || labels["trove.href"] || "";
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+function serviceGroup(s) {
+  const labels = s?.labels && typeof s.labels === "object" ? s.labels : {};
+  const project = labels["com.docker.compose.project"];
+  if (project) return { kind: "stack", name: String(project), key: `stack:${project}` };
+  const ns = labels.namespace;
+  if (ns) return { kind: "ns", name: String(ns), key: `ns:${ns}` };
+  return null;
+}
+
+function collectGroups() {
+  const byKey = new Map();
+  for (const h of state.data.services?.hosts || []) {
+    for (const s of h.services || []) {
+      if (s.state === "removed") continue;
+      const g = serviceGroup(s);
+      if (!g) continue;
+      const cur = byKey.get(g.key) || { ...g, count: 0 };
+      cur.count++;
+      byKey.set(g.key, cur);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function drawerOpen() {
+  return !!(state.drawerKey || state.hostDrawerKey || state.addAgent);
+}
+
 const PORTS_SHOWN = 3;
 
-function portsHTML(ports) {
+function portsHTML(host, ports) {
   if (!Array.isArray(ports) || ports.length === 0) return '<span class="muted">—</span>';
   const sorted = [...ports].sort((a, b) => (a.host || a.container) - (b.host || b.container));
-  const all = sorted.map(fmtPort);
-  const shown = all.slice(0, PORTS_SHOWN).map(esc).join(" ");
-  const extra = all.length - PORTS_SHOWN;
-  const title = esc(all.join("  "));
+  const shown = sorted.slice(0, PORTS_SHOWN).map((p) => portChipHTML(host, p)).join(" ");
+  const extra = sorted.length - PORTS_SHOWN;
+  const title = esc(sorted.map(fmtPort).join("  "));
   return `<span title="${title}">${shown}${extra > 0 ? ` <span class="more">+${extra}</span>` : ""}</span>`;
 }
 
@@ -400,6 +460,10 @@ function matchesFilters(s, host) {
     const def = CHIP_DEFS.find((c) => c.key === key);
     if (def && !def.test(s)) return false;
   }
+  if (state.groups.size > 0) {
+    const g = serviceGroup(s);
+    if (!g || !state.groups.has(g.key)) return false;
+  }
   const q = state.q.trim().toLowerCase();
   if (!q) return true;
   const hay = [s.name, s.external_id, s.image, s.kind, s.state, s.health, s.freshness,
@@ -411,7 +475,8 @@ function matchesFilters(s, host) {
 }
 
 function filterActive() {
-  return state.q.trim() !== "" || state.chips.size > 0 || state.showRemoved || state.removedOnly;
+  return state.q.trim() !== "" || state.chips.size > 0 || state.groups.size > 0
+    || state.showRemoved || state.removedOnly;
 }
 
 // counts over the full dataset (independent of the active filter)
@@ -549,6 +614,15 @@ function renderChips() {
   chips.push(`<button class="chip c-gray${remActive}" data-chip="removed"
     aria-pressed="${state.showRemoved || state.removedOnly}" title="${state.removedOnly ? "showing only services no longer reported" : "include services no longer reported (kept 24h)"}">
     ${remLabel} <span class="n">${c.removed}</span></button>`);
+  const groups = collectGroups();
+  if (groups.length >= 2) {
+    for (const g of groups) {
+      const active = state.groups.has(g.key) ? " active" : "";
+      const label = g.kind === "stack" ? `stack:${g.name}` : `ns:${g.name}`;
+      chips.push(`<button class="chip c-blue${active}" data-group="${esc(g.key)}" aria-pressed="${!!active}" title="Filter by ${esc(label)}">
+        ${esc(label)} <span class="n">${g.count}</span></button>`);
+    }
+  }
   if (filterActive()) {
     chips.push(`<button class="chip chip-clear" data-clear="1" title="clear all filters (esc)">✕ clear</button>`);
   }
@@ -561,7 +635,7 @@ function renderAgents() {
   const el = $("agents");
   const agents = state.data.agents?.agents || [];
   if (agents.length === 0) {
-    el.innerHTML = '<div class="empty">No agents registered. Create one with <code>trove-server agent create &lt;name&gt;</code>.</div>';
+    el.innerHTML = '<div class="empty">No agents registered. Use <button type="button" class="text-action" data-add-agent>Add agent</button> or <code>trove-server agent create &lt;name&gt;</code>.</div>';
     return;
   }
   el.innerHTML = agents.map((a) => {
@@ -607,7 +681,7 @@ function serviceRow(host, s, isChild) {
     <td class="badgecell state-cell" data-label="State">${badge(stateClass(s.state), s.state || "?")}</td>
     <td class="badgecell health-cell" data-label="Health">${badge(HEALTH_CLASS[s.health] || "b-gray", s.health || "unknown")}</td>
     <td class="badgecell fresh-cell" data-label="Freshness">${freshnessCell(s)}</td>
-    <td class="ports" data-label="Ports">${portsHTML(s.ports)}</td>
+    <td class="ports" data-label="Ports">${portsHTML(host, s.ports)}</td>
     <td class="muted nowrap seen" data-label="Last seen">${esc(relTime(s.last_seen_at))}</td>
   </tr>`;
 }
@@ -643,9 +717,36 @@ function renderHosts() {
       }
     }
     const topLevel = visible.filter((s) => !s.parent_external_id || !ids.has(s.parent_external_id));
-    const rows = topLevel.map((s) => {
-      let out = serviceRow(h, s, false);
-      for (const k of childrenByParent[s.external_id] || []) out += serviceRow(h, k, true);
+    const grouped = [];
+    const groupedIndex = new Map();
+    for (const s of topLevel) {
+      const g = serviceGroup(s);
+      const key = g ? g.key : "";
+      if (!groupedIndex.has(key)) {
+        groupedIndex.set(key, grouped.length);
+        grouped.push({ group: g, services: [] });
+      }
+      grouped[groupedIndex.get(key)].services.push(s);
+    }
+    grouped.sort((a, b) => {
+      if (!a.group) return 1;
+      if (!b.group) return -1;
+      return a.group.key.localeCompare(b.group.key);
+    });
+    const showGroupHeaders = grouped.length > 1 || (grouped.length === 1 && grouped[0].group);
+    const rows = grouped.map((bucket) => {
+      let out = "";
+      if (showGroupHeaders && bucket.group) {
+        const label = bucket.group.kind === "stack" ? `stack ${bucket.group.name}` : `namespace ${bucket.group.name}`;
+        out += `<tr class="group-row"><td colspan="7">
+          <button type="button" class="group-label" data-group="${esc(bucket.group.key)}">${esc(label)}
+            <span class="n">${bucket.services.length}</span></button>
+        </td></tr>`;
+      }
+      for (const s of bucket.services) {
+        out += serviceRow(h, s, false);
+        for (const k of childrenByParent[s.external_id] || []) out += serviceRow(h, k, true);
+      }
       return out;
     }).join("");
 
@@ -920,6 +1021,10 @@ function renderHostDrawer(el, host) {
 
 function renderDrawer() {
   const el = $("drawer");
+  if (state.addAgent) {
+    renderAddAgentDrawer(el);
+    return;
+  }
   if (state.hostDrawerKey) {
     const host = findHost(state.hostDrawerKey);
     if (host) {
@@ -987,7 +1092,20 @@ function renderDrawer() {
       ${s.image_digest ? `<div class="d-mono"><span class="lbl">running</span> ${esc(s.image_digest)}</div>` : ""}
       ${s.latest_digest ? `<div class="d-mono"><span class="lbl">latest&nbsp;</span> ${esc(s.latest_digest)}</div>` : ""}` : "")}
 
-    ${drawerSection("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${esc(fmtPort(p))}</span>`).join("")}</div>` : "")}
+    ${drawerSection("Open", (() => {
+      const openURL = serviceOpenURL(s);
+      const links = [];
+      if (openURL) {
+        links.push(`<a class="open-link" href="${esc(openURL)}" target="_blank" rel="noopener noreferrer">${esc(openURL)}</a>`);
+      }
+      for (const p of ports) {
+        const href = portHref(host, p);
+        if (href) links.push(`<a class="open-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(href)}</a>`);
+      }
+      return links.length ? `<div class="open-links">${links.join("")}</div>` : "";
+    })())}
+
+    ${drawerSection("Ports", ports.length ? `<div class="pchips">${ports.map((p) => `<span class="pchip">${portChipHTML(host, p)}</span>`).join("")}</div>` : "")}
 
     ${drawerSection("Metrics", metricRows.length ? `<div class="kv metrics">${metricRows.map(([k, v]) =>
       `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`).join("")}</div>` : "")}
@@ -1025,6 +1143,133 @@ function drawerFocusables() {
   return Array.from($("drawer").querySelectorAll(
     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
   )).filter((element) => !element.hidden);
+}
+
+function newAddAgentState() {
+  return {
+    step: "form",
+    name: "",
+    platform: "docker",
+    serverUrl: window.location.origin,
+    busy: false,
+    error: "",
+    token: "",
+    snippet: "",
+    filename: "",
+    guide: "",
+  };
+}
+
+function openAddAgent() {
+  state.drawerKey = null;
+  state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
+  state.addAgent = state.addAgent && state.addAgent.step === "done"
+    ? newAddAgentState()
+    : (state.addAgent || newAddAgentState());
+  render();
+  requestAnimationFrame(() => $("agent-name")?.focus({ preventScroll: true }) || document.querySelector(".d-close")?.focus({ preventScroll: true }));
+}
+
+function renderAddAgentDrawer(el) {
+  const a = state.addAgent;
+  if (a.step === "done") {
+    el.innerHTML = `
+      <div class="d-head">
+        <h2 class="d-name" id="drawer-title">Agent ${esc(a.name)}</h2>
+        <button class="d-close" aria-label="Close details" title="close (esc)">✕</button>
+      </div>
+      <p class="add-agent-copy">Token shown once. Store it now; Trove only keeps a hash.</p>
+      <div class="d-sec">Token</div>
+      <pre class="snippet-block" id="agent-token">${esc(a.token)}</pre>
+      <button type="button" class="copy-btn" data-copy="agent-token">Copy token</button>
+      <div class="d-sec">${a.filename ? esc(a.filename) : "Install"}</div>
+      <pre class="snippet-block" id="agent-snippet">${esc(a.snippet)}</pre>
+      <button type="button" class="copy-btn" data-copy="agent-snippet">Copy snippet</button>
+      <p class="add-agent-copy">Run this on the machine you want to watch. Guide: <span class="mono">${esc(a.guide)}</span></p>
+      <p class="add-agent-copy">This only registers a Trove agent. It cannot change the platform it will observe.</p>
+    `;
+    el.hidden = false;
+    setPageInert(true);
+    return;
+  }
+  el.innerHTML = `
+    <div class="d-head">
+      <h2 class="d-name" id="drawer-title">Add agent</h2>
+      <button class="d-close" aria-label="Close details" title="close (esc)">✕</button>
+    </div>
+    <p class="add-agent-copy">Mint a token and copy the matching install snippet. Trove still never mutates a workload.</p>
+    <form id="add-agent-form" class="add-agent-form">
+      <label for="agent-name">Name</label>
+      <input id="agent-name" name="name" type="text" required maxlength="64"
+             pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off" spellcheck="false"
+             placeholder="docker-nas" value="${esc(a.name)}" />
+      <label for="agent-platform">Platform</label>
+      <select id="agent-platform" name="platform">
+        <option value="docker" ${a.platform === "docker" ? "selected" : ""}>Docker</option>
+        <option value="kubernetes" ${a.platform === "kubernetes" ? "selected" : ""}>Kubernetes</option>
+        <option value="proxmox" ${a.platform === "proxmox" ? "selected" : ""}>Proxmox VE</option>
+        <option value="local" ${a.platform === "local" ? "selected" : ""}>Linux / systemd</option>
+      </select>
+      <label for="agent-server-url">Server URL the agent should use</label>
+      <input id="agent-server-url" name="server_url" type="url" required
+             placeholder="http://10.0.0.5:8080" value="${esc(a.serverUrl)}" />
+      <p class="add-agent-copy">Use an address this host or cluster can reach. The dashboard origin is often wrong from another VLAN or from Kubernetes.</p>
+      ${a.error ? `<p class="add-agent-error" role="alert">${esc(a.error)}</p>` : ""}
+      <button type="submit" class="primary-btn" ${a.busy ? "disabled" : ""}>${a.busy ? "Creating…" : "Create token"}</button>
+    </form>
+  `;
+  el.hidden = false;
+  setPageInert(true);
+}
+
+async function submitAddAgent(event) {
+  event.preventDefault();
+  if (!state.addAgent || state.addAgent.busy) return;
+  const a = state.addAgent;
+  a.name = $("agent-name")?.value.trim() || a.name;
+  a.platform = $("agent-platform")?.value || a.platform;
+  a.serverUrl = $("agent-server-url")?.value.trim() || a.serverUrl;
+  a.busy = true;
+  a.error = "";
+  render();
+  try {
+    const res = await fetch("api/v1/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ name: a.name, platform: a.platform, server_url: a.serverUrl }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error || `${res.status}`);
+    }
+    a.step = "done";
+    a.token = body.token;
+    a.snippet = body.snippet;
+    a.filename = body.filename || "";
+    a.guide = body.guide || "";
+    a.busy = false;
+    render();
+    refresh();
+  } catch (err) {
+    a.busy = false;
+    a.error = err.message || "failed to create agent";
+    render();
+  }
+}
+
+async function copyById(id) {
+  const text = $(id)?.textContent || "";
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents($(id));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
 }
 
 function trapDrawerFocus(event) {
@@ -1119,11 +1364,17 @@ function closeDrawer() {
   const serviceKey = state.drawerKey;
   const hostKeyToRestore = state.hostDrawerKey;
   const agentToRestore = state.hostDrawerReturnAgent;
+  const addAgentOpen = !!state.addAgent;
   state.drawerKey = null;
   state.hostDrawerKey = null;
   state.hostDrawerReturnAgent = null;
+  state.addAgent = null;
   render();
   requestAnimationFrame(() => {
+    if (addAgentOpen) {
+      document.querySelector("[data-add-agent]")?.focus({ preventScroll: true });
+      return;
+    }
     if (agentToRestore) {
       Array.from(document.querySelectorAll("[data-agent-destination]"))
         .find((button) => button.dataset.agentDestination === agentToRestore)?.focus({ preventScroll: true });
@@ -1146,7 +1397,11 @@ function render() {
   // Polling replaces the drawer markup to refresh relative times and service
   // data. Remember whether focus was inside it so the 10-second refresh cannot
   // eject a keyboard or screen-reader user back to document.body.
-  const restoreDrawerFocus = !$("drawer").hidden && $("drawer").contains(document.activeElement);
+  const active = document.activeElement;
+  const restoreDrawerFocus = drawerOpen() && $("drawer").contains(active);
+  const restoreId = restoreDrawerFocus ? active.id : "";
+  const restoreStart = restoreDrawerFocus ? active.selectionStart : null;
+  const restoreEnd = restoreDrawerFocus ? active.selectionEnd : null;
   renderAttention();
   renderSummary();
   renderChips();
@@ -1156,7 +1411,13 @@ function render() {
   renderDrawer();
   applyCursor();
   if (restoreDrawerFocus) {
-    requestAnimationFrame(() => document.querySelector(".d-close")?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      const target = (restoreId && $(restoreId)) || document.querySelector(".d-close");
+      target?.focus({ preventScroll: true });
+      if (target && typeof restoreStart === "number") {
+        try { target.setSelectionRange(restoreStart, restoreEnd); } catch { /* not a text field */ }
+      }
+    });
   }
 }
 
@@ -1245,20 +1506,39 @@ function toggleChip(key) {
   requestAnimationFrame(() => document.querySelector(`[data-chip=\"${key}\"]`)?.focus({ preventScroll: true }));
 }
 
+function toggleGroup(key) {
+  if (state.groups.has(key)) state.groups.delete(key);
+  else state.groups.add(key);
+  render();
+  requestAnimationFrame(() => document.querySelector(`[data-group="${CSS.escape(key)}"]`)?.focus({ preventScroll: true }));
+}
+
 function clearFilters() {
   state.q = "";
   $("q").value = "";
   state.chips.clear();
+  state.groups.clear();
   state.showRemoved = false;
   state.removedOnly = false;
   render();
 }
 
 document.addEventListener("click", (e) => {
+  if (e.target.closest("a.port-link, a.open-link")) return;
+
   if (e.target.closest("[data-clear]")) { clearFilters(); return; }
 
   const attention = e.target.closest("[data-attention]");
   if (attention) { showAttention(attention.dataset.attention); return; }
+
+  const addAgent = e.target.closest("[data-add-agent]");
+  if (addAgent) { openAddAgent(); return; }
+
+  const copy = e.target.closest("[data-copy]");
+  if (copy) { copyById(copy.dataset.copy); return; }
+
+  const group = e.target.closest("[data-group]");
+  if (group) { toggleGroup(group.dataset.group); return; }
 
   const chip = e.target.closest("[data-chip]");
   if (chip) { toggleChip(chip.dataset.chip); return; }
@@ -1291,7 +1571,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
 
-  if (e.key === "Tab" && (state.drawerKey || state.hostDrawerKey)) {
+  if (e.key === "Tab" && drawerOpen()) {
     trapDrawerFocus(e);
     return;
   }
@@ -1303,7 +1583,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Escape") {
     if (typing) { e.target.blur(); return; }
-    if (state.drawerKey || state.hostDrawerKey) { closeDrawer(); return; }
+    if (drawerOpen()) { closeDrawer(); return; }
     if (filterActive()) clearFilters();
     return;
   }
@@ -1328,6 +1608,17 @@ $("q").addEventListener("input", (e) => {
     state.q = e.target.value;
     render();
   }, 120);
+});
+
+document.addEventListener("submit", (e) => {
+  if (e.target.id === "add-agent-form") submitAddAgent(e);
+});
+
+document.addEventListener("input", (e) => {
+  if (!state.addAgent || state.addAgent.step !== "form") return;
+  if (e.target.id === "agent-name") state.addAgent.name = e.target.value;
+  if (e.target.id === "agent-platform") state.addAgent.platform = e.target.value;
+  if (e.target.id === "agent-server-url") state.addAgent.serverUrl = e.target.value;
 });
 
 refresh();

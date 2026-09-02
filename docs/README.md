@@ -7,7 +7,8 @@ for behaviour that can change between releases.
 
 | Surface | Owns | Does not own |
 | --- | --- | --- |
-| [Root README](../README.md) | Product overview, supported installation paths, quickstarts, and the complete environment-variable configuration reference. | Detailed operational, upgrade, authentication, API, or security procedures. |
+| [Root README](../README.md) | Product overview, supported installation paths, and quickstarts. | Detailed operational, upgrade, authentication, API, configuration, or security procedures. |
+| [Configuration](configuration.md) | Complete environment-variable reference. | Provider walkthroughs and install commands. |
 | Repository docs | Agent operation, authentication behaviour, API contracts, alerts, upgrades, backup/recovery, and release security for this code version. | General discovery content or screenshot-heavy walkthroughs. |
 | [Wiki](https://github.com/Techdox/trove/wiki) | Non-versioned walkthroughs, screenshots, examples, and community-oriented discovery guides. | Canonical configuration, authentication, upgrade, recovery, API, or security instructions. |
 
@@ -21,6 +22,7 @@ request.
 - Agents: [Docker](agents/docker.md), [Kubernetes](agents/kubernetes.md),
   [Proxmox](agents/proxmox.md), [Linux/systemd](agents/local.md), and
   [credential rotation](agents/rotation.md).
+- [Configuration](configuration.md).
 - [Dashboard authentication](authentication.md).
 - [API and metrics](api.md).
 - [Alerts and digest](alerts.md).

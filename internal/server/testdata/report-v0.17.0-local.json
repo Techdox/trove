@@ -6,7 +6,7 @@
     "interval_seconds": 30
   },
   "host": {
-    "hostname": "local-v0151",
+    "hostname": "local-v0170",
     "condition": "normal",
     "meta": { "os": "linux", "arch": "amd64" }
   },

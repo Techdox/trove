@@ -19,6 +19,9 @@ var ErrAgentExists = errors.New("agent with that name already exists")
 // ErrAgentNotFound is returned when a token matches no agent.
 var ErrAgentNotFound = errors.New("agent not found")
 
+// ErrInvalidAgentName is returned when a proposed agent name fails validation.
+var ErrInvalidAgentName = errors.New("agent name must start with a letter or digit and contain only letters, digits, '.', '-', '_'")
+
 const tokenPrefix = "trove_"
 
 // Agent is a stored agent row (without the token hash).
@@ -33,6 +36,30 @@ type Agent struct {
 	// LastStatus is the most recent heartbeat verdict recorded by the
 	// staleness loop ("ok"/"stale"/"offline"; empty until first evaluated).
 	LastStatus string
+}
+
+const maxAgentNameLength = 64
+
+// ValidateAgentName reports whether name is a usable agent identifier.
+func ValidateAgentName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("agent name is required")
+	}
+	if len(name) > maxAgentNameLength {
+		return fmt.Errorf("agent name must be %d characters or fewer", maxAgentNameLength)
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			continue
+		case i > 0 && (r == '-' || r == '_' || r == '.'):
+			continue
+		default:
+			return ErrInvalidAgentName
+		}
+	}
+	return nil
 }
 
 // HashToken returns the hex SHA-256 of a bearer token. Tokens are
@@ -57,8 +84,8 @@ func generateToken() (string, error) {
 // operator once.
 func (s *Store) CreateAgent(ctx context.Context, name string) (token string, agent Agent, err error) {
 	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", Agent{}, errors.New("agent name is required")
+	if err := ValidateAgentName(name); err != nil {
+		return "", Agent{}, err
 	}
 	token, err = generateToken()
 	if err != nil {

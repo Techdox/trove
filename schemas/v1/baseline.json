@@ -495,5 +495,46 @@
     ],
     "title": "Trove services response v1",
     "type": "object"
+  },
+  "agent-create.json": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Trove agent create response v1",
+    "type": "object",
+    "additionalProperties": true,
+    "required": [
+      "name",
+      "token",
+      "platform",
+      "server_url",
+      "snippet",
+      "format",
+      "guide"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "token": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "server_url": {
+        "type": "string"
+      },
+      "snippet": {
+        "type": "string"
+      },
+      "format": {
+        "type": "string"
+      },
+      "filename": {
+        "type": "string"
+      },
+      "guide": {
+        "type": "string"
+      }
+    }
   }
 }

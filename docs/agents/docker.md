@@ -8,7 +8,8 @@ Run **one agent per Docker host**.
 
 ## 1. Mint a token
 
-On the machine running `trove-server`:
+On the dashboard, click **Add agent**, choose Docker, and copy the Compose
+snippet. Or mint from the server:
 
 ```sh
 trove-server agent create docker-nuc01
@@ -70,6 +71,23 @@ the reported hostname comes from the Docker daemon.
 When a container is unhealthy, click its row: the detail drawer shows **why** —
 the failing healthcheck's last output and exit code, or the exit code (and any
 daemon error) of a container that stopped when it was meant to stay up.
+
+## Unraid, TrueNAS, and other NAS Docker hosts
+
+There is no separate NAS agent. If the box runs Docker, the Docker agent
+covers it: one agent per Docker engine, read-only socket mount.
+
+- **Unraid** — run `ghcr.io/techdox/trove-agent-docker` with
+  `/var/run/docker.sock` mounted read-only. Extra hosts still each get their
+  own token from **Add agent**.
+- **TrueNAS SCALE** — same image as a custom Compose app, socket mounted
+  read-only. TrueNAS CORE/jails are not Docker; use the
+  [Linux agent](local.md) only if the jail is systemd-based.
+- Compose project labels (`com.docker.compose.project`) are grouped on the
+  dashboard, so stacks on a NAS show as stacks rather than a flat container
+  list.
+- Optional `trove.url` (or `trove.href`) on a container is shown as an
+  investigation link in the drawer. Published TCP ports are also clickable.
 
 ## Notes
 

@@ -59,6 +59,7 @@ def check(root: Path = ROOT) -> list[str]:
 
     required_readme_links = {
         "documentation ownership": "(docs/README.md)",
+        "configuration": "(docs/configuration.md)",
         "authentication": "(docs/authentication.md)",
         "upgrades": "(docs/upgrades.md)",
         "release security": "(docs/release-security.md)",
@@ -67,13 +68,13 @@ def check(root: Path = ROOT) -> list[str]:
         if link not in readme:
             errors.append(f"README.md: missing canonical {label} link {link}")
 
-    if "(../README.md#configuration-reference)" not in authentication:
+    if "(configuration.md)" not in authentication:
         errors.append(
-            "docs/authentication.md: must link to the README configuration reference"
+            "docs/authentication.md: must link to the configuration reference"
         )
     if re.search(r"^\|\s*`TROVE_[A-Z0-9_]+`", authentication, re.MULTILINE):
         errors.append(
-            "docs/authentication.md: environment-variable tables belong in README.md"
+            "docs/authentication.md: environment-variable tables belong in docs/configuration.md"
         )
 
     try:
@@ -82,8 +83,7 @@ def check(root: Path = ROOT) -> list[str]:
     except ValueError as exc:
         errors.append(f"README.md: {exc}")
     else:
-        oidc_summary = oidc.split("Private registry / Docker Hub credentials", 1)[0]
-        if "```" in oidc_summary:
+        if "```" in oidc:
             errors.append(
                 "README.md: OIDC configuration summary must link to operational examples, not copy them"
             )

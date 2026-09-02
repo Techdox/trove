@@ -1,0 +1,31 @@
+name: Platform request
+description: Ask Trove to observe another platform, still read-only
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New agents have to stay read-only. Trove will not add restart, deploy,
+        exec, or other control-plane verbs for a requested platform.
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: What should a new agent watch?
+      placeholder: Unraid, TrueNAS, Nomad, …
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this platform
+      description: What inventory is missing today, and can the existing Docker/Linux agent already cover it?
+    validations:
+      required: true
+  - type: textarea
+    id: read_api
+    attributes:
+      label: Read-only API or source
+      description: How would an agent list running workloads without mutating them?
+    validations:
+      required: true

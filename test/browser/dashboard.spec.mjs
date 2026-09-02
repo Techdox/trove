@@ -43,6 +43,7 @@ const services = {
         id: 101,
         external_id: "authentik-server-deployment",
         name: "authentik-server-with-a-very-long-deployment-name",
+        labels: { namespace: "prod" },
       }),
       service({
         id: 102,
@@ -51,6 +52,7 @@ const services = {
         name: "authentik-server-pod-with-a-very-long-kubernetes-name-6d48b848d-v4x5d",
         kind: "pod",
         state: "running",
+        labels: { namespace: "prod" },
       }),
       service({
         id: 103,
@@ -59,6 +61,7 @@ const services = {
         health: "unhealthy",
         health_detail: "test health detail",
         freshness: "outdated",
+        labels: { namespace: "prod" },
       }),
     ],
   }],
@@ -114,6 +117,24 @@ async function fixtureAPI(page) {
       "/api/v1/events": events,
       "/api/v1/me": { authenticated: false },
     }[path];
+    if (route.request().method() === "POST" && path === "/api/v1/agents") {
+      const posted = route.request().postDataJSON();
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: posted.name,
+          token: "trove_testtoken",
+          platform: posted.platform,
+          server_url: posted.server_url,
+          snippet: `TROVE_SERVER_URL=${posted.server_url}\nTROVE_TOKEN=trove_testtoken\n`,
+          format: "yaml",
+          filename: "docker-compose.yml",
+          guide: "docs/agents/docker.md",
+        }),
+      });
+      return;
+    }
     if (body) {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
       return;
@@ -238,4 +259,109 @@ test("mobile dashboard and drawer do not create horizontal page overflow", async
   }));
   expect(drawerWidth.scrollWidth).toBeLessThanOrEqual(drawerWidth.clientWidth + 1);
   await expectNoHorizontalPageOverflow(page);
+});
+
+test("kubernetes namespaces group in the catalogue", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  await expect(page.locator(".group-label")).toHaveText(/namespace prod/);
+});
+
+test("compose stacks group, filter, and expose published port links", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/v1/services") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          generated_at: now,
+          hosts: [{
+            agent: "docker-lab",
+            hostname: "nas",
+            platform: "docker",
+            status: "ok",
+            last_seen_at: now,
+            agent_status: "ok",
+            condition: "normal",
+            metrics: {},
+            meta: {},
+            services: [
+              service({
+                id: 201,
+                external_id: "ha",
+                name: "home-assistant",
+                kind: "container",
+                labels: { "com.docker.compose.project": "home" },
+                ports: [{ host: 8123, container: 8123, proto: "tcp" }],
+              }),
+              service({
+                id: 202,
+                external_id: "immich",
+                name: "immich-server",
+                kind: "container",
+                labels: { "com.docker.compose.project": "immich" },
+              }),
+              service({
+                id: 203,
+                external_id: "immich-db",
+                name: "immich-postgres",
+                kind: "container",
+                labels: { "com.docker.compose.project": "immich" },
+              }),
+            ],
+          }],
+        }),
+      });
+      return;
+    }
+    if (path === "/api/v1/agents") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          generated_at: now,
+          agents: [{
+            name: "docker-lab",
+            platform: "docker",
+            version: "0.17.1",
+            interval_seconds: 30,
+            status: "ok",
+            created_at: now,
+            last_seen_at: now,
+          }],
+        }),
+      });
+      return;
+    }
+    if (path === "/api/v1/events") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ generated_at: now, events: [] }) });
+      return;
+    }
+    if (path === "/api/v1/me") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ authenticated: false }) });
+      return;
+    }
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+  await page.goto("/");
+  await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(3);
+  await expect(page.locator(".group-label")).toHaveText([/stack home/, /stack immich/]);
+  await expect(page.locator('[data-ext="ha"] .port-link')).toHaveAttribute("href", "http://nas:8123");
+
+  await page.locator('[data-group="stack:immich"]').first().click();
+  await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(2);
+  await expect(page.locator('[data-ext="ha"]')).toHaveCount(0);
+});
+
+test("add agent mints a token and shows an install snippet", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  await page.locator(".add-agent-btn").click();
+  const drawer = page.locator("#drawer");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator("#drawer-title")).toHaveText("Add agent");
+  await page.locator("#agent-name").fill("docker-nas");
+  await page.locator("#add-agent-form").evaluate((form) => form.requestSubmit());
+  await expect(drawer.locator("#agent-token")).toHaveText("trove_testtoken");
+  await expect(drawer.locator("#agent-snippet")).toContainText("TROVE_TOKEN=trove_testtoken");
 });

@@ -16,6 +16,7 @@ the host you want to watch and pushes to that server.
 On the server (this must run against the server's database):
 
 ```sh
+# dashboard: Add agent → Linux / systemd, or:
 # Docker Compose server:
 docker compose exec server trove-server agent create nas01
 # bare-metal server: sudo TROVE_DB=/var/lib/trove/trove.db trove-server agent create nas01

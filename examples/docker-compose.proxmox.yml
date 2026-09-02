@@ -20,8 +20,8 @@
 #   4. Open http://localhost:8080 — your VMs and LXCs appear within ~30s.
 #      Watch the agent while it connects:  docker compose logs -f agent
 #
-# To watch OTHER hosts/platforms too, mint each its own token on the server
-# and add its agent (see the per-platform guides):
+# To watch OTHER hosts/platforms too, use Add agent on the dashboard, or mint
+# a token on the server and add its agent (see the per-platform guides):
 #        docker compose exec server trove-server agent create <name>
 #
 # ⚠ The dashboard is open unless you configure OIDC — keep port 8080 on a trusted

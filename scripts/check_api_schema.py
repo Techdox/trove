@@ -107,6 +107,7 @@ def main():
     failures += check_dto("internal/server/read.go", "hostGroupDTO", "services.json", "host")
     failures += check_dto("internal/server/read.go", "agentDTO", "agents.json", "agent")
     failures += check_dto("internal/server/read.go", "eventDTO", "events.json", "event")
+    failures += check_dto("internal/server/install.go", "createAgentResponse", "agent-create.json")
     report = load("report.json")
     for fixture in sorted((ROOT / "internal/server/testdata").glob("report-v*.json")):
         failures += check_fixture(fixture, report)

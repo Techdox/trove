@@ -6,7 +6,7 @@
     "interval_seconds": 30
   },
   "host": {
-    "hostname": "cluster-v0151",
+    "hostname": "cluster-v0170",
     "condition": "normal",
     "meta": { "kubernetes.version": "v1.33.0" }
   },

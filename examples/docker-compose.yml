@@ -12,8 +12,8 @@
 #   3. Open http://localhost:8080 — your containers appear within ~30s.
 #
 # The TROVE_BOOTSTRAP_* pair below seeds the agent on first start so there is
-# no manual token step. To add agents on OTHER hosts later, mint each one its
-# own token with:
+# no manual token step. To add agents on OTHER hosts later, use Add agent on
+# the dashboard, or mint a token with:
 #        docker compose exec server trove-server agent create <name>
 #
 # ⚠ The dashboard is open unless you configure OIDC — keep port 8080 on a trusted

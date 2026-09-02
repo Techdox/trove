@@ -95,6 +95,26 @@ const events = {
       at: now,
     },
     {
+      id: 3,
+      kind: "health",
+      service: "other-a",
+      hostname: host.hostname,
+      agent: host.agent,
+      from_state: "unknown",
+      to_state: "healthy",
+      at: now,
+    },
+    {
+      id: 4,
+      kind: "health",
+      service: "other-b",
+      hostname: host.hostname,
+      agent: host.agent,
+      from_state: "unknown",
+      to_state: "healthy",
+      at: now,
+    },
+    {
       id: 2,
       service_id: 101,
       kind: "state",
@@ -261,10 +281,21 @@ test("mobile dashboard and drawer do not create horizontal page overflow", async
   await expectNoHorizontalPageOverflow(page);
 });
 
-test("kubernetes namespaces group in the catalogue", async ({ page }) => {
+test("kubernetes namespaces group in the catalogue without a chip flood", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await loadDashboard(page);
   await expect(page.locator(".group-label")).toHaveText(/namespace prod/);
+  await expect(page.locator("#chips [data-group]")).toHaveCount(0);
+  await page.locator(".group-label").click();
+  await expect(page.locator("#chips [data-group='ns:prod']")).toHaveCount(1);
+});
+
+test("needs attention keeps incidents large and info-level facts compact", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  await expect(page.locator(".attention-card")).toContainText("Unhealthy");
+  await expect(page.locator(".attention-quiet-item")).toContainText("Outdated");
+  await expect(page.locator(".attention-card", { hasText: "Outdated" })).toHaveCount(0);
 });
 
 test("compose stacks group, filter, and expose published port links", async ({ page }) => {
@@ -346,11 +377,28 @@ test("compose stacks group, filter, and expose published port links", async ({ p
   await page.goto("/");
   await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(3);
   await expect(page.locator(".group-label")).toHaveText([/stack home/, /stack immich/]);
+  await expect(page.locator("#chips [data-group]")).toHaveCount(0);
   await expect(page.locator('[data-ext="ha"] .port-link')).toHaveAttribute("href", "http://nas:8123");
 
-  await page.locator('[data-group="stack:immich"]').first().click();
+  await page.locator(".group-label", { hasText: "stack immich" }).click();
+  await expect(page.locator("#chips [data-group='stack:immich']")).toHaveCount(1);
   await expect(page.locator("#hosts tr[data-ext]")).toHaveCount(2);
   await expect(page.locator('[data-ext="ha"]')).toHaveCount(0);
+});
+
+test("agent cards surface inventory problems instead of a bare ok", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  const card = page.locator('[data-agent-destination="browser-kubernetes"]');
+  await expect(card).toContainText("unhealthy");
+  await expect(card.locator(".badge", { hasText: /^ok$/ })).toHaveCount(0);
+});
+
+test("history collapses same-host health flaps into one row", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  await expect(page.locator("#events .event-row")).toHaveCount(2);
+  await expect(page.locator("#events .event-row").first()).toContainText("3 services");
 });
 
 test("add agent mints a token and shows an install snippet", async ({ page }) => {

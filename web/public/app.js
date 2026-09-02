@@ -292,7 +292,13 @@ function hostMetricItems(metrics) {
   const load15 = finiteNumber(metrics.load_15);
   if ([load1, load5, load15].some((n) => n !== null && n >= 0)) {
     const values = [load1, load5, load15].map((n) => n === null || n < 0 ? "—" : n.toFixed(2));
-    items.push({ label: "Load", value: values[0], title: `Load average: ${values.join(" · ")} (1m · 5m · 15m)` });
+    const cores = finiteNumber(metrics.cpu_logical_count);
+    const loadValue = cores && cores > 0 ? `${values[0]}/${cores}` : values[0];
+    items.push({
+      label: "Load",
+      value: loadValue,
+      title: `Load average: ${values.join(" · ")} (1m · 5m · 15m)${cores && cores > 0 ? ` · ${cores} logical CPUs` : ""}`,
+    });
   }
   const uptime = finiteNumber(metrics.uptime_seconds);
   if (uptime !== null && uptime >= 0) {
@@ -301,12 +307,12 @@ function hostMetricItems(metrics) {
   return items;
 }
 
-function hostMetricsHTML(metrics) {
-  const items = hostMetricItems(metrics);
+function hostMetricsHTML(host) {
+  const items = hostMetricItems(host.metrics);
   if (items.length === 0) return "";
-  return `<span class="host-metrics" aria-label="Host resource metrics">${items.map((item) =>
+  return `<button type="button" class="host-metrics" data-host-details data-hostkey="${esc(hostKey(host))}" aria-label="View ${esc(host.hostname)} host stats">${items.map((item) =>
     `<span class="host-metric" title="${esc(item.title)}"><span class="metric-label">${esc(item.label)}</span> ${esc(item.value)}</span>`
-  ).join("")}</span>`;
+  ).join("")}</button>`;
 }
 
 function resourceMetricDetail(usage) {
@@ -410,21 +416,6 @@ function serviceGroup(s) {
   return null;
 }
 
-function collectGroups() {
-  const byKey = new Map();
-  for (const h of state.data.services?.hosts || []) {
-    for (const s of h.services || []) {
-      if (s.state === "removed") continue;
-      const g = serviceGroup(s);
-      if (!g) continue;
-      const cur = byKey.get(g.key) || { ...g, count: 0 };
-      cur.count++;
-      byKey.set(g.key, cur);
-    }
-  }
-  return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
-}
-
 function drawerOpen() {
   return !!(state.drawerKey || state.hostDrawerKey || state.addAgent);
 }
@@ -466,11 +457,17 @@ function matchesFilters(s, host) {
   }
   const q = state.q.trim().toLowerCase();
   if (!q) return true;
+  if (q.startsWith("ns:") || q.startsWith("stack:")) {
+    const g = serviceGroup(s);
+    return !!(g && g.key.toLowerCase().startsWith(q));
+  }
   const hay = [s.name, s.external_id, s.image, s.kind, s.state, s.health, s.freshness,
     host.hostname, host.agent, host.platform, host.condition];
   if (s.labels && typeof s.labels === "object") {
     for (const [k, v] of Object.entries(s.labels)) hay.push(k, v);
   }
+  const g = serviceGroup(s);
+  if (g) hay.push(g.key, g.name);
   return hay.some((x) => String(x ?? "").toLowerCase().includes(q));
 }
 
@@ -517,16 +514,16 @@ function attentionItems() {
   const staleAgents = agents.filter((a) => a.status === "stale").length;
   const item = (key, level, count, title, detail, action) => ({ key, level, count, title, detail, action });
   return [
-    item("offline-agents", "critical", offline, "Offline agent", "Trove is no longer receiving reports from this source.", "Review agents"),
-    item("offline-hosts", "critical", c.offlineHosts, "Offline host", "This host has missed its own reporting window and its inventory is stale.", "Review hosts"),
-    item("critical-hosts", "critical", c.criticalHosts, "Critical host condition", "The platform reports that this host needs attention.", "Review hosts"),
-    item("unhealthy", "critical", c.unhealthy, "Unhealthy service", "A platform health check or readiness signal is failing.", "Show services"),
-    item("stale-agents", "warning", staleAgents, "Stale agent", "This source has missed its expected reporting interval.", "Review agents"),
-    item("stale-hosts", "warning", c.staleHosts, "Stale host", "This host has stopped reporting even if another host from the same agent is still active.", "Review hosts"),
-    item("warning-hosts", "warning", c.warningHosts, "Host condition warning", "The platform reports a degraded host condition.", "Review hosts"),
-    item("stopped", "info", c.stopped, "Stopped workload", "A discovered workload is not running. It may be intentional.", "Show services"),
-    item("removed", "info", c.removed, "Recently disappeared service", "A service is absent from its latest full-state report.", "Show services"),
-    item("outdated", "info", c.outdated, "Outdated image", "The running image digest is behind the current tag.", "Show services"),
+    item("offline-agents", "critical", offline, "Offline", "No reports from this agent.", "Review agents"),
+    item("offline-hosts", "critical", c.offlineHosts, "Offline host", "This host missed its reporting window.", "Review hosts"),
+    item("critical-hosts", "critical", c.criticalHosts, "Critical host", "The platform says this host needs attention.", "Review hosts"),
+    item("unhealthy", "critical", c.unhealthy, "Unhealthy", "A health check or readiness signal is failing.", "Show"),
+    item("stale-agents", "warning", staleAgents, "Stale agent", "Missed its expected reporting interval.", "Review agents"),
+    item("stale-hosts", "warning", c.staleHosts, "Stale host", "This host stopped reporting.", "Review hosts"),
+    item("warning-hosts", "warning", c.warningHosts, "Host warning", "The platform reports a degraded host.", "Review hosts"),
+    item("stopped", "info", c.stopped, "Stopped", "Not running. It may be intentional.", "Show"),
+    item("removed", "info", c.removed, "Gone", "Absent from the latest full-state report.", "Show"),
+    item("outdated", "info", c.outdated, "Outdated", "Running image digest is behind the tag.", "Show"),
   ].filter((i) => i.count > 0);
 }
 
@@ -540,11 +537,19 @@ function renderAttention() {
     </div>`;
     return;
   }
-  el.innerHTML = items.map((i) => `<button type="button" class="attention-card attention-${i.level}" data-attention="${i.key}">
+  const primary = items.filter((i) => i.level !== "info");
+  const quiet = items.filter((i) => i.level === "info");
+  const cards = primary.map((i) => `<button type="button" class="attention-card attention-${i.level}" data-attention="${i.key}">
     <span class="attention-count">${i.count}</span>
-    <span class="attention-copy"><strong>${esc(i.title)}${i.count === 1 ? "" : "s"}</strong><span>${esc(i.detail)}</span></span>
+    <span class="attention-copy"><strong>${esc(i.title)}</strong><span>${esc(i.detail)}</span></span>
     <span class="attention-action">${esc(i.action)} <span aria-hidden="true">→</span></span>
   </button>`).join("");
+  const quietItems = quiet.map((i) => `<button type="button" class="attention-quiet-item" data-attention="${i.key}" title="${esc(i.detail)}">
+    <span class="n">${i.count}</span> ${esc(i.title)}
+  </button>`).join("");
+  el.innerHTML =
+    (cards ? `<div class="attention-primary">${cards}</div>` : "") +
+    (quietItems ? `<div class="attention-quiet">${quietItems}</div>` : "");
 }
 
 function showAttention(key) {
@@ -614,14 +619,9 @@ function renderChips() {
   chips.push(`<button class="chip c-gray${remActive}" data-chip="removed"
     aria-pressed="${state.showRemoved || state.removedOnly}" title="${state.removedOnly ? "showing only services no longer reported" : "include services no longer reported (kept 24h)"}">
     ${remLabel} <span class="n">${c.removed}</span></button>`);
-  const groups = collectGroups();
-  if (groups.length >= 2) {
-    for (const g of groups) {
-      const active = state.groups.has(g.key) ? " active" : "";
-      const label = g.kind === "stack" ? `stack:${g.name}` : `ns:${g.name}`;
-      chips.push(`<button class="chip c-blue${active}" data-group="${esc(g.key)}" aria-pressed="${!!active}" title="Filter by ${esc(label)}">
-        ${esc(label)} <span class="n">${g.count}</span></button>`);
-    }
+  for (const key of [...state.groups].sort()) {
+    chips.push(`<button class="chip c-blue active" data-group="${esc(key)}" aria-pressed="true" title="Clear ${esc(key)} filter">
+      ${esc(key)}</button>`);
   }
   if (filterActive()) {
     chips.push(`<button class="chip chip-clear" data-clear="1" title="clear all filters (esc)">✕ clear</button>`);
@@ -641,6 +641,12 @@ function renderAgents() {
   el.innerHTML = agents.map((a) => {
     const st = a.status || "unknown";
     const hosts = (state.data.services?.hosts || []).filter((host) => host.agent === a.name);
+    const rollup = agentRollup(a.name);
+    const badges = [];
+    if (st !== "ok") badges.push(badge(AGENT_CLASS[st] || "b-gray", st));
+    if (rollup.unhealthy) badges.push(badge("b-red", `${rollup.unhealthy} unhealthy`, "mini"));
+    if (rollup.outdated) badges.push(badge("b-peach", `${rollup.outdated} outdated`, "mini"));
+    if (badges.length === 0) badges.push(badge(AGENT_CLASS[st] || "b-gray", st));
     const destination = hosts.length === 1 ? "Open host"
       : (hosts.length > 1 ? `Filter ${hosts.length} hosts` : "Filter catalogue");
     const ariaLabel = hosts.length === 1 ? `View host ${hosts[0].hostname} reported by ${a.name}`
@@ -648,12 +654,25 @@ function renderAgents() {
     return `<button type="button" class="agent-card ${esc(st)}" data-agent-destination="${esc(a.name)}" aria-label="${esc(ariaLabel)}">
       <div class="row">
         <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name">${esc(a.name)}</span></span>
-        ${badge(AGENT_CLASS[st] || "b-gray", st)}
+        <span class="agent-rollups">${badges.join("")}</span>
       </div>
       <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>
       <div class="agent-foot"><span class="meta">last push: ${esc(relTime(a.last_seen_at))}</span><span class="agent-action">${esc(destination)} <span aria-hidden="true">→</span></span></div>
     </button>`;
   }).join("");
+}
+
+function agentRollup(name) {
+  let unhealthy = 0, outdated = 0;
+  for (const h of state.data.services?.hosts || []) {
+    if (h.agent !== name) continue;
+    for (const s of h.services || []) {
+      if (s.state === "removed") continue;
+      if (s.health === "unhealthy") unhealthy++;
+      if (s.freshness === "outdated") outdated++;
+    }
+  }
+  return { unhealthy, outdated };
 }
 
 // --------------------------------------------------------------- hosts ----
@@ -760,7 +779,9 @@ function renderHosts() {
 
     const st = h.status || "unknown";
     const condition = h.condition || "unknown";
-    const conditionBadge = condition !== "unknown"
+    const reportingBadge = st !== "ok"
+      ? badge(AGENT_CLASS[st] || "b-gray", `reporting ${st}`) : "";
+    const conditionBadge = (condition === "warning" || condition === "critical")
       ? badge(HOST_CONDITION_CLASS[condition] || "b-gray", `condition ${condition}`) : "";
     const collapsed = state.collapsed.has(hostKey(h));
     const countLabel = filterActive() && visible.length !== total
@@ -777,9 +798,9 @@ function renderHosts() {
         </button>
         <span class="sub">${esc(hostPlatformLine(h))}</span>
         <span class="sub">last report ${esc(relTime(h.last_seen_at))}</span>
-        ${badge(AGENT_CLASS[st] || "b-gray", `reporting ${st}`)}
+        ${reportingBadge}
         ${conditionBadge}
-        ${hostMetricsHTML(h.metrics)}
+        ${hostMetricsHTML(h)}
         <span class="rollup">${rollup}</span>
         <span class="count">${countLabel}</span>
         <button type="button" class="host-details" data-host-details data-hostkey="${esc(hostKey(h))}" aria-label="View ${esc(h.hostname)} host stats">
@@ -831,7 +852,7 @@ function countsForChip(key, c) {
 
 function renderEvents() {
   const el = $("events");
-  const events = state.data.events?.events || [];
+  const events = collapseEvents(state.data.events?.events || []);
   if (events.length === 0) {
     el.innerHTML = '<div class="empty">No recent state changes.</div>';
     return;
@@ -839,11 +860,41 @@ function renderEvents() {
   el.innerHTML = events.slice(0, 40).map(eventRowHTML).join("");
 }
 
+const EVENT_COLLAPSE_MS = 120000;
+
+function collapseEvents(events) {
+  const out = [];
+  for (const e of events) {
+    const prev = out[out.length - 1];
+    if (prev && eventCollapseKey(prev) === eventCollapseKey(e) && withinEventWindow(prev.at, e.at)) {
+      prev.count += 1;
+      continue;
+    }
+    out.push({ ...e, count: 1 });
+  }
+  return out;
+}
+
+function eventCollapseKey(e) {
+  if (e.kind === "agent") {
+    return `agent\u001f${e.agent || ""}\u001f${e.from_state || ""}\u001f${e.to_state || ""}`;
+  }
+  return `${e.kind || ""}\u001f${e.agent || ""}\u001f${e.hostname || ""}\u001f${e.from_state || ""}\u001f${e.to_state || ""}`;
+}
+
+function withinEventWindow(a, b) {
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return false;
+  return Math.abs(ta - tb) <= EVENT_COLLAPSE_MS;
+}
+
 const HEALTH_TEXT_CLASS = { healthy: "st-green", unhealthy: "st-red", stale: "st-yellow" };
 const AGENT_TEXT_CLASS = { ok: "st-green", stale: "st-yellow", offline: "st-red" };
 
 function eventRowHTML(e) {
   const from = e.from_state || "∅";
+  const count = e.count > 1 ? e.count : 0;
   let what;
   switch (e.kind) {
     case "agent":
@@ -858,13 +909,20 @@ function eventRowHTML(e) {
         <span class="${AGENT_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
       break;
     case "health":
-      what = `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
-        <span class="kind">health</span>
+      what = count
+        ? `<strong>${count} services</strong> <span class="muted">@ ${esc(e.hostname)}</span>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${HEALTH_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`
+        : `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
         &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
         <span class="${HEALTH_TEXT_CLASS[e.to_state] || "st-gray"}">${esc(e.to_state)}</span>`;
       break;
     default: // state
-      what = `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
+      what = count
+        ? `<strong>${count} services</strong> <span class="muted">@ ${esc(e.hostname)}</span>
+        &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
+        <span class="${stateTextClass(e.to_state)}">${esc(e.to_state)}</span>`
+        : `<strong>${esc(e.service)}</strong> <span class="muted">@ ${esc(e.hostname)}</span>
         &nbsp;<span class="st-gray">${esc(from)}</span> <span class="arrow">→</span>
         <span class="${stateTextClass(e.to_state)}">${esc(e.to_state)}</span>`;
   }
@@ -1507,8 +1565,11 @@ function toggleChip(key) {
 }
 
 function toggleGroup(key) {
-  if (state.groups.has(key)) state.groups.delete(key);
-  else state.groups.add(key);
+  if (state.groups.has(key) && state.groups.size === 1) state.groups.clear();
+  else {
+    state.groups.clear();
+    state.groups.add(key);
+  }
   render();
   requestAnimationFrame(() => document.querySelector(`[data-group="${CSS.escape(key)}"]`)?.focus({ preventScroll: true }));
 }

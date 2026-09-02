@@ -653,7 +653,7 @@ function renderAgents() {
       : (hosts.length > 1 ? `Show ${hosts.length} hosts reported by ${a.name}` : `Filter catalogue by agent ${a.name}`);
     return `<button type="button" class="agent-card ${esc(st)}" data-agent-destination="${esc(a.name)}" aria-label="${esc(ariaLabel)}">
       <div class="row">
-        <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name">${esc(a.name)}</span></span>
+        <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name" title="${esc(a.name)}">${esc(a.name)}</span></span>
         <span class="agent-rollups">${badges.join("")}</span>
       </div>
       <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>

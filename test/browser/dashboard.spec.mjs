@@ -394,6 +394,15 @@ test("agent cards surface inventory problems instead of a bare ok", async ({ pag
   await expect(card.locator(".badge", { hasText: /^ok$/ })).toHaveCount(0);
 });
 
+test("agent card names stay on one line instead of wrapping mid-word", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  const name = page.locator('[data-agent-destination="browser-kubernetes"] .name');
+  await expect(name).toHaveCSS("white-space", "nowrap");
+  const height = await name.evaluate((el) => el.getBoundingClientRect().height);
+  expect(height).toBeLessThanOrEqual(28);
+});
+
 test("history collapses same-host health flaps into one row", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await loadDashboard(page);

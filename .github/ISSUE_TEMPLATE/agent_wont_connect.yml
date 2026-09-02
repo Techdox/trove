@@ -1,0 +1,56 @@
+name: Agent won't connect
+description: An agent is registered but never appears, stays unknown, or reports 401
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a new or existing agent is not showing up on the dashboard.
+        Redact tokens. `trove-server doctor` output is welcome if you have it.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Agent platform
+      options:
+        - Docker
+        - Kubernetes
+        - Proxmox VE
+        - Bare-metal Linux (systemd)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Trove version
+      description: Server and agent versions (`trove-server version` / image tag).
+      placeholder: v0.17.1
+    validations:
+      required: true
+  - type: dropdown
+    id: how_created
+    attributes:
+      label: How was the agent token created?
+      options:
+        - Dashboard Add agent
+        - `trove-server agent create`
+        - Compose `TROVE_BOOTSTRAP_*` (first host)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: What do you see?
+      description: Dashboard agent status, HTTP status codes, and relevant logs. Redact tokens.
+      placeholder: |
+        Agent card stays `unknown`.
+        `docker compose logs agent` shows POST /api/v1/report -> 401.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: How are the server and agent running?
+      description: Compose/Kubernetes/systemd snippets with secrets redacted. Include how the agent reaches TROVE_SERVER_URL.
+    validations:
+      required: true

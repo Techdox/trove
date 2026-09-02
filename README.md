@@ -40,7 +40,8 @@ not a feature toggle, and it's the project's one hard rule.
 
 - **Service catalog across platforms** — containers, K8s workloads (with pods
   nested under their Deployments), Proxmox VMs/LXCs, and systemd units, all in
-  one normalized view grouped by host.
+  one normalized view grouped by host. Docker Compose projects and Kubernetes
+  namespaces are grouped in the catalogue and can be filtered as chips.
 - **Health + heartbeats** — platform health where it exists (Docker
   healthchecks, K8s readiness), plus server-side staleness: an agent that goes
   quiet flags itself and all its services within ~90 seconds.
@@ -57,7 +58,12 @@ not a feature toggle, and it's the project's one hard rule.
   digest. See [docs/alerts.md](docs/alerts.md).
 - **Operational dashboard** — a calm needs-attention queue first, then
   infrastructure and the full catalogue; recent changes stay available as
-  history rather than competing with current problems.
+  history rather than competing with current problems. Published ports and
+  optional `trove.url` labels are links out to the thing you already use to
+  fix it.
+- **Add or remove agents from the dashboard** — mint a token and copy the
+  Compose, Kubernetes, Proxmox, or systemd snippet for the next host, or
+  remove an agent from the catalogue without touching the platform it watched.
 - **Fast, keyboard-friendly UI** — no framework, auto-refreshing; use `/` to
   filter, `j`/`k` to move, and `enter` to open details.
 - **Trivial to operate** — one static binary (or container) per role, SQLite
@@ -66,10 +72,11 @@ not a feature toggle, and it's the project's one hard rule.
 
 ## Documentation
 
-Use this README for installation, quickstarts, and the configuration reference.
-Versioned operational guidance lives in the repository:
+Use this README for installation and quickstarts. Versioned operational
+guidance lives in the repository:
 
 - [Documentation index](docs/README.md) — ownership and the complete guide map.
+- [Configuration](docs/configuration.md) — every environment variable.
 - [Authentication](docs/authentication.md) and [API](docs/api.md).
 - [Upgrades, backup, and recovery](docs/upgrades.md).
 - [Security model](SECURITY.md) and
@@ -139,7 +146,8 @@ guide.
 
 The compose files auto-register this first agent from `TROVE_TOKEN` (via
 `TROVE_BOOTSTRAP_*`), so you don't run `agent create` for it — every
-*additional* host gets its own token ([below](#adding-more-hosts-and-platforms)).
+*additional* host gets its own token from the dashboard **Add agent** button
+or the CLI ([below](#adding-more-hosts-and-platforms)).
 
 Open <http://localhost:8080>. Your services appear within ~30 seconds. First,
 check **Needs attention**: a healthy first report shows a calm all-clear state;
@@ -162,7 +170,9 @@ agent at a new platform; you run another one. (Setting `TROVE_PROXMOX_*` on the
 Docker agent, for example, does nothing — it's a different agent image; it will
 connect, look healthy, and never report your Proxmox guests.)
 
-Mint a token per agent, on the server:
+On the dashboard, click **Add agent**, pick the platform, and copy the snippet
+it prints with the token already filled in. The CLI still works if you would
+rather mint from the server:
 
 ```sh
 # server running via Docker Compose (the quickstart):
@@ -259,108 +269,26 @@ go install github.com/techdox/trove/cmd/trove-server@latest
 
 ## Configuration reference
 
-### `trove-server`
-
-| Variable                   | Default    | Purpose                                                                |
-| -------------------------- | ---------- | ---------------------------------------------------------------------- |
-| `TROVE_ADDR`               | `:8080`    | Listen address.                                                         |
-| `TROVE_DB`                 | `trove.db` | SQLite file path (containers default to `/data/trove.db`).             |
-| `TROVE_FRESHNESS_ENABLED`  | `true`     | `false` disables image-freshness checking.                             |
-| `TROVE_FRESHNESS_INTERVAL` | `5m`       | How often to scan for images due a check.                              |
-| `TROVE_FRESHNESS_TTL`      | `6h`       | How long a resolved digest counts as fresh before rechecking.          |
-| `TROVE_REGISTRY_AUTHS`     | _(unset)_  | Credentials for private registries — see below.                        |
-| `TROVE_REGISTRY_PRIVATE_HOSTS` | _(unset)_ | Comma-separated private registry `host[:port]` allowlist. Hosts in `TROVE_REGISTRY_AUTHS` are allowed automatically. |
-| `TROVE_HEALTH_DETAILS_ENABLED` | `false` | Explicitly retain and display bounded, redacted platform health messages. |
-| `TROVE_EVENT_RETENTION`    | `720h` (30d) | How long events (activity feed / alert stream) are kept.             |
-| `TROVE_REMOVED_RETENTION`  | `24h`      | How long removed services linger before being purged.                  |
-| `TROVE_HOST_RETENTION`     | `720h` (30d) | How long a silent host and its remaining inventory are retained.     |
-| `TROVE_ALERT_*` / `TROVE_SMTP_*` | _(unset)_ | Notification channels & SMTP — see [docs/alerts.md](docs/alerts.md). |
-| `TROVE_DIGEST`             | `daily@08:00`* | Digest schedule; *only takes effect once `TROVE_SMTP_*` is set — see [docs/alerts.md](docs/alerts.md). |
-| `TROVE_BOOTSTRAP_AGENT` / `TROVE_BOOTSTRAP_TOKEN` | _(unset)_ | Seed one agent at startup (used by the quickstart compose). |
+Every environment variable lives in
+[docs/configuration.md](docs/configuration.md). That includes server settings,
+agent settings, registry credentials, retention, alerts, and OIDC.
 
 #### Dashboard authentication (OIDC)
 
-By default the dashboard and read APIs are open — bind to a
-trusted network or front with a reverse proxy. For native authentication,
-configure any OIDC-compatible provider (Authentik, Keycloak, Auth0, Google,
-Dex, etc.):
-
-| Variable | Purpose |
-| --- | --- |
-| `TROVE_OIDC_ISSUER` | OIDC discovery URL, e.g. `https://auth.example/application/o/trove/` |
-| `TROVE_OIDC_CLIENT_ID` | OAuth2 client ID registered with your IdP |
-| `TROVE_OIDC_CLIENT_SECRET` | OAuth2 client secret |
-| `TROVE_OIDC_REDIRECT_URL` | Callback URL, e.g. `https://trove.example/oauth2/callback` |
-| `TROVE_API_TOKEN` | _(optional)_ Random bearer token of at least 32 characters for programmatic API access (bypasses OIDC) |
-| `TROVE_OIDC_SESSION_MAX_AGE` | _(optional)_ Session duration (default `8h`) |
-
-OIDC is enabled only when all four required `TROVE_OIDC_*` settings are
-present. If any required setting is present while another is missing, the
-server fails startup and names the missing variables instead of leaving the
-dashboard open. `TROVE_API_TOKEN` is valid only alongside a complete OIDC
-configuration.
-
-Generate the optional API token with `openssl rand -hex 32`; Trove rejects
-short tokens and known documentation placeholders at startup. Provider setup,
-login/logout behaviour, API-token examples, verification, and troubleshooting
-are owned by [docs/authentication.md](docs/authentication.md). Agent ingest
-(`POST /api/v1/report`) and `/healthz` remain outside OIDC.
-
-Private registry / Docker Hub credentials for freshness checks:
-
-```sh
-TROVE_REGISTRY_AUTHS='{"docker.io":{"username":"me","password":"dckr_pat_..."},"gitea.example.com":{"username":"me","password":"...","auth_realm_hosts":["sso.example.com"]}}'
-```
-
-Private IP ranges are denied by default. A host configured in
-`TROVE_REGISTRY_AUTHS` is an explicit private-network allowlist entry. For an
-anonymous private registry, set its exact endpoint separately, for example
-`TROVE_REGISTRY_PRIVATE_HOSTS=registry.lan:5000`. Loopback, link-local/cloud
-metadata, unspecified, and multicast destinations remain blocked even when
-listed. Registry credentials are sent to a separate bearer-token realm only
-when that realm is the registry itself, Docker Hub's standard auth service, or
-an exact `auth_realm_hosts` entry. Those explicitly trusted realm hosts are
-also eligible to resolve to a private address.
-
-Docker Hub's anonymous rate limits are generous for Trove's batched, cached
-checks at homelab scale, but if you run many distinct Hub images, adding a
-(free) Hub account raises the ceiling.
-
-### Agents — common to all
-
-| Variable           | Default      | Purpose                                            |
-| ------------------ | ------------ | -------------------------------------------------- |
-| `TROVE_SERVER_URL` | _(required)_ | Base URL of the server.                            |
-| `TROVE_TOKEN`      | _(required)_ | Bearer token from `trove-server agent create`.     |
-| `TROVE_INTERVAL`   | `30s`        | Push interval (`30s`, `1m`, or bare seconds `30`). |
-| `TROVE_AGENT_NAME` | hostname     | Informational; not used for the dashboard display name (see below). For the bare-metal agent specifically, it (or the OS hostname) becomes the reported host name. |
-
-The name an agent appears under on the dashboard is the one you chose in
-`trove-server agent create <name>` — not `TROVE_AGENT_NAME`. Platform-specific settings are covered in
-each [agent guide](docs/agents/).
-
-### Managing agents
-
-Deleting an agent is an intentional server-side catalogue cleanup. It does not
-stop or change anything on the infrastructure the agent used to observe.
-
-```sh
-trove-server agent create <name>    # mint a token (shown once, stored hashed)
-trove-server agent list             # names, platform, status, last seen
-trove-server agent delete <name>    # remove an agent and all its data
-trove-server alert test             # test every configured channel + send a sample digest
-```
-
-On a Docker Compose server, run these inside the container, e.g.
-`docker compose exec server trove-server agent create <name>`. On a bare-metal
-server, set `TROVE_DB` to the server's database path (see
-[Adding more hosts](#adding-more-hosts-and-platforms)).
+The dashboard is open unless you put it behind a reverse proxy or enable
+native OIDC. The reverse-proxy path is the usual homelab setup; OIDC is
+optional if you already have an identity provider. See
+[Dashboard authentication](docs/authentication.md). Agent ingest
+(`POST /api/v1/report`) and `/healthz` remain reachable without dashboard
+auth.
 
 ## API
 
 | Method & path           | Auth   | Purpose                                     |
 | ----------------------- | ------ | ------------------------------------------- |
 | `POST /api/v1/report`   | Bearer | Agent pushes a full-state report.           |
+| `POST /api/v1/agents`   | OIDC or optional API token | Mint an agent token and return an install snippet. |
+| `DELETE /api/v1/agents/{name}` | OIDC or optional API token | Remove an agent and its catalogue data. |
 | `GET /api/v1/services`  | OIDC or optional API token | Services grouped by host (dashboard data).  |
 | `GET /api/v1/agents`    | OIDC or optional API token | Agents with derived heartbeat status.       |
 | `GET /api/v1/events`    | OIDC or optional API token | Recent state-change events (`?limit=&offset=&kind=&since=`). |
@@ -378,12 +306,12 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - Agent ingest is authenticated with per-agent bearer tokens (256-bit random,
   stored only as SHA-256 hashes). Revoke by deleting the agent.
-- **The dashboard and read APIs support optional OIDC authentication.** When
-  all four required OIDC settings are set, the dashboard and all read APIs
-  require a valid OIDC session. Partial configuration fails startup. When all
+- **The dashboard and APIs support optional authentication.** When all
   authentication settings are unset, the dashboard is open — bind to a trusted
-  network or front it with an authenticating reverse proxy. See
-  [Dashboard authentication](#dashboard-authentication-oidc).
+  network or front it with an authenticating reverse proxy. Native OIDC is
+  optional. See [Dashboard authentication](docs/authentication.md).
+  `POST /api/v1/agents` and `DELETE /api/v1/agents/{name}` use that same
+  dashboard auth; they never mutate a monitored platform.
 - Agents cannot change anything on the platforms they watch — read-only is
   enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).
 - Tagged binaries and container images ship with checksums, SPDX SBOMs,

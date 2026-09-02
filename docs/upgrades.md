@@ -25,7 +25,7 @@ shape during a normal server-first rollout. It does not promise that a newer
 agent can talk to an older server, or that arbitrary release gaps are safe.
 The machine-readable source and frozen fixtures are in
 [`docs/compatibility-matrix.json`](compatibility-matrix.json) and
-`internal/server/testdata/report-v0.15.1-*.json`.
+`internal/server/testdata/report-v0.17.0-*.json`.
 
 ### Upgrade order and release gate
 

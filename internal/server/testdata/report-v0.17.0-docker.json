@@ -6,7 +6,7 @@
     "interval_seconds": 30
   },
   "host": {
-    "hostname": "docker-v0151",
+    "hostname": "docker-v0170",
     "condition": "normal",
     "meta": { "docker.version": "28.0.0" }
   },

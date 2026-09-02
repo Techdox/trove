@@ -6,7 +6,7 @@
     "interval_seconds": 60
   },
   "host": {
-    "hostname": "pve-v0151",
+    "hostname": "pve-v0170",
     "condition": "warning",
     "meta": { "proxmox.version": "8.4.1" }
   },

@@ -1,10 +1,40 @@
 # Dashboard authentication
 
-Trove is still read-only, but the dashboard and read APIs can be protected with native OpenID Connect (OIDC) authentication.
+Trove is still read-only. The usual homelab setup is an authenticating reverse
+proxy in front of an otherwise-open dashboard. Native OpenID Connect is
+optional if you already run Authentik, Keycloak, or similar.
 
-When OIDC is not configured, Trove keeps the original behaviour: the dashboard and read APIs are open. In that mode, keep the server on a trusted network, VPN, tailnet, or behind an authenticating reverse proxy.
+When OIDC is not configured, the dashboard and APIs are open. Keep the server
+on a trusted network, VPN, or tailnet, or put it behind the proxy. Environment
+variables for both modes live in
+[docs/configuration.md](configuration.md).
 
-Open mode requires all OIDC authentication settings to be absent. If any required `TROVE_OIDC_*` setting is present while another is missing, Trove fails startup and lists the missing variables. `TROVE_API_TOKEN` cannot be used without a complete OIDC configuration.
+Open mode requires all OIDC authentication settings to be absent. If any
+required `TROVE_OIDC_*` setting is present while another is missing, Trove
+fails startup and lists the missing variables. `TROVE_API_TOKEN` cannot be
+used without a complete OIDC configuration.
+
+## Reverse proxy (typical)
+
+Point Caddy, Nginx Proxy Manager, Traefik, Authelia, or Authentik at Trove's
+`:8080` and let that layer handle login. Trove does not need OIDC in this
+mode. Leave every `TROVE_OIDC_*` variable unset.
+
+Caddy with a separate auth app in front:
+
+```caddy
+trove.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Nginx Proxy Manager: add a Proxy Host for `trove.example.com` →
+`http://trove-server:8080`, then enable whatever Access List or Authentik
+forward-auth you already use for other homelab apps.
+
+Keep `/healthz` and `POST /api/v1/report` reachable from agents. If the proxy
+requires login for every path, either bypass those two or give agents a
+network path that does not go through the browser auth.
 
 ## What OIDC protects
 
@@ -15,6 +45,8 @@ When `TROVE_OIDC_ISSUER` and the other required OIDC settings are present, Trove
 | `GET` | `/` | Browser users are redirected to the identity provider. |
 | `GET` | `/api/v1/services` | Requires OIDC session or `TROVE_API_TOKEN`. |
 | `GET` | `/api/v1/agents` | Requires OIDC session or `TROVE_API_TOKEN`. |
+| `POST` | `/api/v1/agents` | Requires OIDC session or `TROVE_API_TOKEN`. Mints a Trove token only. |
+| `DELETE` | `/api/v1/agents/{name}` | Requires OIDC session or `TROVE_API_TOKEN`. Removes catalogue data only. |
 | `GET` | `/api/v1/events` | Requires OIDC session or `TROVE_API_TOKEN`. |
 | `GET` | `/api/v1/me` | Requires OIDC session or `TROVE_API_TOKEN`; returns current auth state. |
 
@@ -31,9 +63,9 @@ OIDC does **not** protect these routes:
 ## Configuration source
 
 The canonical list of OIDC variables, defaults, and startup-validation rules is
-the [README configuration reference](../README.md#configuration-reference).
-This guide owns provider setup and operational verification, so it deliberately
-does not duplicate that configuration table.
+the [configuration reference](configuration.md). This guide owns provider
+setup and operational verification, so it deliberately does not duplicate that
+configuration table.
 
 Configure all required OIDC settings together. Trove performs discovery during
 startup with a ten-second timeout; invalid, unreachable, or incomplete

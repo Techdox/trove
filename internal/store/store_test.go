@@ -228,6 +228,12 @@ func TestAgentCreateAndAuthenticate(t *testing.T) {
 	if _, _, err := st.CreateAgent(ctx, "docker-a"); !errors.Is(err, ErrAgentExists) {
 		t.Fatalf("dup name: got %v, want ErrAgentExists", err)
 	}
+	if _, _, err := st.CreateAgent(ctx, "bad name"); !errors.Is(err, ErrInvalidAgentName) {
+		t.Fatalf("invalid name: got %v, want ErrInvalidAgentName", err)
+	}
+	if _, _, err := st.CreateAgent(ctx, ""); err == nil {
+		t.Fatal("empty name: expected error")
+	}
 }
 
 func TestRotateAgentTokenPreservesAgentData(t *testing.T) {

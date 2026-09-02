@@ -36,7 +36,7 @@ compatibility, UI, documentation, and release-confidence milestone:
   resolved review conversations. A separate approving reviewer is not required
   for the current solo-maintainer workflow.
 
-## Current milestone — `v0.17.0` operator confidence
+## `v0.17` operator confidence ✅ delivered
 
 **Goal:** make routine ownership boring before declaring the interfaces stable.
 This milestone does not add another monitored platform or any control path.
@@ -84,21 +84,37 @@ five agents remained fresh, OIDC and read-only API authentication passed,
 background workers remained healthy, desktop/mobile dashboard checks passed,
 and SQLite integrity and foreign-key checks remained clean.
 
-## Following milestone — `v0.18.0` stability contract
+## Current milestone — `v0.18.0` stability contract
 
 **Goal:** define what 1.0 promises and prove Trove operates comfortably beyond
-the current deployment.
+the current deployment. The public release remains `v0.17.1`; this section
+records contract work already on `main` and what is still required before a
+`v0.18.0` cut. Operator-facing gaps that were blocking adoption (second-agent
+UX, compose/namespace grouping, investigation links) landed on `main` so they
+ship in this cut rather than waiting for a later minor.
 
-- [ ] Publish machine-readable schemas for the agent report and `/api/v1`
+- [x] Publish machine-readable schemas for the agent report and `/api/v1`
   responses, with compatibility tests for additive evolution.
-- [ ] Turn the server-first, immediately-previous-agent guarantee into a clear
+  (`schemas/v1/`, #125)
+- [x] Turn the server-first, immediately-previous-agent guarantee into a clear
   version support matrix and test it on every release candidate.
-- [ ] Add a reproducible scale scenario covering at least 50 agents, 10,000
+  (`docs/compatibility-matrix.json`, `scripts/check_compatibility_matrix.py`, #126)
+- [x] Add a reproducible scale scenario covering at least 50 agents, 10,000
   services, and 100,000 retained events. Record ingest latency, API response
   size/time, database growth, maintenance duration, and restart time.
+  (`benchmarks/scale-50x10k-baseline.*`, #124)
 - [ ] Protect the current coverage baseline and raise useful coverage in the
   agent framework, server CLI, and store failure paths; do not chase a global
-  percentage with low-value tests.
+  percentage with low-value tests. CI prints coverage; it does not yet gate a
+  checked-in baseline.
+- [x] Dashboard **Add agent** flow that mints a token and returns a
+  copy-paste snippet for Docker, Kubernetes, Proxmox, and systemd.
+- [x] Dashboard **Remove** flow that deletes an agent from the catalogue
+  without touching the platform it observed.
+- [x] Group and filter Docker Compose projects and Kubernetes namespaces.
+- [x] Clickable published ports and optional `trove.url` investigation links.
+- [x] Reverse-proxy authentication documented as the default homelab path;
+  Unraid/TrueNAS covered as Docker hosts.
 - [ ] Validate fresh installs and upgrades with several independent operators
   across Docker, Kubernetes, Proxmox, and bare-metal Linux.
 

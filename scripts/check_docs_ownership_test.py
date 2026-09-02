@@ -18,6 +18,7 @@ class DocumentationOwnershipCheckTest(unittest.TestCase):
             """# Trove
 
 [Documentation](docs/README.md)
+[Configuration](docs/configuration.md)
 [Authentication](docs/authentication.md)
 [Upgrades](docs/upgrades.md)
 [Release security](docs/release-security.md)
@@ -45,7 +46,7 @@ Non-versioned walkthroughs
             encoding="utf-8",
         )
         (self.root / "docs/authentication.md").write_text(
-            "[Configuration](../README.md#configuration-reference)\n",
+            "[Configuration](configuration.md)\n",
             encoding="utf-8",
         )
         (self.root / "docs/upgrades.md").write_text(

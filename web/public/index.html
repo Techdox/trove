@@ -38,7 +38,7 @@
           <div class="eyebrow">Operational overview</div>
           <h2 id="attention-title">Needs attention</h2>
         </div>
-        <p>What needs investigation first. Trove only shows the evidence; follow the link or use your usual tool to fix it.</p>
+        <p>Investigate first. Trove does not change a workload.</p>
       </div>
       <div class="attention" id="attention"></div>
       </section>
@@ -49,6 +49,7 @@
           <div class="eyebrow">Discovered infrastructure</div>
           <h2 id="infrastructure-title" tabindex="-1">Infrastructure summary</h2>
         </div>
+        <button type="button" class="add-agent-btn" data-add-agent>Add agent</button>
       </div>
       <div class="summary" id="summary"></div>
       <div class="agents" id="agents"></div>
@@ -63,7 +64,7 @@
         <p>Filter the discovered inventory. Trove never changes a workload.</p>
       </div>
       <div class="filterbar" role="search" aria-label="Filter service catalogue">
-        <input id="q" type="search" placeholder="filter by name, image, host, label…  ( / )"
+        <input id="q" type="search" placeholder="filter by name, image, host, ns:, stack:  ( / )"
                autocomplete="off" spellcheck="false" aria-label="Filter services" />
         <div class="chips" id="chips"></div>
       </div>
@@ -76,7 +77,7 @@
           <div class="eyebrow">History</div>
           <h2 id="changes-title">Recent changes</h2>
         </div>
-        <p>State, health, and agent heartbeat transitions. Quiet reports are intentionally absent.</p>
+        <p>State, health, and heartbeat transitions. Same-host flaps are grouped.</p>
       </div>
       <div class="events" id="events"></div>
       </section>

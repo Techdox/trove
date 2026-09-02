@@ -114,12 +114,13 @@ func (s *Server) routes() {
 
 	// Dashboard APIs + SPA. When OIDC is configured, these are wrapped in
 	// the auth middleware; otherwise they're open (trusted-network default).
-	// POST /api/v1/agents mints a Trove agent token; it never mutates a
-	// monitored platform.
+	// POST/DELETE /api/v1/agents mint or remove a Trove agent; they never
+	// mutate a monitored platform.
 	readAPIs := http.NewServeMux()
 	readAPIs.HandleFunc("GET /api/v1/services", s.handleServices)
 	readAPIs.HandleFunc("GET /api/v1/agents", s.handleAgents)
 	readAPIs.HandleFunc("POST /api/v1/agents", s.handleCreateAgent)
+	readAPIs.HandleFunc("DELETE /api/v1/agents/{name}", s.handleDeleteAgent)
 	readAPIs.HandleFunc("GET /api/v1/events", s.handleEvents)
 	readAPIs.HandleFunc("GET /api/v1/me", s.handleMe)
 	readAPIs.HandleFunc("GET /metrics", s.handleMetrics)

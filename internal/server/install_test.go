@@ -105,6 +105,53 @@ func TestInstallSnippetCoversEachPlatform(t *testing.T) {
 	}
 }
 
+func TestHandleDeleteAgentRemovesCatalogueOnly(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	srv := New(st, slog.Default())
+	if _, _, err := st.CreateAgent(t.Context(), "docker-nas"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/docker-nas", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var got deleteAgentResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK || got.Name != "docker-nas" {
+		t.Fatalf("got %+v", got)
+	}
+	agents, err := st.ListAgents(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(agents) != 0 {
+		t.Fatalf("agents still present: %+v", agents)
+	}
+
+	missing := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/docker-nas", nil)
+	missRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(missRR, missing)
+	if missRR.Code != http.StatusNotFound {
+		t.Fatalf("missing status = %d", missRR.Code)
+	}
+
+	bad := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/bad%20name", nil)
+	badRR := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(badRR, bad)
+	if badRR.Code != http.StatusBadRequest {
+		t.Fatalf("invalid name status = %d body=%s", badRR.Code, badRR.Body.String())
+	}
+}
+
 func TestSanitizeInstallServerURL(t *testing.T) {
 	got, err := sanitizeInstallServerURL(" https://trove.example/ ")
 	if err != nil {

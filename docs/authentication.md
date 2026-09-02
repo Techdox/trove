@@ -46,6 +46,7 @@ When `TROVE_OIDC_ISSUER` and the other required OIDC settings are present, Trove
 | `GET` | `/api/v1/services` | Requires OIDC session or `TROVE_API_TOKEN`. |
 | `GET` | `/api/v1/agents` | Requires OIDC session or `TROVE_API_TOKEN`. |
 | `POST` | `/api/v1/agents` | Requires OIDC session or `TROVE_API_TOKEN`. Mints a Trove token only. |
+| `DELETE` | `/api/v1/agents/{name}` | Requires OIDC session or `TROVE_API_TOKEN`. Removes catalogue data only. |
 | `GET` | `/api/v1/events` | Requires OIDC session or `TROVE_API_TOKEN`. |
 | `GET` | `/api/v1/me` | Requires OIDC session or `TROVE_API_TOKEN`; returns current auth state. |
 

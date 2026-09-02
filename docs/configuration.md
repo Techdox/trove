@@ -85,8 +85,9 @@ each [agent guide](agents/).
 ## Managing agents
 
 The dashboard **Add agent** button mints a token and shows a copy-paste
-snippet for Docker Compose, Kubernetes, Proxmox, or systemd. The CLI still
-works for the same job, including rotation and deletion.
+snippet for Docker Compose, Kubernetes, Proxmox, or systemd. **Remove** on an
+agent card deletes that agent from Trove's catalogue after a confirm step.
+The CLI still works for the same jobs, including rotation.
 
 Deleting an agent is an intentional server-side catalogue cleanup. It does not
 stop or change anything on the infrastructure the agent used to observe.
@@ -103,8 +104,9 @@ On a Docker Compose server, run these inside the container, e.g.
 `docker compose exec server trove-server agent create <name>`. On a bare-metal
 server, set `TROVE_DB` to the server's database path.
 
-`POST /api/v1/agents` is the same mint operation the dashboard uses. It
-requires the same auth as the other dashboard APIs: an OIDC session or
-`TROVE_API_TOKEN` when OIDC is enabled, and the trusted-network default when
-it is not. Creating an agent only writes Trove's catalogue. It never talks to
+`POST /api/v1/agents` and `DELETE /api/v1/agents/{name}` are the same mint
+and remove operations the dashboard uses. They require the same auth as the
+other dashboard APIs: an OIDC session or `TROVE_API_TOKEN` when OIDC is
+enabled, and the trusted-network default when it is not. Creating or deleting
+an agent only writes Trove's catalogue. It never talks to
 Docker, Kubernetes, Proxmox, or systemd.

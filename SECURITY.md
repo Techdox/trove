@@ -16,10 +16,11 @@ Trove's security posture is deliberately simple in the current phase:
   with an authenticating reverse proxy. Agent ingest
   (`POST /api/v1/report`) and `/healthz` are never gated by OIDC. An optional
   `TROVE_API_TOKEN` allows Bearer-token access for programmatic API clients
-  that can't do a browser-based OAuth flow. `POST /api/v1/agents` uses that
-  same dashboard auth: it mints a Trove agent token and cannot change a
-  monitored platform. Anyone who can use the dashboard can mint tokens, which
-  is the same trust boundary as reading the inventory. Logout uses the provider's OIDC
+  that can't do a browser-based OAuth flow. `POST /api/v1/agents` and
+  `DELETE /api/v1/agents/{name}` use that same dashboard auth: they mint or
+  revoke a Trove agent and cannot change a monitored platform. Anyone who can
+  use the dashboard can mint or delete agents, which is the same trust boundary
+  as reading the inventory. Logout uses the provider's OIDC
   `end_session_endpoint` when available so upstream SSO sessions are terminated
   instead of silently re-authenticating the dashboard. See
   [docs/authentication.md](docs/authentication.md).

@@ -137,6 +137,15 @@ async function fixtureAPI(page) {
       "/api/v1/events": events,
       "/api/v1/me": { authenticated: false },
     }[path];
+    if (route.request().method() === "DELETE" && path.startsWith("/api/v1/agents/")) {
+      const name = decodeURIComponent(path.slice("/api/v1/agents/".length));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, name }),
+      });
+      return;
+    }
     if (route.request().method() === "POST" && path === "/api/v1/agents") {
       const posted = route.request().postDataJSON();
       await route.fulfill({
@@ -408,6 +417,20 @@ test("history collapses same-host health flaps into one row", async ({ page }) =
   await loadDashboard(page);
   await expect(page.locator("#events .event-row")).toHaveCount(2);
   await expect(page.locator("#events .event-row").first()).toContainText("3 services");
+});
+
+test("remove agent confirms and deletes catalogue data only", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await loadDashboard(page);
+  const deleted = page.waitForRequest((req) => req.method() === "DELETE" && req.url().includes("/api/v1/agents/browser-kubernetes"));
+  await page.locator('[data-remove-agent="browser-kubernetes"]').click();
+  const drawer = page.locator("#drawer");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator("#drawer-title")).toHaveText("Remove agent");
+  await expect(drawer).toContainText("not stopped");
+  await page.locator("[data-confirm-remove]").click();
+  await deleted;
+  await expect(drawer).toBeHidden();
 });
 
 test("add agent mints a token and shows an install snippet", async ({ page }) => {

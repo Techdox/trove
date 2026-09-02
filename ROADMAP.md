@@ -109,6 +109,8 @@ ship in this cut rather than waiting for a later minor.
   checked-in baseline.
 - [x] Dashboard **Add agent** flow that mints a token and returns a
   copy-paste snippet for Docker, Kubernetes, Proxmox, and systemd.
+- [x] Dashboard **Remove** flow that deletes an agent from the catalogue
+  without touching the platform it observed.
 - [x] Group and filter Docker Compose projects and Kubernetes namespaces.
 - [x] Clickable published ports and optional `trove.url` investigation links.
 - [x] Reverse-proxy authentication documented as the default homelab path;

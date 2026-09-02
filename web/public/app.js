@@ -24,6 +24,7 @@ const state = {
   hostDrawerKey: null,   // key of the host open in the drawer
   hostDrawerReturnAgent: null, // agent card to refocus when it opened a host
   addAgent: null,        // add-agent drawer model, or null
+  removeAgent: null,     // remove-agent confirm drawer, or null
   cursorKey: null,       // key of the keyboard-cursor row
   data: { services: null, agents: null, events: null },
 };
@@ -417,7 +418,7 @@ function serviceGroup(s) {
 }
 
 function drawerOpen() {
-  return !!(state.drawerKey || state.hostDrawerKey || state.addAgent);
+  return !!(state.drawerKey || state.hostDrawerKey || state.addAgent || state.removeAgent);
 }
 
 const PORTS_SHOWN = 3;
@@ -651,14 +652,17 @@ function renderAgents() {
       : (hosts.length > 1 ? `Filter ${hosts.length} hosts` : "Filter catalogue");
     const ariaLabel = hosts.length === 1 ? `View host ${hosts[0].hostname} reported by ${a.name}`
       : (hosts.length > 1 ? `Show ${hosts.length} hosts reported by ${a.name}` : `Filter catalogue by agent ${a.name}`);
-    return `<button type="button" class="agent-card ${esc(st)}" data-agent-destination="${esc(a.name)}" aria-label="${esc(ariaLabel)}">
-      <div class="row">
-        <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name" title="${esc(a.name)}">${esc(a.name)}</span></span>
-        <span class="agent-rollups">${badges.join("")}</span>
-      </div>
-      <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>
-      <div class="agent-foot"><span class="meta">last push: ${esc(relTime(a.last_seen_at))}</span><span class="agent-action">${esc(destination)} <span aria-hidden="true">→</span></span></div>
-    </button>`;
+    return `<div class="agent-card ${esc(st)}">
+      <button type="button" class="agent-card-main" data-agent-destination="${esc(a.name)}" aria-label="${esc(ariaLabel)}">
+        <div class="row">
+          <span class="agent-identity">${platformIconHTML(a.platform)}<span class="name" title="${esc(a.name)}">${esc(a.name)}</span></span>
+          <span class="agent-rollups">${badges.join("")}</span>
+        </div>
+        <div class="meta">${esc(a.platform || "—")}${a.version ? " · " + esc(agentVersionLabel(a.version)) : ""}</div>
+        <div class="agent-foot"><span class="meta">last push: ${esc(relTime(a.last_seen_at))}</span><span class="agent-action">${esc(destination)} <span aria-hidden="true">→</span></span></div>
+      </button>
+      <button type="button" class="agent-remove" data-remove-agent="${esc(a.name)}" aria-label="Remove agent ${esc(a.name)} from catalogue">Remove</button>
+    </div>`;
   }).join("");
 }
 
@@ -1083,6 +1087,10 @@ function renderDrawer() {
     renderAddAgentDrawer(el);
     return;
   }
+  if (state.removeAgent) {
+    renderRemoveAgentDrawer(el);
+    return;
+  }
   if (state.hostDrawerKey) {
     const host = findHost(state.hostDrawerKey);
     if (host) {
@@ -1222,11 +1230,60 @@ function openAddAgent() {
   state.drawerKey = null;
   state.hostDrawerKey = null;
   state.hostDrawerReturnAgent = null;
+  state.removeAgent = null;
   state.addAgent = state.addAgent && state.addAgent.step === "done"
     ? newAddAgentState()
     : (state.addAgent || newAddAgentState());
   render();
   requestAnimationFrame(() => $("agent-name")?.focus({ preventScroll: true }) || document.querySelector(".d-close")?.focus({ preventScroll: true }));
+}
+
+function openRemoveAgent(name) {
+  state.drawerKey = null;
+  state.hostDrawerKey = null;
+  state.hostDrawerReturnAgent = null;
+  state.addAgent = null;
+  state.removeAgent = { name, busy: false, error: "" };
+  render();
+  requestAnimationFrame(() => document.querySelector("[data-confirm-remove]")?.focus({ preventScroll: true }));
+}
+
+function renderRemoveAgentDrawer(el) {
+  const a = state.removeAgent;
+  el.innerHTML = `
+    <div class="d-head">
+      <h2 class="d-name" id="drawer-title">Remove agent</h2>
+      <button class="d-close" aria-label="Close details" title="close (esc)">✕</button>
+    </div>
+    <p class="add-agent-copy">Remove <strong>${esc(a.name)}</strong> from Trove's catalogue. Hosts, services, and history for this agent are deleted here. The agent process is not stopped, and the platform it watches is not changed.</p>
+    ${a.error ? `<p class="add-agent-error" role="alert">${esc(a.error)}</p>` : ""}
+    <button type="button" class="danger-btn" data-confirm-remove ${a.busy ? "disabled" : ""}>${a.busy ? "Removing…" : "Remove from catalogue"}</button>
+  `;
+  el.hidden = false;
+  setPageInert(true);
+}
+
+async function confirmRemoveAgent() {
+  const a = state.removeAgent;
+  if (!a || a.busy) return;
+  a.busy = true;
+  a.error = "";
+  render();
+  try {
+    const res = await fetch("api/v1/agents/" + encodeURIComponent(a.name), {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `${res.status}`);
+    state.removeAgent = null;
+    render();
+    refresh();
+  } catch (err) {
+    a.busy = false;
+    a.error = err.message || "failed to remove agent";
+    render();
+  }
 }
 
 function renderAddAgentDrawer(el) {
@@ -1378,6 +1435,8 @@ function moveCursor(delta) {
 function openDrawer(key) {
   state.hostDrawerKey = null;
   state.hostDrawerReturnAgent = null;
+  state.addAgent = null;
+  state.removeAgent = null;
   state.drawerKey = key;
   state.cursorKey = key;
   render();
@@ -1390,6 +1449,8 @@ function openHostDrawer(key) {
 
 function openHostDrawerFromAgent(key, returnAgent) {
   state.drawerKey = null;
+  state.addAgent = null;
+  state.removeAgent = null;
   state.hostDrawerKey = key;
   state.hostDrawerReturnAgent = returnAgent;
   render();
@@ -1423,12 +1484,18 @@ function closeDrawer() {
   const hostKeyToRestore = state.hostDrawerKey;
   const agentToRestore = state.hostDrawerReturnAgent;
   const addAgentOpen = !!state.addAgent;
+  const removeName = state.removeAgent?.name;
   state.drawerKey = null;
   state.hostDrawerKey = null;
   state.hostDrawerReturnAgent = null;
   state.addAgent = null;
+  state.removeAgent = null;
   render();
   requestAnimationFrame(() => {
+    if (removeName) {
+      document.querySelector(`[data-remove-agent="${CSS.escape(removeName)}"]`)?.focus({ preventScroll: true });
+      return;
+    }
     if (addAgentOpen) {
       document.querySelector("[data-add-agent]")?.focus({ preventScroll: true });
       return;
@@ -1594,6 +1661,12 @@ document.addEventListener("click", (e) => {
 
   const addAgent = e.target.closest("[data-add-agent]");
   if (addAgent) { openAddAgent(); return; }
+
+  const confirmRemove = e.target.closest("[data-confirm-remove]");
+  if (confirmRemove) { confirmRemoveAgent(); return; }
+
+  const removeAgent = e.target.closest("[data-remove-agent]");
+  if (removeAgent) { openRemoveAgent(removeAgent.dataset.removeAgent); return; }
 
   const copy = e.target.closest("[data-copy]");
   if (copy) { copyById(copy.dataset.copy); return; }

@@ -100,6 +100,31 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type deleteAgentResponse struct {
+	OK   bool   `json:"ok"`
+	Name string `json:"name"`
+}
+
+// handleDeleteAgent removes an agent and its catalogue data. It does not
+// contact the platform the agent used to observe.
+func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.PathValue("name"))
+	if err := store.ValidateAgentName(name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.store.DeleteAgent(r.Context(), name); errors.Is(err, store.ErrAgentNotFound) {
+		writeError(w, http.StatusNotFound, "agent not found")
+		return
+	} else if err != nil {
+		s.log.Error("delete agent", "agent", name, "err", err)
+		writeError(w, http.StatusInternalServerError, "failed to delete agent")
+		return
+	}
+	s.log.Info("agent deleted from dashboard", "agent", name)
+	writeJSON(w, http.StatusOK, deleteAgentResponse{OK: true, Name: name})
+}
+
 func sanitizeInstallServerURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

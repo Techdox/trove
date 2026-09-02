@@ -61,8 +61,9 @@ not a feature toggle, and it's the project's one hard rule.
   history rather than competing with current problems. Published ports and
   optional `trove.url` labels are links out to the thing you already use to
   fix it.
-- **Add agent from the dashboard** — mint a token and copy the Compose,
-  Kubernetes, Proxmox, or systemd snippet for the next host.
+- **Add or remove agents from the dashboard** — mint a token and copy the
+  Compose, Kubernetes, Proxmox, or systemd snippet for the next host, or
+  remove an agent from the catalogue without touching the platform it watched.
 - **Fast, keyboard-friendly UI** — no framework, auto-refreshing; use `/` to
   filter, `j`/`k` to move, and `enter` to open details.
 - **Trivial to operate** — one static binary (or container) per role, SQLite
@@ -287,6 +288,7 @@ auth.
 | ----------------------- | ------ | ------------------------------------------- |
 | `POST /api/v1/report`   | Bearer | Agent pushes a full-state report.           |
 | `POST /api/v1/agents`   | OIDC or optional API token | Mint an agent token and return an install snippet. |
+| `DELETE /api/v1/agents/{name}` | OIDC or optional API token | Remove an agent and its catalogue data. |
 | `GET /api/v1/services`  | OIDC or optional API token | Services grouped by host (dashboard data).  |
 | `GET /api/v1/agents`    | OIDC or optional API token | Agents with derived heartbeat status.       |
 | `GET /api/v1/events`    | OIDC or optional API token | Recent state-change events (`?limit=&offset=&kind=&since=`). |
@@ -308,8 +310,8 @@ interface; see [CONTRIBUTING.md](CONTRIBUTING.md).
   authentication settings are unset, the dashboard is open — bind to a trusted
   network or front it with an authenticating reverse proxy. Native OIDC is
   optional. See [Dashboard authentication](docs/authentication.md).
-  `POST /api/v1/agents` uses that same dashboard auth; it never mutates a
-  monitored platform.
+  `POST /api/v1/agents` and `DELETE /api/v1/agents/{name}` use that same
+  dashboard auth; they never mutate a monitored platform.
 - Agents cannot change anything on the platforms they watch — read-only is
   enforced in code, not convention. Details in [SECURITY.md](SECURITY.md).
 - Tagged binaries and container images ship with checksums, SPDX SBOMs,

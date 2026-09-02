@@ -343,6 +343,8 @@ func TestDashboardHostNavigationAndPlatformMarks(t *testing.T) {
 		"function collapseEvents(events)",
 		"function agentRollup(name)",
 		"function openAddAgent()",
+		"function openRemoveAgent(name)",
+		`data-remove-agent="${esc(a.name)}"`,
 		"function openHostDrawerFromAgent(key, returnAgent)",
 		`data-agent-destination="${esc(a.name)}"`,
 		`class="host-name" data-host-details`,

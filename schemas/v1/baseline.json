@@ -536,5 +536,23 @@
         "type": "string"
       }
     }
+  },
+  "agent-delete.json": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Trove agent delete response v1",
+    "type": "object",
+    "additionalProperties": true,
+    "required": [
+      "ok",
+      "name"
+    ],
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      }
+    }
   }
 }

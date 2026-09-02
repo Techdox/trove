@@ -1,9 +1,12 @@
 {
   "schema_version": 1,
-  "current_release": "0.17.1",
+  "current_release": "0.18.0",
   "previous_release": "0.17.0",
   "guarantee": "server-first-immediately-previous-agent",
-  "upgrade_order": ["server", "agents"],
+  "upgrade_order": [
+    "server",
+    "agents"
+  ],
   "platforms": {
     "docker": {
       "agent_image": "ghcr.io/techdox/trove-agent-docker:{version}",

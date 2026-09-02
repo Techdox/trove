@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.0](https://github.com/Techdox/trove/compare/v0.17.1...v0.18.0) (2026-09-02)
+
+
+### Features
+
+* add dashboard agent onboarding and catalogue grouping ([#130](https://github.com/Techdox/trove/issues/130)) ([c2fc4d1](https://github.com/Techdox/trove/commit/c2fc4d1abfbd52b3066894a9d937e47810be4c1b))
+* publish API compatibility schemas ([#125](https://github.com/Techdox/trove/issues/125)) ([d32a47a](https://github.com/Techdox/trove/commit/d32a47a91f4d764ec14cbe1ee4c6365d5c0bcf11))
+
+
+### Bug Fixes
+
+* bump Go toolchain to 1.26.6 ([bb7c313](https://github.com/Techdox/trove/commit/bb7c31320db42f20062418b75609006a9c3fc916))
+
 ## [0.17.1](https://github.com/Techdox/trove/compare/v0.17.0...v0.17.1) (2026-07-27)
 
 

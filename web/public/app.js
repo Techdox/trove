@@ -1430,6 +1430,7 @@ function moveCursor(delta) {
   state.cursorKey = rowKey(rows[idx]);
   applyCursor();
   rows[idx].scrollIntoView({ block: "nearest" });
+  rows[idx].querySelector("[data-service-details]")?.focus({ preventScroll: true });
 }
 
 function openDrawer(key) {

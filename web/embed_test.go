@@ -71,7 +71,6 @@ func TestDashboardAccessibilityContract(t *testing.T) {
 	for _, marker := range []string{
 		`class="skip-link" href="#main-content"`,
 		`<main id="main-content" tabindex="-1">`,
-		`role="status" aria-live="polite"`,
 		`id="error" role="alert"`,
 		`role="search" aria-label="Filter service catalogue"`,
 		`role="dialog" aria-modal="true"`,
@@ -80,6 +79,9 @@ func TestDashboardAccessibilityContract(t *testing.T) {
 		if !strings.Contains(string(index), marker) {
 			t.Errorf("dashboard accessibility markup is missing %q", marker)
 		}
+	}
+	if strings.Contains(string(index), `role="status" aria-live="polite"`) {
+		t.Error("routine polling must not use a live status region")
 	}
 
 	app, err := fs.ReadFile(assets, "app.js")
@@ -97,6 +99,7 @@ func TestDashboardAccessibilityContract(t *testing.T) {
 		`if (e.key === "Tab" && drawerOpen())`,
 		`const restoreDrawerFocus = drawerOpen() && $("drawer").contains(active);`,
 		`?.querySelector("[data-service-details]")?.focus`,
+		`rows[idx].querySelector("[data-service-details]")?.focus({ preventScroll: true });`,
 	} {
 		if !strings.Contains(string(app), marker) {
 			t.Errorf("dashboard accessible interaction is missing %q", marker)

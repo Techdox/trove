@@ -497,46 +497,49 @@ func TestOIDCConfigAcceptsGeneratedLengthAPIToken(t *testing.T) {
 	}
 }
 
-func TestConfigureOIDCAcceptsCompleteConfiguration(t *testing.T) {
-	var issuer string
-	discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/.well-known/openid-configuration" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                 issuer,
-			"authorization_endpoint": issuer + "/authorize",
-			"token_endpoint":         issuer + "/token",
-			"jwks_uri":               issuer + "/keys",
-		}); err != nil {
-			t.Errorf("encode discovery response: %v", err)
-		}
-	}))
-	issuer = discovery.URL
-	t.Cleanup(discovery.Close)
+func TestOIDCConfigRejectsUnsafeEndpoints(t *testing.T) {
+	base := OIDCConfig{
+		Issuer:       "https://idp.example",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		RedirectURL:  "https://trove.example/oauth2/callback",
+	}
+	tests := []struct {
+		name   string
+		update func(*OIDCConfig)
+		want   string
+	}{
+		{"HTTP issuer", func(c *OIDCConfig) { c.Issuer = "http://idp.example" }, "TROVE_OIDC_ISSUER"},
+		{"HTTP redirect", func(c *OIDCConfig) { c.RedirectURL = "http://trove.example/oauth2/callback" }, "TROVE_OIDC_REDIRECT_URL"},
+		{"relative issuer", func(c *OIDCConfig) { c.Issuer = "/oidc" }, "TROVE_OIDC_ISSUER"},
+		{"credentialed redirect", func(c *OIDCConfig) { c.RedirectURL = "https://user:pass@trove.example/oauth2/callback" }, "TROVE_OIDC_REDIRECT_URL"},
+		{"fragment redirect", func(c *OIDCConfig) { c.RedirectURL = "https://trove.example/oauth2/callback#fragment" }, "TROVE_OIDC_REDIRECT_URL"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := base
+			tt.update(&cfg)
+			err := cfg.validate()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("validate() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
 
+func TestConfigureOIDCRejectsInsecureIssuerBeforeDiscovery(t *testing.T) {
 	srv := New(nil, nil)
 	err := srv.ConfigureOIDC(OIDCConfig{
-		Issuer:       issuer,
+		Issuer:       "http://idp.example",
 		ClientID:     "client",
 		ClientSecret: "secret",
 		RedirectURL:  "https://trove.example/oauth2/callback",
 	})
-	if err != nil {
-		t.Fatalf("ConfigureOIDC: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "TROVE_OIDC_ISSUER") {
+		t.Fatalf("ConfigureOIDC error = %v, want insecure issuer rejection", err)
 	}
-	if srv.oidc == nil {
-		t.Fatal("OIDC provider not configured")
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
-	req.Header.Set("Accept", "application/json")
-	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, req)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("protected API status = %d, want %d", w.Code, http.StatusUnauthorized)
+	if srv.oidc != nil {
+		t.Fatal("OIDC provider configured after validation failure")
 	}
 }
 

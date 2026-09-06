@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/Techdox/trove/compare/v0.18.0...v0.18.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* harden OIDC and dashboard accessibility ([#131](https://github.com/Techdox/trove/issues/131)) ([4f334fc](https://github.com/Techdox/trove/commit/4f334fc07bb754b63c9091ec8a2d20efa16a80db))
+
 ## [0.18.0](https://github.com/Techdox/trove/compare/v0.17.1...v0.18.0) (2026-09-02)
 
 

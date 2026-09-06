@@ -87,11 +87,8 @@ and SQLite integrity and foreign-key checks remained clean.
 ## Current milestone — `v0.18.0` stability contract
 
 **Goal:** define what 1.0 promises and prove Trove operates comfortably beyond
-the current deployment. The public release remains `v0.17.1`; this section
-records contract work already on `main` and what is still required before a
-`v0.18.0` cut. Operator-facing gaps that were blocking adoption (second-agent
-UX, compose/namespace grouping, investigation links) landed on `main` so they
-ship in this cut rather than waiting for a later minor.
+the current deployment. `v0.18.0` shipped the stability-contract groundwork;
+this section records the confidence work still required before 1.0.
 
 - [x] Publish machine-readable schemas for the agent report and `/api/v1`
   responses, with compatibility tests for additive evolution.

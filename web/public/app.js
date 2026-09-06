@@ -1430,6 +1430,7 @@ function moveCursor(delta) {
   state.cursorKey = rowKey(rows[idx]);
   applyCursor();
   rows[idx].scrollIntoView({ block: "nearest" });
+  rows[idx].querySelector("[data-service-details]")?.focus({ preventScroll: true });
 }
 
 function openDrawer(key) {
@@ -1519,11 +1520,13 @@ function closeDrawer() {
 
 function render() {
   if (!state.data.services || !state.data.agents) return;
-  // Polling replaces the drawer markup to refresh relative times and service
-  // data. Remember whether focus was inside it so the 10-second refresh cannot
-  // eject a keyboard or screen-reader user back to document.body.
+  // Polling replaces the drawer and catalogue markup to refresh relative times
+  // and service data. Remember focused interactive content so the 10-second
+  // refresh cannot eject a keyboard or screen-reader user back to document.body.
   const active = document.activeElement;
   const restoreDrawerFocus = drawerOpen() && $("drawer").contains(active);
+  const activeService = !restoreDrawerFocus && active?.closest?.("#hosts tr[data-ext]");
+  const restoreServiceKey = activeService ? rowKey(activeService) : null;
   const restoreId = restoreDrawerFocus ? active.id : "";
   const restoreStart = restoreDrawerFocus ? active.selectionStart : null;
   const restoreEnd = restoreDrawerFocus ? active.selectionEnd : null;
@@ -1535,9 +1538,12 @@ function render() {
   renderEvents();
   renderDrawer();
   applyCursor();
-  if (restoreDrawerFocus) {
+  if (restoreDrawerFocus || restoreServiceKey) {
     requestAnimationFrame(() => {
-      const target = (restoreId && $(restoreId)) || document.querySelector(".d-close");
+      const target = restoreDrawerFocus
+        ? (restoreId && $(restoreId)) || document.querySelector(".d-close")
+        : visibleRows().find((tr) => rowKey(tr) === restoreServiceKey)
+          ?.querySelector("[data-service-details]");
       target?.focus({ preventScroll: true });
       if (target && typeof restoreStart === "number") {
         try { target.setSelectionRange(restoreStart, restoreEnd); } catch { /* not a text field */ }

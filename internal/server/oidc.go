@@ -87,6 +87,12 @@ func (c OIDCConfig) validate() error {
 	if len(missing) > 0 {
 		return fmt.Errorf("incomplete OIDC configuration: missing %s", strings.Join(missing, ", "))
 	}
+	if err := requireHTTPSURL("TROVE_OIDC_ISSUER", c.Issuer); err != nil {
+		return err
+	}
+	if err := requireHTTPSURL("TROVE_OIDC_REDIRECT_URL", c.RedirectURL); err != nil {
+		return err
+	}
 	if c.APIToken != "" {
 		if c.APIToken != strings.TrimSpace(c.APIToken) {
 			return errors.New("TROVE_API_TOKEN must not have leading or trailing whitespace")
@@ -97,6 +103,17 @@ func (c OIDCConfig) validate() error {
 		if len(c.APIToken) < minAPITokenLength {
 			return fmt.Errorf("TROVE_API_TOKEN must be at least %d characters; generate one with: openssl rand -hex 32", minAPITokenLength)
 		}
+	}
+	return nil
+}
+
+// requireHTTPSURL rejects unsafe or ambiguous OIDC endpoints before discovery
+// or session handling starts. Native OIDC is for deployed dashboards, not a
+// local callback flow, so accepting cleartext URLs would expose session cookies.
+func requireHTTPSURL(name, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials or fragment", name)
 	}
 	return nil
 }
@@ -246,7 +263,7 @@ func (p *oidcProvider) setSessionCookie(w http.ResponseWriter, s sessionCookie) 
 		Path:     "/",
 		MaxAge:   int(p.cfg.SessionMaxAge.Seconds()),
 		HttpOnly: true,
-		Secure:   p.isSecure(),
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -259,14 +276,9 @@ func (p *oidcProvider) clearSessionCookie(w http.ResponseWriter) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   p.isSecure(),
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
-}
-
-// isSecure reports whether the redirect URL is HTTPS (cookie should be Secure).
-func (p *oidcProvider) isSecure() bool {
-	return strings.HasPrefix(p.cfg.RedirectURL, "https://")
 }
 
 // ---- Random state for CSRF protection -------------------------------------
@@ -393,7 +405,7 @@ func (p *oidcProvider) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   300, // 5 minutes
 		HttpOnly: true,
-		Secure:   p.isSecure(),
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 	url := p.oauth2.AuthCodeURL(state)
@@ -422,7 +434,7 @@ func (p *oidcProvider) handleOIDCCallback(w http.ResponseWriter, r *http.Request
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   p.isSecure(),
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 

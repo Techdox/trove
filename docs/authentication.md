@@ -70,8 +70,11 @@ configuration table.
 Configure all required OIDC settings together. Trove performs discovery during
 startup with a ten-second timeout; invalid, unreachable, or incomplete
 configuration prevents the server from listening. The session cookie is signed
-using the OIDC client secret. It is `HttpOnly`, `SameSite=Lax`, and marked
-`Secure` when the configured redirect URL is HTTPS.
+using the OIDC client secret. It is `HttpOnly`, `SameSite=Lax`, and `Secure`.
+Native OIDC requires absolute HTTPS issuer and redirect URLs without embedded
+credentials or fragments, so HTTP endpoints are rejected at startup. If
+upgrading from an older release that accepted an HTTP endpoint, change it to
+HTTPS before restarting Trove.
 
 ## Authentik setup
 

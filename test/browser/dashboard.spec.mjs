@@ -454,6 +454,9 @@ test("routine polling stays quiet and keyboard cursor moves focus", async ({ pag
   await page.keyboard.press("j");
   const firstDetails = page.locator("#hosts tr[data-ext]").first().locator("[data-service-details]");
   await expect(firstDetails).toBeFocused();
+  const previousUpdate = (await page.locator("#updated").textContent()) || "";
+  await expect(page.locator("#updated")).not.toHaveText(previousUpdate, { timeout: 15_000 });
+  await expect(firstDetails).toBeFocused();
   await page.keyboard.press("j");
   const secondDetails = page.locator("#hosts tr[data-ext]").nth(1).locator("[data-service-details]");
   await expect(secondDetails).toBeFocused();

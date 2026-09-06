@@ -43,7 +43,10 @@ OIDC is enabled only when all four required `TROVE_OIDC_*` settings are
 present. If any required setting is present while another is missing, the
 server fails startup and names the missing variables instead of leaving the
 dashboard open. `TROVE_API_TOKEN` is valid only alongside a complete OIDC
-configuration.
+configuration. `TROVE_OIDC_ISSUER` and `TROVE_OIDC_REDIRECT_URL` must be
+absolute `https://` URLs without embedded credentials or fragments; Trove
+rejects HTTP or malformed values before starting. If upgrading from an older
+release that accepted an HTTP OIDC endpoint, update it to HTTPS before restart.
 
 Generate the optional API token with `openssl rand -hex 32`; Trove rejects
 short tokens and known documentation placeholders at startup. Agent ingest

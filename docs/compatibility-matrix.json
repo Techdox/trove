@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "current_release": "0.18.0",
+  "current_release": "0.18.1",
   "previous_release": "0.17.0",
   "guarantee": "server-first-immediately-previous-agent",
   "upgrade_order": [
